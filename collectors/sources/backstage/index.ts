@@ -76,7 +76,10 @@ async function main() {
   const rawEvents = await fetchBackstageEvents();
   console.log(`${rawEvents.length} Events von Backstage erhalten`);
 
-  const activeEvents = rawEvents.filter((e) => !e.cancelled);
+  const today = new Date().toISOString().slice(0, 10);
+  const activeEvents = rawEvents.filter(
+    (e) => !e.cancelled && e.start_time.slice(0, 10) >= today
+  );
   const normalizedEvents = activeEvents.map(normalizeEvent);
 
   const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);

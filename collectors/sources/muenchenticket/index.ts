@@ -97,8 +97,13 @@ async function main() {
   console.log(`${hits.length} Treffer von München Ticket erhalten`);
 
   // Nur echte Einzeltermine behalten (keine Dauerausstellungen o.Ä.)
+  const todayUnix = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
   const realEvents = hits.filter(
-    (h) => h.visible && h.type !== 'MUSEUM' && h.date_display_mode !== 'hide_all'
+    (h) =>
+      h.visible &&
+      h.type !== 'MUSEUM' &&
+      h.date_display_mode !== 'hide_all' &&
+      h.date >= todayUnix
   );
   console.log(`${realEvents.length} davon mit echtem Termin`);
 
