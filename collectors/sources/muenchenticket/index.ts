@@ -11,10 +11,11 @@ interface AlgoliaHit {
   event_object_id: string;
   event: { id: string; title: string };
   external_shop_link: string;
+  uri: string;
   venue: { title: string; city: string };
   organizer?: { title: string };
   category?: { lvl0?: string; lvl1?: string };
-  date: number; // Unix-Zeitstempel (Sekunden)
+  date: number;
   date_display_mode?: string;
   type?: string;
   visible: boolean;
@@ -85,7 +86,7 @@ function normalizeEvent(hit: AlgoliaHit) {
     address: null,
     city: hit.venue.city,
     organizer: hit.organizer?.title ?? hit.venue.title,
-    source_url: hit.external_shop_link,
+    source_url: hit.external_shop_link || `https://www.muenchenticket.de/${hit.uri}`,
     image_url: null,
   };
 }
