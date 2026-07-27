@@ -118,9 +118,11 @@ export default function EventListScreen() {
 
     return events.filter((e) => {
       const query = search.toLowerCase();
+      const formattedDate = formatDate(e.start_date, e.start_time).toLowerCase();
       const matchesSearch =
         e.title.toLowerCase().includes(query) ||
-        (e.location_name?.toLowerCase().includes(query) ?? false);
+        (e.location_name?.toLowerCase().includes(query) ?? false) ||
+        formattedDate.includes(query);
       const matchesCategory = !selectedCategory || e.category === selectedCategory;
       const matchesDate =
         e.start_date >= from && (to === null || e.start_date <= to);
