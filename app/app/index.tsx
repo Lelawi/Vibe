@@ -8,8 +8,10 @@ import {
   SafeAreaView,
   TextInput,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../lib/supabase';
 
 type Event = {
@@ -21,7 +23,7 @@ type Event = {
   location_name: string | null;
 };
 
-type DateFilter = 'all' | 'today' | 'week' | 'weekend';
+type DateFilter = 'all' | 'today' | 'week' | 'weekend' | 'custom';
 
 function formatDate(dateStr: string, timeStr: string | null) {
   const date = new Date(`${dateStr}T${timeStr ?? '00:00'}`);
@@ -34,7 +36,6 @@ function formatDate(dateStr: string, timeStr: string | null) {
   return `${dateFormatted} · ${timeStr.slice(0, 5)}`;
 }
 
-// Liefert "YYYY-MM-DD" für ein Date-Objekt, in lokaler Zeit (nicht UTC)
 function toLocalDateStr(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -42,10 +43,16 @@ function toLocalDateStr(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-// Berechnet die Datumsgrenzen für jeden Filter, ausgehend von heute
-function getDateRange(filter: DateFilter): { from: string; to: string | null } {
+function getDateRange(
+  filter: DateFilter,
+  customDate: string | null
+): { from: string; to: string | null } {
   const today = new Date();
   const todayStr = toLocalDateStr(today);
+
+  if (filter === 'custom' && customDate) {
+    return { from: customDate, to: customDate };
+  }
 
   if (filter === 'today') {
     return { from: todayStr, to: todayStr };
@@ -58,7 +65,7 @@ function getDateRange(filter: DateFilter): { from: string; to: string | null } {
   }
 
   if (filter === 'weekend') {
-    const dayOfWeek = today.getDay(); // 0 = Sonntag, 6 = Samstag
+    const dayOfWeek = today.getDay();
     const daysUntilSaturday = (6 - dayOfWeek + 7) % 7;
     const saturday = new Date(today);
     saturday.setDate(today.getDate() + daysUntilSaturday);
@@ -84,6 +91,8 @@ export default function EventListScreen() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [customDate, setCustomDate] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
     async function loadEvents() {
@@ -114,10 +123,10 @@ export default function EventListScreen() {
   }, [events]);
 
   const filteredEvents = useMemo(() => {
-    const { from, to } = getDateRange(dateFilter);
+    const { from, to } = getDateRange(dateFilter, customDate);
+    const query = search.toLowerCase();
 
     return events.filter((e) => {
-      const query = search.toLowerCase();
       const formattedDate = formatDate(e.start_date, e.start_time).toLowerCase();
       const matchesSearch =
         e.title.toLowerCase().includes(query) ||
@@ -128,7 +137,19 @@ export default function EventListScreen() {
         e.start_date >= from && (to === null || e.start_date <= to);
       return matchesSearch && matchesCategory && matchesDate;
     });
-  }, [events, search, selectedCategory, dateFilter]);
+  }, [events, search, selectedCategory, dateFilter, customDate]);
+
+  function handlePickDate(date: Date) {
+    setCustomDate(toLocalDateStr(date));
+    setDateFilter('custom');
+    setShowPicker(false);
+  }
+
+  function customDateLabel() {
+    if (!customDate) return '📅 Datum wählen';
+    const [y, m, d] = customDate.split('-');
+    return `📅 ${d}.${m}.${y}`;
+  }
 
   if (loading) {
     return (
@@ -145,7 +166,7 @@ export default function EventListScreen() {
 
       <TextInput
         style={styles.search}
-        placeholder="Event suchen..."
+        placeholder="Event, Ort oder Datum suchen..."
         placeholderTextColor="#666"
         value={search}
         onChangeText={setSearch}
@@ -156,7 +177,10 @@ export default function EventListScreen() {
           <TouchableOpacity
             key={f.key}
             style={[styles.filterChip, dateFilter === f.key && styles.filterChipActive]}
-            onPress={() => setDateFilter(f.key)}
+            onPress={() => {
+              setDateFilter(f.key);
+              setCustomDate(null);
+            }}
           >
             <Text
               style={[
@@ -168,7 +192,45 @@ export default function EventListScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+
+        <TouchableOpacity
+          style={[styles.filterChip, dateFilter === 'custom' && styles.filterChipActive]}
+          onPress={() => {
+            if (Platform.OS === 'web') {
+              // Web-Rückfallweg: einfache Eingabe über prompt, da der native
+              // Picker in der Web-Vorschau nicht zuverlässig läuft
+              const input = window.prompt('Datum eingeben (JJJJ-MM-TT):', customDate ?? '');
+              if (input && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
+                setCustomDate(input);
+                setDateFilter('custom');
+              }
+            } else {
+              setShowPicker(true);
+            }
+          }}
+        >
+          <Text
+            style={[
+              styles.filterChipText,
+              dateFilter === 'custom' && styles.filterChipTextActive,
+            ]}
+          >
+            {customDateLabel()}
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      {showPicker && Platform.OS !== 'web' && (
+        <DateTimePicker
+          value={customDate ? new Date(customDate) : new Date()}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          onChange={(_, date) => {
+            if (Platform.OS === 'android') setShowPicker(false);
+            if (date) handlePickDate(date);
+          }}
+        />
+      )}
 
       <View style={styles.filterWrap}>
         <TouchableOpacity
