@@ -93,7 +93,7 @@ function toggleInSet(current: string[], value: string): string[] {
 
 export default function EventListScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ location?: string }>();
+  const params = useLocalSearchParams<{ locations?: string }>();  
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -128,11 +128,12 @@ export default function EventListScreen() {
 
     loadEvents();
   }, []);
+
   useEffect(() => {
-  if (params.location) {
-      setSelectedLocations([params.location]);
-    }
-  }, [params.location]);  
+  if (params.locations) {
+    setSelectedLocations(params.locations.split(','));
+  }
+}, [params.locations]);
 
   const categories = useMemo(() => {
     const unique = new Set(events.map((e) => e.category).filter(Boolean));
