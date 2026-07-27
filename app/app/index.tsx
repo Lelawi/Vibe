@@ -90,6 +90,7 @@ export default function EventListScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customDate, setCustomDate] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -122,6 +123,11 @@ export default function EventListScreen() {
     return Array.from(unique) as string[];
   }, [events]);
 
+  const locations = useMemo(() => {
+    const unique = new Set(events.map((e) => e.location_name).filter(Boolean));
+    return Array.from(unique).sort() as string[];
+  }, [events]);
+
   const filteredEvents = useMemo(() => {
     const { from, to } = getDateRange(dateFilter, customDate);
     const query = search.toLowerCase();
@@ -133,11 +139,12 @@ export default function EventListScreen() {
         (e.location_name?.toLowerCase().includes(query) ?? false) ||
         formattedDate.includes(query);
       const matchesCategory = !selectedCategory || e.category === selectedCategory;
+      const matchesLocation = !selectedLocation || e.location_name === selectedLocation;
       const matchesDate =
         e.start_date >= from && (to === null || e.start_date <= to);
-      return matchesSearch && matchesCategory && matchesDate;
+      return matchesSearch && matchesCategory && matchesLocation && matchesDate;
     });
-  }, [events, search, selectedCategory, dateFilter, customDate]);
+  }, [events, search, selectedCategory, selectedLocation, dateFilter, customDate]);
 
   function handlePickDate(date: Date) {
     setCustomDate(toLocalDateStr(date));
@@ -197,8 +204,6 @@ export default function EventListScreen() {
           style={[styles.filterChip, dateFilter === 'custom' && styles.filterChipActive]}
           onPress={() => {
             if (Platform.OS === 'web') {
-              // Web-Rückfallweg: einfache Eingabe über prompt, da der native
-              // Picker in der Web-Vorschau nicht zuverlässig läuft
               const input = window.prompt('Datum eingeben (JJJJ-MM-TT):', customDate ?? '');
               if (input && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
                 setCustomDate(input);
@@ -221,7 +226,7 @@ export default function EventListScreen() {
       </View>
 
       {showPicker && Platform.OS !== 'web' && (
-                <DateTimePicker
+        <DateTimePicker
           value={customDate ? new Date(customDate) : new Date()}
           mode="date"
           display={Platform.OS === 'ios' ? 'inline' : 'default'}
@@ -255,6 +260,33 @@ export default function EventListScreen() {
               ]}
             >
               {cat}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <View style={styles.filterWrap}>
+        <TouchableOpacity
+          style={[styles.filterChip, !selectedLocation && styles.filterChipActive]}
+          onPress={() => setSelectedLocation(null)}
+        >
+          <Text style={[styles.filterChipText, !selectedLocation && styles.filterChipTextActive]}>
+            Alle Orte
+          </Text>
+        </TouchableOpacity>
+        {locations.map((loc) => (
+          <TouchableOpacity
+            key={loc}
+            style={[styles.filterChip, selectedLocation === loc && styles.filterChipActive]}
+            onPress={() => setSelectedLocation(loc)}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                selectedLocation === loc && styles.filterChipTextActive,
+              ]}
+            >
+              {loc}
             </Text>
           </TouchableOpacity>
         ))}
