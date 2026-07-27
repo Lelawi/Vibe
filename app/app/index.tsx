@@ -9,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   Platform,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -94,6 +95,8 @@ export default function EventListScreen() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customDate, setCustomDate] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [locationSearch, setLocationSearch] = useState('');
 
   useEffect(() => {
     async function loadEvents() {
@@ -128,6 +131,11 @@ export default function EventListScreen() {
     return Array.from(unique).sort() as string[];
   }, [events]);
 
+  const filteredLocationOptions = useMemo(() => {
+    const query = locationSearch.toLowerCase();
+    return locations.filter((loc) => loc.toLowerCase().includes(query));
+  }, [locations, locationSearch]);
+
   const filteredEvents = useMemo(() => {
     const { from, to } = getDateRange(dateFilter, customDate);
     const query = search.toLowerCase();
@@ -156,6 +164,10 @@ export default function EventListScreen() {
     if (!customDate) return '📅 Datum wählen';
     const [y, m, d] = customDate.split('-');
     return `📅 ${d}.${m}.${y}`;
+  }
+
+  function locationLabel() {
+    return selectedLocation ? `📍 ${selectedLocation}` : '📍 Alle Orte';
   }
 
   if (loading) {
@@ -223,6 +235,20 @@ export default function EventListScreen() {
             {customDateLabel()}
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterChip, !!selectedLocation && styles.filterChipActive]}
+          onPress={() => setShowLocationModal(true)}
+        >
+          <Text
+            style={[
+              styles.filterChipText,
+              !!selectedLocation && styles.filterChipTextActive,
+            ]}
+          >
+            {locationLabel()}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {showPicker && Platform.OS !== 'web' && (
@@ -265,33 +291,6 @@ export default function EventListScreen() {
         ))}
       </View>
 
-      <View style={styles.filterWrap}>
-        <TouchableOpacity
-          style={[styles.filterChip, !selectedLocation && styles.filterChipActive]}
-          onPress={() => setSelectedLocation(null)}
-        >
-          <Text style={[styles.filterChipText, !selectedLocation && styles.filterChipTextActive]}>
-            Alle Orte
-          </Text>
-        </TouchableOpacity>
-        {locations.map((loc) => (
-          <TouchableOpacity
-            key={loc}
-            style={[styles.filterChip, selectedLocation === loc && styles.filterChipActive]}
-            onPress={() => setSelectedLocation(loc)}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                selectedLocation === loc && styles.filterChipTextActive,
-              ]}
-            >
-              {loc}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       <FlatList
         data={filteredEvents}
         keyExtractor={(item) => item.id}
@@ -311,6 +310,58 @@ export default function EventListScreen() {
           </TouchableOpacity>
         )}
       />
+
+      <Modal
+        visible={showLocationModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowLocationModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Ort wählen</Text>
+            <TextInput
+              style={styles.search}
+              placeholder="Ort suchen..."
+              placeholderTextColor="#666"
+              value={locationSearch}
+              onChangeText={setLocationSearch}
+              autoFocus
+            />
+            <FlatList
+              data={['Alle Orte', ...filteredLocationOptions]}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => {
+                const isAll = item === 'Alle Orte';
+                const isActive = isAll ? !selectedLocation : selectedLocation === item;
+                return (
+                  <TouchableOpacity
+                    style={[styles.modalRow, isActive && styles.modalRowActive]}
+                    onPress={() => {
+                      setSelectedLocation(isAll ? null : item);
+                      setShowLocationModal(false);
+                      setLocationSearch('');
+                    }}
+                  >
+                    <Text style={[styles.modalRowText, isActive && styles.modalRowTextActive]}>
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => {
+                setShowLocationModal(false);
+                setLocationSearch('');
+              }}
+            >
+              <Text style={styles.modalCloseButtonText}>Schließen</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -364,4 +415,41 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 4 },
   meta: { fontSize: 13, color: '#888' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#0a0a0a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 16,
+    paddingHorizontal: 0,
+    maxHeight: '75%',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  modalRow: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
+  },
+  modalRowActive: { backgroundColor: '#0af1' },
+  modalRowText: { color: '#ccc', fontSize: 15 },
+  modalRowTextActive: { color: '#0af', fontWeight: '700' },
+  modalCloseButton: {
+    margin: 16,
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: { color: '#fff', fontWeight: '600' },
 });
