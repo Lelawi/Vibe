@@ -6,6 +6,7 @@
   "backstage": "tsx sources/backstage/index.ts",
   "muenchenticket": "tsx sources/muenchenticket/index.ts",
   "lostweekend": "tsx sources/lostweekend/index.ts",
+  "muenchenevent": "tsx sources/muenchenevent/index.ts",
   "dedup": "tsx sources/dedup/index.ts"
 },
   "dependencies": {
