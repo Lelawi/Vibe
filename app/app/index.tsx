@@ -8,7 +8,6 @@ import {
   SafeAreaView,
   TextInput,
   TouchableOpacity,
-  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
@@ -146,12 +145,7 @@ export default function EventListScreen() {
         onChangeText={setSearch}
       />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterRow}
-        contentContainerStyle={{ paddingHorizontal: 16 }}
-      >
+      <View style={styles.filterWrap}>
         {DATE_FILTERS.map((f) => (
           <TouchableOpacity
             key={f.key}
@@ -168,14 +162,9 @@ export default function EventListScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterRow}
-        contentContainerStyle={{ paddingHorizontal: 16, alignItems: 'center', paddingVertical: 4 }}
-      >
+      <View style={styles.filterWrap}>
         <TouchableOpacity
           style={[styles.filterChip, !selectedCategory && styles.filterChipActive]}
           onPress={() => setSelectedCategory(null)}
@@ -200,7 +189,7 @@ export default function EventListScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
       <FlatList
         data={filteredEvents}
@@ -240,19 +229,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
   },
-  filterRow: { height: 44, marginBottom: 12 },
+  filterWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
   filterChip: {
     backgroundColor: '#141414',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     marginRight: 8,
-    justifyContent: 'center',
+    marginBottom: 8,
   },
   filterChipActive: { backgroundColor: '#0af' },
   filterChipText: { color: '#999', fontSize: 13, fontWeight: '600' },
   filterChipTextActive: { color: '#000' },
-  list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 },
+  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   card: {
     backgroundColor: '#141414',
