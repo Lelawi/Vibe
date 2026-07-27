@@ -11,7 +11,7 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../lib/supabase';
 
@@ -93,6 +93,7 @@ function toggleInSet(current: string[], value: string): string[] {
 
 export default function EventListScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ location?: string }>();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -127,6 +128,11 @@ export default function EventListScreen() {
 
     loadEvents();
   }, []);
+  useEffect(() => {
+  if (params.location) {
+      setSelectedLocations([params.location]);
+    }
+  }, [params.location]);  
 
   const categories = useMemo(() => {
     const unique = new Set(events.map((e) => e.category).filter(Boolean));

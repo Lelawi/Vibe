@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   Linking,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
 type EventDetail = {
@@ -23,6 +23,8 @@ type EventDetail = {
   address: string | null;
   organizer: string | null;
   source_url: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 function formatDate(dateStr: string, timeStr: string | null) {
@@ -39,6 +41,7 @@ function formatDate(dateStr: string, timeStr: string | null) {
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,7 +50,7 @@ export default function EventDetailScreen() {
       const { data, error } = await supabase
         .from('events')
         .select(
-          'id, title, description, category, subcategory, start_date, start_time, location_name, address, organizer, source_url'
+          'id, title, description, category, subcategory, start_date, start_time, location_name, address, organizer, source_url, latitude, longitude'
         )
         .eq('id', id)
         .single();
@@ -79,6 +82,8 @@ export default function EventDetailScreen() {
     );
   }
 
+  const hasCoords = event.latitude !== null && event.longitude !== null;
+
   return (
     <SafeAreaView style={styles.container}>
       {event.category && <Text style={styles.badge}>{event.category}</Text>}
@@ -92,11 +97,22 @@ export default function EventDetailScreen() {
       </View>
 
       {event.location_name && (
-        <View style={styles.infoBlock}>
+        <TouchableOpacity
+          style={styles.infoBlock}
+          disabled={!hasCoords}
+          onPress={() =>
+            router.push({
+              pathname: '/map',
+              params: { lat: String(event.latitude), lng: String(event.longitude) },
+            })
+          }
+        >
           <Text style={styles.infoLabel}>Wo</Text>
-          <Text style={styles.infoValue}>{event.location_name}</Text>
+          <Text style={[styles.infoValue, hasCoords && styles.linkValue]}>
+            {event.location_name} {hasCoords ? '📍' : ''}
+          </Text>
           {event.address && <Text style={styles.infoSubValue}>{event.address}</Text>}
-        </View>
+        </TouchableOpacity>
       )}
 
       {event.subcategory && (
@@ -147,6 +163,7 @@ const styles = StyleSheet.create({
   infoBlock: { marginBottom: 16 },
   infoLabel: { fontSize: 12, color: '#666', textTransform: 'uppercase', marginBottom: 4 },
   infoValue: { fontSize: 16, color: '#fff' },
+  linkValue: { color: '#0af', fontWeight: '600' },
   infoSubValue: { fontSize: 14, color: '#999', marginTop: 2 },
   button: {
     backgroundColor: '#0af',
