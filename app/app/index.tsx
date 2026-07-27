@@ -10,7 +10,8 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
-import { supabase } from './lib/supabase';
+import { useRouter } from 'expo-router';
+import { supabase } from '../lib/supabase';
 
 type Event = {
   id: string;
@@ -32,7 +33,8 @@ function formatDate(dateStr: string, timeStr: string | null) {
   return `${dateFormatted} · ${timeStr.slice(0, 5)}`;
 }
 
-export default function App() {
+export default function EventListScreen() {
+  const router = useRouter();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -40,11 +42,14 @@ export default function App() {
 
   useEffect(() => {
     async function loadEvents() {
+      const today = new Date().toISOString().slice(0, 10);
+
       const { data, error } = await supabase
         .from('events')
         .select('id, title, category, start_date, start_time, location_name')
+        .gte('start_date', today)
         .order('start_date', { ascending: true })
-        .limit(200);
+        .limit(500);
 
       if (error) {
         console.error('Fehler beim Laden:', error);
@@ -127,18 +132,19 @@ export default function App() {
         data={filteredEvents}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <Text style={styles.empty}>Keine Events gefunden.</Text>
-        }
+        ListEmptyComponent={<Text style={styles.empty}>Keine Events gefunden.</Text>}
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push(`/event/${item.id}`)}
+          >
             {item.category && <Text style={styles.badge}>{item.category}</Text>}
             <Text style={styles.title}>{item.title}</Text>
             <Text style={styles.meta}>
               {formatDate(item.start_date, item.start_time)}
               {item.location_name ? ` · ${item.location_name}` : ''}
             </Text>
-          </View>
+          </TouchableOpacity>
         )}
       />
     </SafeAreaView>
