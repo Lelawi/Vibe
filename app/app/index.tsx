@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
   },
-  filterRow: { marginBottom: 10, flexGrow: 0 },
+  filterRow: { height: 42, marginBottom: 10 },
   filterChip: {
     backgroundColor: '#141414',
     borderRadius: 20,
