@@ -117,7 +117,10 @@ export default function EventListScreen() {
     const { from, to } = getDateRange(dateFilter);
 
     return events.filter((e) => {
-      const matchesSearch = e.title.toLowerCase().includes(search.toLowerCase());
+      const query = search.toLowerCase();
+      const matchesSearch =
+        e.title.toLowerCase().includes(query) ||
+        (e.location_name?.toLowerCase().includes(query) ?? false);
       const matchesCategory = !selectedCategory || e.category === selectedCategory;
       const matchesDate =
         e.start_date >= from && (to === null || e.start_date <= to);
