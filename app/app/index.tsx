@@ -221,10 +221,11 @@ export default function EventListScreen() {
       </View>
 
       {showPicker && Platform.OS !== 'web' && (
-        <DateTimePicker
+                <DateTimePicker
           value={customDate ? new Date(customDate) : new Date()}
           mode="date"
           display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          themeVariant="dark"
           onChange={(_, date) => {
             if (Platform.OS === 'android') setShowPicker(false);
             if (date) handlePickDate(date);
