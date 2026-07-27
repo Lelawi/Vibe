@@ -65,7 +65,7 @@ function normalizeEvent(raw: BackstageEvent) {
     address: 'Reitknechtstr. 6, 80639 München',
     city: 'München',
     organizer: 'Backstage München',
-    source_url: 'https://www.backstage.eu/events',
+    source_url: `https://www.backstage.eu/event/${raw.event_id}`,
     image_url: null,
   };
 }
