@@ -104,17 +104,22 @@ async function main() {
 
   const normalizedEvents = realEvents.map(normalizeEvent);
 
+  // Duplikate innerhalb derselben Charge entfernen (gleiche source_id)
+  const deduplicatedMap = new Map(normalizedEvents.map((e) => [e.source_id, e]));
+  const deduplicatedEvents = Array.from(deduplicatedMap.values());
+  console.log(`${deduplicatedEvents.length} nach Entfernen von Duplikaten`);
+
   const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);
   const { error } = await supabase
     .from('events')
-    .upsert(normalizedEvents, { onConflict: 'source_id' });
+    .upsert(deduplicatedEvents, { onConflict: 'source_id' });
 
   if (error) {
     console.error('Fehler beim Speichern:', error);
     process.exit(1);
   }
 
-  console.log(`${normalizedEvents.length} Events gespeichert/aktualisiert.`);
+  console.log(`${deduplicatedEvents.length} Events gespeichert/aktualisiert.`);
 }
 
 main();
