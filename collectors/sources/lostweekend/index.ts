@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import * as cheerio from 'cheerio';
+import { getCoordinates } from '../../core/geocode';
 
 const OUR_SUPABASE_URL = process.env.SUPABASE_URL!;
 const OUR_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -18,7 +19,6 @@ interface RawEvent {
   address: string | null;
 }
 
-// Wandelt "7:00 pm" in "19:00" um
 function convertTo24h(timeStr: string): string | null {
   const match = timeStr.match(/(\d+):(\d+)\s*(am|pm)/i);
   if (!match) return null;
@@ -48,7 +48,6 @@ async function fetchLostWeekendEvents(): Promise<RawEvent[]> {
   $('article.mec-event-article').each((_, el) => {
     const article = $(el);
 
-    // Jahr/Monat stecken in der Klasse, z.B. "mec-toggle-202607-966"
     const classAttr = article.attr('class') ?? '';
     const monthMatch = classAttr.match(/mec-toggle-(\d{4})(\d{2})-/);
     if (!monthMatch) return;
@@ -60,7 +59,7 @@ async function fetchLostWeekendEvents(): Promise<RawEvent[]> {
     const url = titleLink.attr('href');
     const eventId = titleLink.attr('data-event-id');
 
-    const dayLabel = article.find('.mec-start-date-label').text().trim(); // "30 Jul"
+    const dayLabel = article.find('.mec-start-date-label').text().trim();
     const dayMatch = dayLabel.match(/^(\d+)/);
     if (!dayMatch || !title || !url || !eventId) return;
     const day = parseInt(dayMatch[1], 10);
@@ -78,10 +77,12 @@ async function fetchLostWeekendEvents(): Promise<RawEvent[]> {
   return events;
 }
 
-function normalizeEvent(raw: RawEvent) {
+async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createClient>) {
   const startDate = `${raw.year}-${String(raw.month).padStart(2, '0')}-${String(
     raw.day
   ).padStart(2, '0')}`;
+
+  const coords = await getCoordinates(supabase, raw.locationName, raw.address, 'München');
 
   return {
     source_id: `lostweekend-${raw.eventId}`,
@@ -97,6 +98,8 @@ function normalizeEvent(raw: RawEvent) {
     organizer: 'Lost Weekend',
     source_url: raw.url,
     image_url: null,
+    latitude: coords?.latitude ?? null,
+    longitude: coords?.longitude ?? null,
   };
 }
 
@@ -107,16 +110,20 @@ async function main() {
   console.log(`${rawEvents.length} Events auf der Seite gefunden`);
 
   const today = new Date().toISOString().slice(0, 10);
-  const normalizedEvents = rawEvents
-    .map(normalizeEvent)
-    .filter((e) => e.start_date >= today);
+  const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);
+
+  const normalizedEvents = [];
+  for (const event of rawEvents) {
+    const normalized = await normalizeEvent(event, supabase);
+    if (normalized.start_date >= today) {
+      normalizedEvents.push(normalized);
+    }
+  }
   console.log(`${normalizedEvents.length} davon in der Zukunft`);
 
-  // Duplikate innerhalb derselben Charge entfernen
   const deduplicatedMap = new Map(normalizedEvents.map((e) => [e.source_id, e]));
   const deduplicatedEvents = Array.from(deduplicatedMap.values());
 
-  const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);
   const { error } = await supabase
     .from('events')
     .upsert(deduplicatedEvents, { onConflict: 'source_id' });

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import * as cheerio from 'cheerio';
+import { getCoordinates } from '../../core/geocode';
 
 const OUR_SUPABASE_URL = process.env.SUPABASE_URL!;
 const OUR_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -15,7 +16,6 @@ interface RawEvent {
   venue: string;
 }
 
-// Wandelt ein ISO-Datum (UTC) korrekt in München-Ortszeit um
 function isoToLocalDateTime(iso: string) {
   const date = new Date(iso);
   const dateStr = new Intl.DateTimeFormat('en-CA', {
@@ -65,7 +65,6 @@ async function fetchMuenchenEventEvents(): Promise<RawEvent[]> {
 
     if (!isoDateTime || !title || !url || !eventId) return;
 
-    // Relative Links (z.B. "/me/veranstaltungen/...") zu absoluten Adressen machen
     if (!url.startsWith('http')) {
       url = `${BASE_URL}${url}`;
     }
@@ -76,8 +75,9 @@ async function fetchMuenchenEventEvents(): Promise<RawEvent[]> {
   return events;
 }
 
-function normalizeEvent(raw: RawEvent) {
+async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createClient>) {
   const { date, time } = isoToLocalDateTime(raw.isoDateTime);
+  const coords = await getCoordinates(supabase, raw.venue, null, 'München');
 
   return {
     source_id: `muenchenevent-${raw.eventId}`,
@@ -93,6 +93,8 @@ function normalizeEvent(raw: RawEvent) {
     organizer: 'MünchenEvent',
     source_url: raw.url,
     image_url: null,
+    latitude: coords?.latitude ?? null,
+    longitude: coords?.longitude ?? null,
   };
 }
 
@@ -103,15 +105,20 @@ async function main() {
   console.log(`${rawEvents.length} Events auf der Seite gefunden`);
 
   const today = new Date().toISOString().slice(0, 10);
-  const normalizedEvents = rawEvents
-    .map(normalizeEvent)
-    .filter((e) => e.start_date >= today);
+  const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);
+
+  const normalizedEvents = [];
+  for (const event of rawEvents) {
+    const normalized = await normalizeEvent(event, supabase);
+    if (normalized.start_date >= today) {
+      normalizedEvents.push(normalized);
+    }
+  }
   console.log(`${normalizedEvents.length} davon in der Zukunft`);
 
   const deduplicatedMap = new Map(normalizedEvents.map((e) => [e.source_id, e]));
   const deduplicatedEvents = Array.from(deduplicatedMap.values());
 
-  const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);
   const { error } = await supabase
     .from('events')
     .upsert(deduplicatedEvents, { onConflict: 'source_id' });

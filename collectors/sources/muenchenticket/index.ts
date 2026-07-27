@@ -19,9 +19,9 @@ interface AlgoliaHit {
   date_display_mode?: string;
   type?: string;
   visible: boolean;
+  _geoloc?: { lat: number; lng: number };
 }
 
-// Wandelt einen Unix-Zeitstempel korrekt in München-Ortszeit um
 function unixToDateTime(unixSeconds: number) {
   const date = new Date(unixSeconds * 1000);
   const dateStr = new Intl.DateTimeFormat('en-CA', {
@@ -29,7 +29,7 @@ function unixToDateTime(unixSeconds: number) {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(date); // Format: YYYY-MM-DD
+  }).format(date);
   const timeStr = new Intl.DateTimeFormat('de-DE', {
     timeZone: 'Europe/Berlin',
     hour: '2-digit',
@@ -88,6 +88,8 @@ function normalizeEvent(hit: AlgoliaHit) {
     organizer: hit.organizer?.title ?? hit.venue.title,
     source_url: hit.external_shop_link || `https://www.muenchenticket.de/${hit.uri}`,
     image_url: null,
+    latitude: hit._geoloc?.lat ?? null,
+    longitude: hit._geoloc?.lng ?? null,
   };
 }
 
@@ -97,20 +99,18 @@ async function main() {
   const hits = await fetchMuenchenTicketEvents();
   console.log(`${hits.length} Treffer von München Ticket erhalten`);
 
-  // Nur echte Einzeltermine behalten (keine Dauerausstellungen o.Ä.)
-  const todayUnix = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+  const today = new Date().toISOString().slice(0, 10);
   const realEvents = hits.filter(
     (h) =>
       h.visible &&
       h.type !== 'MUSEUM' &&
       h.date_display_mode !== 'hide_all' &&
-      h.date >= todayUnix
+      unixToDateTime(h.date).date >= today
   );
-  console.log(`${realEvents.length} davon mit echtem Termin`);
+  console.log(`${realEvents.length} davon mit echtem, zukünftigem Termin`);
 
   const normalizedEvents = realEvents.map(normalizeEvent);
 
-  // Duplikate innerhalb derselben Charge entfernen (gleiche source_id)
   const deduplicatedMap = new Map(normalizedEvents.map((e) => [e.source_id, e]));
   const deduplicatedEvents = Array.from(deduplicatedMap.values());
   console.log(`${deduplicatedEvents.length} nach Entfernen von Duplikaten`);
