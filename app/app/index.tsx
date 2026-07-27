@@ -85,17 +85,25 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'weekend', label: 'Wochenende' },
 ];
 
+// Kleine, wiederverwendbare Auswahl-Liste (Mehrfachauswahl) für Modals
+function toggleInSet(current: string[], value: string): string[] {
+  return current.includes(value)
+    ? current.filter((v) => v !== value)
+    : [...current, value];
+}
+
 export default function EventListScreen() {
   const router = useRouter();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customDate, setCustomDate] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [locationSearch, setLocationSearch] = useState('');
 
   useEffect(() => {
@@ -123,7 +131,7 @@ export default function EventListScreen() {
 
   const categories = useMemo(() => {
     const unique = new Set(events.map((e) => e.category).filter(Boolean));
-    return Array.from(unique) as string[];
+    return Array.from(unique).sort() as string[];
   }, [events]);
 
   const locations = useMemo(() => {
@@ -146,13 +154,17 @@ export default function EventListScreen() {
         e.title.toLowerCase().includes(query) ||
         (e.location_name?.toLowerCase().includes(query) ?? false) ||
         formattedDate.includes(query);
-      const matchesCategory = !selectedCategory || e.category === selectedCategory;
-      const matchesLocation = !selectedLocation || e.location_name === selectedLocation;
+      const matchesCategory =
+        selectedCategories.length === 0 ||
+        (e.category !== null && selectedCategories.includes(e.category));
+      const matchesLocation =
+        selectedLocations.length === 0 ||
+        (e.location_name !== null && selectedLocations.includes(e.location_name));
       const matchesDate =
         e.start_date >= from && (to === null || e.start_date <= to);
       return matchesSearch && matchesCategory && matchesLocation && matchesDate;
     });
-  }, [events, search, selectedCategory, selectedLocation, dateFilter, customDate]);
+  }, [events, search, selectedCategories, selectedLocations, dateFilter, customDate]);
 
   function handlePickDate(date: Date) {
     setCustomDate(toLocalDateStr(date));
@@ -167,7 +179,15 @@ export default function EventListScreen() {
   }
 
   function locationLabel() {
-    return selectedLocation ? `📍 ${selectedLocation}` : '📍 Alle Orte';
+    if (selectedLocations.length === 0) return '📍 Alle Orte';
+    if (selectedLocations.length === 1) return `📍 ${selectedLocations[0]}`;
+    return `📍 ${selectedLocations.length} Orte`;
+  }
+
+  function categoryLabel() {
+    if (selectedCategories.length === 0) return 'Alle Kategorien';
+    if (selectedCategories.length === 1) return selectedCategories[0];
+    return `${selectedCategories.length} Kategorien`;
   }
 
   if (loading) {
@@ -235,20 +255,6 @@ export default function EventListScreen() {
             {customDateLabel()}
           </Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterChip, !!selectedLocation && styles.filterChipActive]}
-          onPress={() => setShowLocationModal(true)}
-        >
-          <Text
-            style={[
-              styles.filterChipText,
-              !!selectedLocation && styles.filterChipTextActive,
-            ]}
-          >
-            {locationLabel()}
-          </Text>
-        </TouchableOpacity>
       </View>
 
       {showPicker && Platform.OS !== 'web' && (
@@ -266,29 +272,32 @@ export default function EventListScreen() {
 
       <View style={styles.filterWrap}>
         <TouchableOpacity
-          style={[styles.filterChip, !selectedCategory && styles.filterChipActive]}
-          onPress={() => setSelectedCategory(null)}
+          style={[styles.filterChip, selectedCategories.length > 0 && styles.filterChipActive]}
+          onPress={() => setShowCategoryModal(true)}
         >
-          <Text style={[styles.filterChipText, !selectedCategory && styles.filterChipTextActive]}>
-            Alle Kategorien
+          <Text
+            style={[
+              styles.filterChipText,
+              selectedCategories.length > 0 && styles.filterChipTextActive,
+            ]}
+          >
+            {categoryLabel()}
           </Text>
         </TouchableOpacity>
-        {categories.map((cat) => (
-          <TouchableOpacity
-            key={cat}
-            style={[styles.filterChip, selectedCategory === cat && styles.filterChipActive]}
-            onPress={() => setSelectedCategory(cat)}
+
+        <TouchableOpacity
+          style={[styles.filterChip, selectedLocations.length > 0 && styles.filterChipActive]}
+          onPress={() => setShowLocationModal(true)}
+        >
+          <Text
+            style={[
+              styles.filterChipText,
+              selectedLocations.length > 0 && styles.filterChipTextActive,
+            ]}
           >
-            <Text
-              style={[
-                styles.filterChipText,
-                selectedCategory === cat && styles.filterChipTextActive,
-              ]}
-            >
-              {cat}
-            </Text>
-          </TouchableOpacity>
-        ))}
+            {locationLabel()}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -311,6 +320,55 @@ export default function EventListScreen() {
         )}
       />
 
+      {/* Kategorie-Auswahl (Mehrfachauswahl) */}
+      <Modal
+        visible={showCategoryModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowCategoryModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Kategorien wählen</Text>
+            <FlatList
+              data={categories}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => {
+                const isActive = selectedCategories.includes(item);
+                return (
+                  <TouchableOpacity
+                    style={[styles.modalRow, isActive && styles.modalRowActive]}
+                    onPress={() =>
+                      setSelectedCategories((prev) => toggleInSet(prev, item))
+                    }
+                  >
+                    <Text style={[styles.modalRowText, isActive && styles.modalRowTextActive]}>
+                      {isActive ? '✓ ' : ''}
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.modalSecondaryButton}
+                onPress={() => setSelectedCategories([])}
+              >
+                <Text style={styles.modalSecondaryButtonText}>Zurücksetzen</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowCategoryModal(false)}
+              >
+                <Text style={styles.modalCloseButtonText}>Fertig</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Orts-Auswahl (Mehrfachauswahl) */}
       <Modal
         visible={showLocationModal}
         animationType="slide"
@@ -319,7 +377,7 @@ export default function EventListScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Ort wählen</Text>
+            <Text style={styles.modalTitle}>Orte wählen</Text>
             <TextInput
               style={styles.search}
               placeholder="Ort suchen..."
@@ -329,36 +387,42 @@ export default function EventListScreen() {
               autoFocus
             />
             <FlatList
-              data={['Alle Orte', ...filteredLocationOptions]}
+              data={filteredLocationOptions}
               keyExtractor={(item) => item}
               renderItem={({ item }) => {
-                const isAll = item === 'Alle Orte';
-                const isActive = isAll ? !selectedLocation : selectedLocation === item;
+                const isActive = selectedLocations.includes(item);
                 return (
                   <TouchableOpacity
                     style={[styles.modalRow, isActive && styles.modalRowActive]}
-                    onPress={() => {
-                      setSelectedLocation(isAll ? null : item);
-                      setShowLocationModal(false);
-                      setLocationSearch('');
-                    }}
+                    onPress={() =>
+                      setSelectedLocations((prev) => toggleInSet(prev, item))
+                    }
                   >
                     <Text style={[styles.modalRowText, isActive && styles.modalRowTextActive]}>
+                      {isActive ? '✓ ' : ''}
                       {item}
                     </Text>
                   </TouchableOpacity>
                 );
               }}
             />
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => {
-                setShowLocationModal(false);
-                setLocationSearch('');
-              }}
-            >
-              <Text style={styles.modalCloseButtonText}>Schließen</Text>
-            </TouchableOpacity>
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.modalSecondaryButton}
+                onPress={() => setSelectedLocations([])}
+              >
+                <Text style={styles.modalSecondaryButtonText}>Zurücksetzen</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setShowLocationModal(false);
+                  setLocationSearch('');
+                }}
+              >
+                <Text style={styles.modalCloseButtonText}>Fertig</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -425,7 +489,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingTop: 16,
-    paddingHorizontal: 0,
     maxHeight: '75%',
   },
   modalTitle: {
@@ -444,12 +507,25 @@ const styles = StyleSheet.create({
   modalRowActive: { backgroundColor: '#0af1' },
   modalRowText: { color: '#ccc', fontSize: 15 },
   modalRowTextActive: { color: '#0af', fontWeight: '700' },
-  modalCloseButton: {
+  modalButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
     margin: 16,
+  },
+  modalSecondaryButton: {
+    flex: 1,
     backgroundColor: '#141414',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  modalCloseButtonText: { color: '#fff', fontWeight: '600' },
+  modalSecondaryButtonText: { color: '#999', fontWeight: '600' },
+  modalCloseButton: {
+    flex: 1,
+    backgroundColor: '#0af',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: { color: '#000', fontWeight: '700' },
 });
