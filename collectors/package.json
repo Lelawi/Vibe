@@ -5,7 +5,8 @@
 "scripts": {
   "backstage": "tsx sources/backstage/index.ts",
   "muenchenticket": "tsx sources/muenchenticket/index.ts",
-  "lostweekend": "tsx sources/lostweekend/index.ts"
+  "lostweekend": "tsx sources/lostweekend/index.ts",
+  "dedup": "tsx sources/dedup/index.ts"
 },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

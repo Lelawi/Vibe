@@ -93,6 +93,7 @@ export default function EventListScreen() {
         .from('events')
         .select('id, title, category, start_date, start_time, location_name')
         .gte('start_date', today)
+        .is('duplicate_of', null)
         .order('start_date', { ascending: true })
         .limit(500);
 
