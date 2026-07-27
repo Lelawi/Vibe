@@ -22,6 +22,8 @@ type Event = {
   location_name: string | null;
 };
 
+type DateFilter = 'all' | 'today' | 'week' | 'weekend';
+
 function formatDate(dateStr: string, timeStr: string | null) {
   const date = new Date(`${dateStr}T${timeStr ?? '00:00'}`);
   const dateFormatted = date.toLocaleDateString('de-DE', {
@@ -33,12 +35,56 @@ function formatDate(dateStr: string, timeStr: string | null) {
   return `${dateFormatted} · ${timeStr.slice(0, 5)}`;
 }
 
+// Liefert "YYYY-MM-DD" für ein Date-Objekt, in lokaler Zeit (nicht UTC)
+function toLocalDateStr(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Berechnet die Datumsgrenzen für jeden Filter, ausgehend von heute
+function getDateRange(filter: DateFilter): { from: string; to: string | null } {
+  const today = new Date();
+  const todayStr = toLocalDateStr(today);
+
+  if (filter === 'today') {
+    return { from: todayStr, to: todayStr };
+  }
+
+  if (filter === 'week') {
+    const in7Days = new Date(today);
+    in7Days.setDate(today.getDate() + 6);
+    return { from: todayStr, to: toLocalDateStr(in7Days) };
+  }
+
+  if (filter === 'weekend') {
+    const dayOfWeek = today.getDay(); // 0 = Sonntag, 6 = Samstag
+    const daysUntilSaturday = (6 - dayOfWeek + 7) % 7;
+    const saturday = new Date(today);
+    saturday.setDate(today.getDate() + daysUntilSaturday);
+    const sunday = new Date(saturday);
+    sunday.setDate(saturday.getDate() + 1);
+    return { from: toLocalDateStr(saturday), to: toLocalDateStr(sunday) };
+  }
+
+  return { from: todayStr, to: null };
+}
+
+const DATE_FILTERS: { key: DateFilter; label: string }[] = [
+  { key: 'all', label: 'Alle' },
+  { key: 'today', label: 'Heute' },
+  { key: 'week', label: 'Diese Woche' },
+  { key: 'weekend', label: 'Wochenende' },
+];
+
 export default function EventListScreen() {
   const router = useRouter();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
 
   useEffect(() => {
     async function loadEvents() {
@@ -68,12 +114,16 @@ export default function EventListScreen() {
   }, [events]);
 
   const filteredEvents = useMemo(() => {
+    const { from, to } = getDateRange(dateFilter);
+
     return events.filter((e) => {
       const matchesSearch = e.title.toLowerCase().includes(search.toLowerCase());
       const matchesCategory = !selectedCategory || e.category === selectedCategory;
-      return matchesSearch && matchesCategory;
+      const matchesDate =
+        e.start_date >= from && (to === null || e.start_date <= to);
+      return matchesSearch && matchesCategory && matchesDate;
     });
-  }, [events, search, selectedCategory]);
+  }, [events, search, selectedCategory, dateFilter]);
 
   if (loading) {
     return (
@@ -102,12 +152,36 @@ export default function EventListScreen() {
         style={styles.filterRow}
         contentContainerStyle={{ paddingHorizontal: 16 }}
       >
+        {DATE_FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            style={[styles.filterChip, dateFilter === f.key && styles.filterChipActive]}
+            onPress={() => setDateFilter(f.key)}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                dateFilter === f.key && styles.filterChipTextActive,
+              ]}
+            >
+              {f.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterRow}
+        contentContainerStyle={{ paddingHorizontal: 16 }}
+      >
         <TouchableOpacity
           style={[styles.filterChip, !selectedCategory && styles.filterChipActive]}
           onPress={() => setSelectedCategory(null)}
         >
           <Text style={[styles.filterChipText, !selectedCategory && styles.filterChipTextActive]}>
-            Alle
+            Alle Kategorien
           </Text>
         </TouchableOpacity>
         {categories.map((cat) => (
@@ -166,7 +240,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
   },
-  filterRow: { marginBottom: 12, flexGrow: 0 },
+  filterRow: { marginBottom: 10, flexGrow: 0 },
   filterChip: {
     backgroundColor: '#141414',
     borderRadius: 20,
@@ -177,7 +251,7 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: '#0af' },
   filterChipText: { color: '#999', fontSize: 13, fontWeight: '600' },
   filterChipTextActive: { color: '#000' },
-  list: { paddingHorizontal: 16, paddingBottom: 24 },
+  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   card: {
     backgroundColor: '#141414',
