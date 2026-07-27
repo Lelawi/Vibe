@@ -4,10 +4,12 @@
   "type": "module",
 "scripts": {
   "backstage": "tsx sources/backstage/index.ts",
-  "muenchenticket": "tsx sources/muenchenticket/index.ts"
+  "muenchenticket": "tsx sources/muenchenticket/index.ts",
+  "lostweekend": "tsx sources/lostweekend/index.ts"
 },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "cheerio": "^1.0.0"
   },
   "devDependencies": {
     "tsx": "^4.7.0",
