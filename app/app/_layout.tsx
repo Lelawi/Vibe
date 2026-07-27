@@ -12,6 +12,7 @@ export default function Layout() {
     >
       <Stack.Screen name="index" options={{ title: 'Vibe' }} />
       <Stack.Screen name="event/[id]" options={{ title: 'Event' }} />
+      <Stack.Screen name="map" options={{ title: 'Karte' }} />
     </Stack>
   );
 }

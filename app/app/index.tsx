@@ -85,7 +85,6 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'weekend', label: 'Wochenende' },
 ];
 
-// Kleine, wiederverwendbare Auswahl-Liste (Mehrfachauswahl) für Modals
 function toggleInSet(current: string[], value: string): string[] {
   return current.includes(value)
     ? current.filter((v) => v !== value)
@@ -200,8 +199,15 @@ export default function EventListScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.header}>Vibe</Text>
-      <Text style={styles.subheader}>Events in München</Text>
+      <View style={styles.headerRow}>
+        <View>
+          <Text style={styles.header}>Vibe</Text>
+          <Text style={styles.subheader}>Events in München</Text>
+        </View>
+        <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/map')}>
+          <Text style={styles.mapButtonText}>🗺️ Karte</Text>
+        </TouchableOpacity>
+      </View>
 
       <TextInput
         style={styles.search}
@@ -433,10 +439,25 @@ export default function EventListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
-  header: { fontSize: 28, fontWeight: '800', color: '#fff', paddingHorizontal: 16, paddingTop: 16 },
-  subheader: { fontSize: 14, color: '#999', paddingHorizontal: 16, marginBottom: 16 },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  header: { fontSize: 28, fontWeight: '800', color: '#fff' },
+  subheader: { fontSize: 14, color: '#999' },
+  mapButton: {
+    backgroundColor: '#141414',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  mapButtonText: { color: '#0af', fontWeight: '600', fontSize: 13 },
   search: {
     marginHorizontal: 16,
+    marginTop: 16,
     marginBottom: 14,
     backgroundColor: '#141414',
     borderRadius: 10,
