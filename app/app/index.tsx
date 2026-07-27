@@ -174,7 +174,7 @@ export default function EventListScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.filterRow}
-        contentContainerStyle={{ paddingHorizontal: 16, alignItems: 'center' }}
+        contentContainerStyle={{ paddingHorizontal: 16, alignItems: 'center', paddingVertical: 4 }}
       >
         <TouchableOpacity
           style={[styles.filterChip, !selectedCategory && styles.filterChipActive]}
