@@ -3,6 +3,7 @@ import { StyleSheet, View, ActivityIndicator, Text, Linking } from 'react-native
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import MapView, { Marker, Callout, CalloutSubview, Region } from 'react-native-maps';
 import { supabase } from '../lib/supabase';
+import { canonicalizeVenue } from '../lib/venue';
 
 type RawEvent = {
   id: string;
@@ -155,9 +156,10 @@ export default function MapNative() {
               ))}
               {v.events.length > MAX_CALLOUT_EVENTS && (
                 <CalloutSubview
-                  onPress={() =>
-                    router.push({ pathname: '/', params: { locations: v.names.join(',') } })
-                  }
+                  onPress={() => {
+                    const canonical = Array.from(new Set(v.names.map((n) => canonicalizeVenue(n))));
+                    router.push({ pathname: '/', params: { locations: canonical.join(',') } });
+                  }}
                 >
                   <Text style={styles.calloutSubtitle}>
                     + {v.events.length - MAX_CALLOUT_EVENTS} weitere · Liste öffnen

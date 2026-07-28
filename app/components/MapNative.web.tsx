@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
+import { canonicalizeVenue } from '../lib/venue';
 import type { VenueMarker } from './LeafletMapView.web';
 
 // Lädt die eigentliche Leaflet-Karte erst zur Laufzeit im Browser (siehe
@@ -92,7 +93,13 @@ export default function MapNative() {
         zoom={hasTarget ? 16 : 13}
         targetKey={targetKey}
         onOpenEvent={(id) => router.push(`/event/${id}`)}
-        onOpenList={(names) => router.push({ pathname: '/', params: { locations: names.join(',') } })}
+        onOpenList={(names) => {
+          // Die Ortsfilter auf der Startseite matchen gegen canonicalizeVenue(location_name),
+          // nicht gegen die rohen, hier fürs Popup genutzten Namen ("Backstage Halle" vs.
+          // "Backstage") — sonst kommt "Keine Events gefunden" trotz gültiger Auswahl raus.
+          const canonical = Array.from(new Set(names.map((n) => canonicalizeVenue(n))));
+          router.push({ pathname: '/', params: { locations: canonical.join(',') } });
+        }}
       />
     </Suspense>
   );
