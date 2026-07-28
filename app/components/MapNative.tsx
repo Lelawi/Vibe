@@ -28,6 +28,7 @@ function venueTitle(names: string[]) {
 function openInGoogleMaps(lat: number, lng: number, label: string) {
   const query = `${lat},${lng}(${encodeURIComponent(label)})`;
   const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+  console.log('Google Maps URL:', url);
   Linking.openURL(url);
 }
 
