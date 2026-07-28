@@ -443,13 +443,20 @@ export default function EventListScreen() {
       </View>
 
       <View style={[styles.stickyControls, Platform.OS === 'web' && styles.stickyControlsWeb]}>
-      <TextInput
-        style={styles.search}
-        placeholder="Event, Ort, Genre oder Datum suchen..."
-        placeholderTextColor="#666"
-        value={search}
-        onChangeText={setSearch}
-      />
+      <View style={styles.searchWrap}>
+        <TextInput
+          style={[styles.search, styles.searchInput]}
+          placeholder="Event, Ort, Genre oder Datum suchen..."
+          placeholderTextColor="#666"
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity style={styles.searchClearBtn} onPress={() => setSearch('')}>
+            <Text style={styles.searchClearBtnText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       <View style={styles.controlRow}>
         <ScrollView
@@ -754,7 +761,7 @@ export default function EventListScreen() {
 
             {filterTab === 'location' && (
               <TextInput
-                style={styles.search}
+                style={[styles.search, styles.locationSearchInput]}
                 placeholder="Ort suchen..."
                 placeholderTextColor="#666"
                 value={locationSearch}
@@ -884,9 +891,6 @@ const styles = StyleSheet.create({
   },
   mapButtonText: { color: '#0af', fontWeight: '600', fontSize: 13 },
   search: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 14,
     backgroundColor: '#141414',
     borderRadius: 10,
     paddingHorizontal: 14,
@@ -896,6 +900,24 @@ const styles = StyleSheet.create({
     // und das Layout muss danach manuell zurückgezoomt werden.
     fontSize: 16,
   },
+  searchWrap: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 14,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  searchInput: { paddingRight: 38 },
+  locationSearchInput: { marginHorizontal: 16, marginBottom: 10 },
+  searchClearBtn: {
+    position: 'absolute',
+    right: 6,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  searchClearBtnText: { color: '#888', fontSize: 15, fontWeight: '700' },
   controlRow: {
     flexDirection: 'row',
     alignItems: 'center',
