@@ -3,14 +3,17 @@ import {
   StyleSheet,
   Text,
   View,
+  Image,
   ActivityIndicator,
   SafeAreaView,
+  ScrollView,
   TouchableOpacity,
   Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { addEventToCalendar } from '../../lib/calendar';
+import { shareEvent } from '../../lib/share';
 
 type EventDetail = {
   id: string;
@@ -24,6 +27,7 @@ type EventDetail = {
   address: string | null;
   organizer: string | null;
   source_url: string | null;
+  image_url: string | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -45,13 +49,15 @@ export default function EventDetailScreen() {
   const router = useRouter();
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [shareStatus, setShareStatus] = useState<'idle' | 'copied'>('idle');
+  const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
     async function loadEvent() {
       const { data, error } = await supabase
         .from('events')
         .select(
-          'id, title, description, category, subcategory, start_date, start_time, location_name, address, organizer, source_url, latitude, longitude'
+          'id, title, description, category, subcategory, start_date, start_time, location_name, address, organizer, source_url, image_url, latitude, longitude'
         )
         .eq('id', id)
         .single();
@@ -84,111 +90,141 @@ export default function EventDetailScreen() {
   }
 
   const hasCoords = event.latitude !== null && event.longitude !== null;
+  const hasImage = Boolean(event.image_url) && !imageFailed;
 
-function openInGoogleMaps() {
-  if (!hasCoords) return;
-  const query = [event.location_name, event.address]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
-  const url = query
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
-    : `https://www.google.com/maps/search/?api=1&query=${event!.latitude},${event!.longitude}`;
-  Linking.openURL(url);
-}
+  function openInGoogleMaps() {
+    if (!hasCoords) return;
+    const query = [event.location_name, event.address]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const url = query
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+      : `https://www.google.com/maps/search/?api=1&query=${event!.latitude},${event!.longitude}`;
+    Linking.openURL(url);
+  }
+
+  async function handleShare() {
+    const result = await shareEvent(event!.title, event!.source_url);
+    if (result === 'copied') {
+      setShareStatus('copied');
+      setTimeout(() => setShareStatus('idle'), 2000);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      {event.category && <Text style={styles.badge}>{event.category}</Text>}
-      <Text style={styles.title}>{event.title}</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {hasImage && (
+          <Image
+            source={{ uri: event.image_url! }}
+            style={styles.image}
+            onError={() => setImageFailed(true)}
+          />
+        )}
 
-      <View style={styles.infoBlock}>
-        <Text style={styles.infoLabel}>Wann</Text>
-        <Text style={styles.infoValue}>
-          {formatDate(event.start_date, event.start_time)}
-        </Text>
-      </View>
+        <View style={styles.content}>
+          {event.category && <Text style={styles.badge}>{event.category}</Text>}
+          <Text style={styles.title}>{event.title}</Text>
 
-      {event.location_name && (
-        <TouchableOpacity
-          style={styles.infoBlock}
-          disabled={!hasCoords}
-          onPress={() =>
-            router.push({
-              pathname: '/map',
-              params: { lat: String(event.latitude), lng: String(event.longitude) },
-            })
-          }
-        >
-          <Text style={styles.infoLabel}>Wo</Text>
-          <Text style={[styles.infoValue, hasCoords && styles.linkValue]}>
-            {event.location_name} {hasCoords ? '📍' : ''}
-          </Text>
-          {event.address && <Text style={styles.infoSubValue}>{event.address}</Text>}
-        </TouchableOpacity>
-      )}
+          <View style={styles.infoBlock}>
+            <Text style={styles.infoLabel}>Wann</Text>
+            <Text style={styles.infoValue}>
+              {formatDate(event.start_date, event.start_time)}
+            </Text>
+          </View>
 
-      {event.subcategory && (
-        <View style={styles.infoBlock}>
-          <Text style={styles.infoLabel}>Genre</Text>
-          <Text style={styles.infoValue}>{event.subcategory}</Text>
+          {event.location_name && (
+            <TouchableOpacity
+              style={styles.infoBlock}
+              disabled={!hasCoords}
+              onPress={() =>
+                router.push({
+                  pathname: '/map',
+                  params: { lat: String(event.latitude), lng: String(event.longitude) },
+                })
+              }
+            >
+              <Text style={styles.infoLabel}>Wo</Text>
+              <Text style={[styles.infoValue, hasCoords && styles.linkValue]}>
+                {event.location_name} {hasCoords ? '📍' : ''}
+              </Text>
+              {event.address && <Text style={styles.infoSubValue}>{event.address}</Text>}
+            </TouchableOpacity>
+          )}
+
+          {event.subcategory && (
+            <View style={styles.infoBlock}>
+              <Text style={styles.infoLabel}>Genre</Text>
+              <Text style={styles.infoValue}>{event.subcategory}</Text>
+            </View>
+          )}
+
+          {event.organizer && (
+            <View style={styles.infoBlock}>
+              <Text style={styles.infoLabel}>Veranstalter</Text>
+              <Text style={styles.infoValue}>{event.organizer}</Text>
+            </View>
+          )}
+
+          {event.description && (
+            <View style={styles.infoBlock}>
+              <Text style={styles.infoLabel}>Beschreibung</Text>
+              <Text style={styles.infoValue}>{event.description}</Text>
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.secondaryButton} onPress={handleShare}>
+            <Text style={styles.secondaryButtonText}>
+              {shareStatus === 'copied' ? '✓ Link kopiert' : '📤 Teilen'}
+            </Text>
+          </TouchableOpacity>
+
+          {event.source_url && (
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => Linking.openURL(event.source_url!)}
+            >
+              <Text style={styles.buttonText}>Zur Originalseite</Text>
+            </TouchableOpacity>
+          )}
+
+          {hasCoords && (
+            <TouchableOpacity style={styles.secondaryButton} onPress={openInGoogleMaps}>
+              <Text style={styles.secondaryButtonText}>In Google Maps öffnen</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() =>
+              addEventToCalendar({
+                id: event.id,
+                title: event.title,
+                description: event.description,
+                start_date: event.start_date,
+                start_time: event.start_time,
+                location_name: event.location_name,
+                address: event.address,
+                source_url: event.source_url,
+              })
+            }
+          >
+            <Text style={styles.secondaryButtonText}>📅 In Kalender speichern</Text>
+          </TouchableOpacity>
         </View>
-      )}
-
-      {event.organizer && (
-        <View style={styles.infoBlock}>
-          <Text style={styles.infoLabel}>Veranstalter</Text>
-          <Text style={styles.infoValue}>{event.organizer}</Text>
-        </View>
-      )}
-
-      {event.description && (
-        <View style={styles.infoBlock}>
-          <Text style={styles.infoLabel}>Beschreibung</Text>
-          <Text style={styles.infoValue}>{event.description}</Text>
-        </View>
-      )}
-
-      {event.source_url && (
-        <TouchableOpacity
-          style={styles.button}
-          onPress={() => Linking.openURL(event.source_url!)}
-        >
-          <Text style={styles.buttonText}>Zur Originalseite</Text>
-        </TouchableOpacity>
-      )}
-
-      {hasCoords && (
-        <TouchableOpacity style={styles.secondaryButton} onPress={openInGoogleMaps}>
-          <Text style={styles.secondaryButtonText}>In Google Maps öffnen</Text>
-        </TouchableOpacity>
-      )}
-
-      <TouchableOpacity
-        style={styles.secondaryButton}
-        onPress={() =>
-          addEventToCalendar({
-            id: event.id,
-            title: event.title,
-            description: event.description,
-            start_date: event.start_date,
-            start_time: event.start_time,
-            location_name: event.location_name,
-            address: event.address,
-            source_url: event.source_url,
-          })
-        }
-      >
-        <Text style={styles.secondaryButtonText}>📅 In Kalender speichern</Text>
-      </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000', padding: 16 },
+  container: { flex: 1, backgroundColor: '#000' },
+  scrollContent: { paddingBottom: 32 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
   errorText: { color: '#888', fontSize: 15 },
+  image: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#141414' },
+  content: { padding: 16 },
   badge: {
     fontSize: 12,
     fontWeight: '700',

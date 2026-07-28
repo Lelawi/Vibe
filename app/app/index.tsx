@@ -3,6 +3,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Image,
   FlatList,
   ActivityIndicator,
   SafeAreaView,
@@ -42,6 +43,7 @@ type Event = {
   address: string | null;
   description: string | null;
   source_url: string | null;
+  image_url: string | null;
   start_date: string;
   start_time: string | null;
   location_name: string | null;
@@ -163,7 +165,7 @@ export default function EventListScreen() {
 
       const { data, error } = await supabase
         .from('events')
-        .select('id, title, category, subcategory, organizer, address, description, source_url, start_date, start_time, location_name')
+        .select('id, title, category, subcategory, organizer, address, description, source_url, image_url, start_date, start_time, location_name')
         .gte('start_date', today)
         .is('duplicate_of', null)
         .order('start_date', { ascending: true })
@@ -478,19 +480,24 @@ export default function EventListScreen() {
                 hasMore ? setSelectedGroup(group) : router.push(`/event/${item.id}`)
               }
             >
-              <View style={styles.badgeRow}>
-                {item.category && <Text style={styles.badge}>{item.category}</Text>}
-                {hasMore && (
-                  <Text style={styles.seriesBadge}>🔁 {group.length} Termine</Text>
-                )}
+              {item.image_url ? (
+                <Image source={{ uri: item.image_url }} style={styles.cardThumb} />
+              ) : null}
+              <View style={styles.cardBody}>
+                <View style={styles.badgeRow}>
+                  {item.category && <Text style={styles.badge}>{item.category}</Text>}
+                  {hasMore && (
+                    <Text style={styles.seriesBadge}>🔁 {group.length} Termine</Text>
+                  )}
+                </View>
+                <Text style={styles.title}>{item.title}</Text>
+                <Text style={styles.meta}>
+                  {hasMore ? 'Nächster Termin: ' : ''}
+                  {formatDate(item.start_date, item.start_time)}
+                  {item.location_name ? ` · ${item.location_name}` : ''}
+                </Text>
+                {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
               </View>
-              <Text style={styles.title}>{item.title}</Text>
-              <Text style={styles.meta}>
-                {hasMore ? 'Nächster Termin: ' : ''}
-                {formatDate(item.start_date, item.start_time)}
-                {item.location_name ? ` · ${item.location_name}` : ''}
-              </Text>
-              {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
             </TouchableOpacity>
           );
         }}
@@ -760,11 +767,20 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   card: {
+    flexDirection: 'row',
     backgroundColor: '#141414',
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
   },
+  cardThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    marginRight: 12,
+    backgroundColor: '#1a1a1a',
+  },
+  cardBody: { flex: 1 },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
