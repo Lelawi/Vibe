@@ -54,7 +54,7 @@ function formatDistance(km: number): string {
   return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
 }
 
-type DateFilter = 'all' | 'today' | 'week' | 'weekend' | 'custom';
+type DateFilter = 'all' | 'today' | 'tomorrow' | 'week' | 'weekend' | 'custom';
 
 function formatDate(dateStr: string, timeStr: string | null) {
   const date = new Date(`${dateStr}T${timeStr ?? '00:00'}`);
@@ -121,6 +121,13 @@ function getDateRange(
     return { from: todayStr, to: todayStr };
   }
 
+  if (filter === 'tomorrow') {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowStr = toLocalDateStr(tomorrow);
+    return { from: tomorrowStr, to: tomorrowStr };
+  }
+
   if (filter === 'week') {
     const in7Days = new Date(today);
     in7Days.setDate(today.getDate() + 6);
@@ -143,6 +150,7 @@ function getDateRange(
 const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'all', label: 'Alle' },
   { key: 'today', label: 'Heute' },
+  { key: 'tomorrow', label: 'Morgen' },
   { key: 'week', label: 'Diese Woche' },
   { key: 'weekend', label: 'Wochenende' },
 ];
