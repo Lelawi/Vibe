@@ -14,6 +14,7 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
@@ -521,15 +522,22 @@ export default function EventListScreen() {
 
   const listHeader = (
     <>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.header}>Vibe</Text>
-          <Text style={styles.subheader}>Events in München</Text>
+      <LinearGradient
+        colors={['#2a0a4a', '#12082e', '#000000']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.banner}
+      >
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.header}>Vibe</Text>
+            <Text style={styles.subheader}>Events in München</Text>
+          </View>
+          <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/map')}>
+            <Text style={styles.mapButtonText}>🗺️ Karte</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/map')}>
-          <Text style={styles.mapButtonText}>🗺️ Karte</Text>
-        </TouchableOpacity>
-      </View>
+      </LinearGradient>
 
       <View style={[styles.stickyControls, Platform.OS === 'web' && styles.stickyControlsWeb]}>
       <View style={styles.searchWrap}>
@@ -1008,15 +1016,20 @@ export default function EventListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  banner: {
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    paddingBottom: 22,
+  },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 20,
   },
-  header: { fontSize: 28, fontWeight: '800', color: '#fff' },
-  subheader: { fontSize: 14, color: '#999' },
+  header: { fontSize: 30, fontWeight: '800', color: '#fff' },
+  subheader: { fontSize: 14, color: '#cbb8f0' },
   stickyControls: { paddingTop: 12 },
   // position:"sticky" reicht auf Web als reines CSS aus (React Native Web
   // gibt das 1:1 durch) — bleibt beim Scrollen der Liste am oberen Rand
@@ -1032,12 +1045,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   mapButton: {
-    backgroundColor: '#141414',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  mapButtonText: { color: '#0af', fontWeight: '600', fontSize: 13 },
+  mapButtonText: { color: '#fff', fontWeight: '600', fontSize: 13 },
   search: {
     backgroundColor: '#141414',
     borderRadius: 10,

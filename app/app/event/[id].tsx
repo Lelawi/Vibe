@@ -13,6 +13,7 @@ import {
   Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabase';
 import { addEventToCalendar } from '../../lib/calendar';
 import { shareEvent } from '../../lib/share';
@@ -166,11 +167,18 @@ export default function EventDetailScreen() {
         <Text style={styles.backBarText}>‹ Übersicht</Text>
       </TouchableOpacity>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {hasImage && (
+        {hasImage ? (
           <Image
             source={{ uri: event.image_url! }}
             style={styles.image}
             onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <LinearGradient
+            colors={['#2a0a4a', '#12082e', '#000000']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.imageFallback}
           />
         )}
 
@@ -364,6 +372,7 @@ const styles = StyleSheet.create({
   },
   backBarText: { color: '#0af', fontSize: 15, fontWeight: '600' },
   image: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#141414' },
+  imageFallback: { width: '100%', aspectRatio: 3 },
   content: { padding: 16 },
   badge: {
     fontSize: 12,
