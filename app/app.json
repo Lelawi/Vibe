@@ -8,9 +8,11 @@
     "userInterfaceStyle": "light",
     "scheme": "vibe",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "de.eon.vibe"
     },
     "android": {
+      "package": "de.eon.vibe",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

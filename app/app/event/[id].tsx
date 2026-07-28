@@ -86,7 +86,13 @@ export default function EventDetailScreen() {
 
 function openInGoogleMaps() {
   if (!hasCoords) return;
-  const url = `https://www.google.com/maps/search/?api=1&query=${event!.latitude},${event!.longitude}`;
+  const query = [event.location_name, event.address]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  const url = query
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+    : `https://www.google.com/maps/search/?api=1&query=${event!.latitude},${event!.longitude}`;
   Linking.openURL(url);
 }
 

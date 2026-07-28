@@ -19,6 +19,11 @@ type Event = {
   id: string;
   title: string;
   category: string | null;
+  subcategory: string | null;
+  organizer: string | null;
+  address: string | null;
+  description: string | null;
+  source_url: string | null;
   start_date: string;
   start_time: string | null;
   location_name: string | null;
@@ -85,6 +90,31 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'weekend', label: 'Wochenende' },
 ];
 
+const GENRE_GROUPS: { label: string; patterns: RegExp[] }[] = [
+  { label: 'Pop & Rock', patterns: [/pop/i, /rock/i, /alternative/i, /indie/i, /singer/i, /schlager/i] },
+  { label: 'Electronic', patterns: [/house/i, /techno/i, /trance/i, /electro/i, /dance/i, /rave/i, /dnb/i, /drum & bass/i, /deep house/i, /tech-house/i, /dj/i] },
+  { label: 'Metal & Punk', patterns: [/metal/i, /punk/i, /hardcore/i, /screamo/i, /death metal/i, /black metal/i, /thrash/i] },
+  { label: 'Hip-Hop & Rap', patterns: [/hip[-\s]?hop/i, /rap/i, /trap/i] },
+  { label: 'Soul, Funk & Disco', patterns: [/soul/i, /funk/i, /disco/i, /r&b/i, /rnb/i] },
+  { label: 'Jazz & Blues', patterns: [/jazz/i, /blues/i, /swing/i] },
+  { label: 'Klassik & Chor', patterns: [/klassik/i, /chor/i, /orchester/i, /oper/i, /ballett/i] },
+  { label: 'Party & Club', patterns: [/club/i, /party/i, /aftershow/i, /dancefloor/i] },
+  { label: 'Comedy & Show', patterns: [/comedy/i, /kabarett/i, /show/i, /stand[-\s]?up/i] },
+  { label: 'Markt, Bildung & Familie', patterns: [/markt/i, /flohmarkt/i, /dult/i, /bildung/i, /workshop/i, /yoga/i, /family/i, /kids/i, /community/i] },
+];
+
+function normalizeGenreGroup(value: string | null) {
+  const source = value?.trim();
+  if (!source) return 'Sonstiges';
+
+  const normalized = source.toLowerCase();
+  const match = GENRE_GROUPS.find((group) =>
+    group.patterns.some((pattern) => pattern.test(normalized))
+  );
+
+  return match ? match.label : 'Sonstiges';
+}
+
 function toggleInSet(current: string[], value: string): string[] {
   return current.includes(value)
     ? current.filter((v) => v !== value)
@@ -98,12 +128,14 @@ export default function EventListScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customDate, setCustomDate] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showGenreModal, setShowGenreModal] = useState(false);
   const [locationSearch, setLocationSearch] = useState('');
 
   useEffect(() => {
@@ -112,7 +144,7 @@ export default function EventListScreen() {
 
       const { data, error } = await supabase
         .from('events')
-        .select('id, title, category, start_date, start_time, location_name')
+        .select('id, title, category, subcategory, organizer, address, description, source_url, start_date, start_time, location_name')
         .gte('start_date', today)
         .is('duplicate_of', null)
         .order('start_date', { ascending: true })
@@ -140,6 +172,13 @@ export default function EventListScreen() {
     return Array.from(unique).sort() as string[];
   }, [events]);
 
+  const genres = useMemo(() => {
+    const unique = new Set(
+      events.map((e) => normalizeGenreGroup(e.subcategory ?? e.category)).filter(Boolean)
+    );
+    return Array.from(unique).sort() as string[];
+  }, [events]);
+
   const locations = useMemo(() => {
     const unique = new Set(events.map((e) => e.location_name).filter(Boolean));
     return Array.from(unique).sort() as string[];
@@ -156,21 +195,32 @@ export default function EventListScreen() {
 
     return events.filter((e) => {
       const formattedDate = formatDate(e.start_date, e.start_time).toLowerCase();
+      const eventGenre = normalizeGenreGroup(e.subcategory ?? e.category);
       const matchesSearch =
         e.title.toLowerCase().includes(query) ||
         (e.location_name?.toLowerCase().includes(query) ?? false) ||
+        (e.category?.toLowerCase().includes(query) ?? false) ||
+        (e.subcategory?.toLowerCase().includes(query) ?? false) ||
+        eventGenre.toLowerCase().includes(query) ||
+        (e.organizer?.toLowerCase().includes(query) ?? false) ||
+        (e.address?.toLowerCase().includes(query) ?? false) ||
+        (e.description?.toLowerCase().includes(query) ?? false) ||
+        (e.source_url?.toLowerCase().includes(query) ?? false) ||
         formattedDate.includes(query);
       const matchesCategory =
         selectedCategories.length === 0 ||
         (e.category !== null && selectedCategories.includes(e.category));
+      const matchesGenre =
+        selectedGenres.length === 0 ||
+        selectedGenres.includes(eventGenre);
       const matchesLocation =
         selectedLocations.length === 0 ||
         (e.location_name !== null && selectedLocations.includes(e.location_name));
       const matchesDate =
         e.start_date >= from && (to === null || e.start_date <= to);
-      return matchesSearch && matchesCategory && matchesLocation && matchesDate;
+      return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate;
     });
-  }, [events, search, selectedCategories, selectedLocations, dateFilter, customDate]);
+  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, customDate]);
 
   function handlePickDate(date: Date) {
     setCustomDate(toLocalDateStr(date));
@@ -196,6 +246,12 @@ export default function EventListScreen() {
     return `${selectedCategories.length} Kategorien`;
   }
 
+  function genreLabel() {
+    if (selectedGenres.length === 0) return 'Genre wählen';
+    if (selectedGenres.length === 1) return selectedGenres[0];
+    return `${selectedGenres.length} Genres`;
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.center}>
@@ -218,7 +274,7 @@ export default function EventListScreen() {
 
       <TextInput
         style={styles.search}
-        placeholder="Event, Ort oder Datum suchen..."
+        placeholder="Event, Ort, Genre oder Datum suchen..."
         placeholderTextColor="#666"
         value={search}
         onChangeText={setSearch}
@@ -299,6 +355,20 @@ export default function EventListScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.filterChip, selectedGenres.length > 0 && styles.filterChipActive]}
+          onPress={() => setShowGenreModal(true)}
+        >
+          <Text
+            style={[
+              styles.filterChipText,
+              selectedGenres.length > 0 && styles.filterChipTextActive,
+            ]}
+          >
+            {genreLabel()}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.filterChip, selectedLocations.length > 0 && styles.filterChipActive]}
           onPress={() => setShowLocationModal(true)}
         >
@@ -329,6 +399,7 @@ export default function EventListScreen() {
               {formatDate(item.start_date, item.start_time)}
               {item.location_name ? ` · ${item.location_name}` : ''}
             </Text>
+            {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
           </TouchableOpacity>
         )}
       />
@@ -373,6 +444,53 @@ export default function EventListScreen() {
               <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={() => setShowCategoryModal(false)}
+              >
+                <Text style={styles.modalCloseButtonText}>Fertig</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showGenreModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowGenreModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Genres wählen</Text>
+            <FlatList
+              data={genres}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => {
+                const isActive = selectedGenres.includes(item);
+                return (
+                  <TouchableOpacity
+                    style={[styles.modalRow, isActive && styles.modalRowActive]}
+                    onPress={() =>
+                      setSelectedGenres((prev) => toggleInSet(prev, item))
+                    }
+                  >
+                    <Text style={[styles.modalRowText, isActive && styles.modalRowTextActive]}>
+                      {isActive ? '✓ ' : ''}
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.modalSecondaryButton}
+                onPress={() => setSelectedGenres([])}
+              >
+                <Text style={styles.modalSecondaryButtonText}>Zurücksetzen</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowGenreModal(false)}
               >
                 <Text style={styles.modalCloseButtonText}>Fertig</Text>
               </TouchableOpacity>
