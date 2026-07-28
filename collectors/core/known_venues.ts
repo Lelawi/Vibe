@@ -105,6 +105,7 @@ export const KNOWN_VENUE_ADDRESSES: Record<string, string> = {
   'milla club': 'Holzstraße 28, 80469 München',
   'ampere münchen': 'Zellstr. 4, 81667 München',
   'kubiz münchen': 'Seidlstr. 10, 80335 München',
+  'import export münchen': 'Schwere-Reiter-Straße 2, 80637 München',
 };
 
 export function getVenueAddress(canonicalOrName?: string | null): string | null {

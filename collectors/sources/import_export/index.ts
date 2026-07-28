@@ -67,7 +67,7 @@ export async function run() {
         start_date,
         start_time,
         location_name: 'Import Export München',
-        address: 'Oberanger 30, 80331 München',
+        address: 'Schwere-Reiter-Straße 2, 80637 München',
         city: 'München',
         organizer: 'Import Export München',
         source_url: sourceUrl,
