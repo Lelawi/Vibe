@@ -18,6 +18,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
+import { fuzzyMatch } from '../lib/fuzzySearch';
 
 // Unsichtbar über den Datums-Chip gelegtes <input type="date"> (nur Web) —
 // reines CSS-Objekt für das native DOM-Element, keine RN-StyleSheet.
@@ -220,22 +221,29 @@ export default function EventListScreen() {
 
   const filteredEvents = useMemo(() => {
     const { from, to } = getDateRange(dateFilter, customDate);
-    const query = search.toLowerCase();
 
     return events.filter((e) => {
-      const formattedDate = formatDate(e.start_date, e.start_time).toLowerCase();
+      const formattedDate = formatDate(e.start_date, e.start_time);
       const eventGenre = normalizeGenreGroup(e.subcategory ?? e.category);
-      const matchesSearch =
-        e.title.toLowerCase().includes(query) ||
-        (e.location_name?.toLowerCase().includes(query) ?? false) ||
-        (e.category?.toLowerCase().includes(query) ?? false) ||
-        (e.subcategory?.toLowerCase().includes(query) ?? false) ||
-        eventGenre.toLowerCase().includes(query) ||
-        (e.organizer?.toLowerCase().includes(query) ?? false) ||
-        (e.address?.toLowerCase().includes(query) ?? false) ||
-        (e.description?.toLowerCase().includes(query) ?? false) ||
-        (e.source_url?.toLowerCase().includes(query) ?? false) ||
-        formattedDate.includes(query);
+      // Tippfehler-tolerant statt exaktem Teilstring — ein Wort in der
+      // Suchanfrage muss nicht 1:1 vorkommen, kleine Abweichungen (z.B. "konzret"
+      // statt "konzert") werden toleriert. Alle Felder zu einem Haystack
+      // zusammenfassen statt einzeln zu prüfen, damit auch Suchbegriffe über
+      // mehrere Felder hinweg (z.B. "backstage rock") funktionieren.
+      const haystack = [
+        e.title,
+        e.location_name,
+        e.category,
+        e.subcategory,
+        eventGenre,
+        e.organizer,
+        e.address,
+        e.description,
+        formattedDate,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      const matchesSearch = fuzzyMatch(haystack, search);
       const matchesCategory =
         selectedCategories.length === 0 ||
         (e.category !== null && selectedCategories.includes(e.category));
