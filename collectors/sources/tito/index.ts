@@ -59,3 +59,5 @@ export async function run() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(()=>process.exit(0)).catch((e)=>{ console.error(e); process.exit(1); });
+
+export default run;
