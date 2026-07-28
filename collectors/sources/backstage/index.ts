@@ -22,6 +22,7 @@ interface BackstageEvent {
   cancelled: boolean;
   main_image_path: string | null;
   min_price_cents: number | null;
+  subtitle: string | null;
 }
 
 // main_image_path ist relativ ("<event_id>/<file>.webp") — die Backstage-API
@@ -94,7 +95,7 @@ async function normalizeEvent(raw: BackstageEvent, supabase: ReturnType<typeof c
   return {
     source_id: `backstage-${raw.event_id}`,
     title: raw.title,
-    description: null,
+    description: raw.subtitle || null,
     category: raw.category ?? 'Sonstiges',
     subcategory,
     start_date: startDate,
