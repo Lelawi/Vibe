@@ -357,8 +357,16 @@ export default function EventListScreen() {
   }
 
   function pickCalendarDay(date: Date) {
-    setCustomDate(toLocalDateStr(date));
-    setDateFilter('custom');
+    const dateStr = toLocalDateStr(date);
+    if (dateStr === toLocalDateStr(new Date())) {
+      // Heute antippen soll denselben Zustand ergeben wie der "Heute"-Chip,
+      // statt eine redundante zweite "Custom"-Auswahl für denselben Tag zu erzeugen.
+      setCustomDate(null);
+      setDateFilter('today');
+    } else {
+      setCustomDate(dateStr);
+      setDateFilter('custom');
+    }
     setShowPicker(false);
   }
 
@@ -522,8 +530,8 @@ export default function EventListScreen() {
             <View style={styles.calendarGrid}>
               {getMonthMatrix(calendarMonth.year, calendarMonth.month).map(({ date, inMonth }) => {
                 const dateStr = toLocalDateStr(date);
-                const isSelected = customDate === dateStr;
                 const isToday = dateStr === toLocalDateStr(new Date());
+                const isSelected = customDate === dateStr || (isToday && dateFilter === 'today');
                 return (
                   <TouchableOpacity
                     key={dateStr}
