@@ -67,6 +67,16 @@ function formatDate(dateStr: string, timeStr: string | null) {
   return `${dateFormatted} · ${timeStr.slice(0, 5)}`;
 }
 
+// "YYYY-MM-DD" -> "DD.MM." und "DD.MM.YYYY", damit die Suche auch das in
+// Deutschland übliche numerische Format findet (formatDate() liefert nur
+// den ausgeschriebenen Wochentag/Monat, z.B. "Di., 25. Aug.", worin "25.08"
+// nicht als Teilstring vorkommt).
+function toGermanNumericDates(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-');
+  if (!year || !month || !day) return '';
+  return `${day}.${month}. ${day}.${month}.${year}`;
+}
+
 function toLocalDateStr(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -290,6 +300,7 @@ export default function EventListScreen() {
         e.address,
         e.description,
         formattedDate,
+        toGermanNumericDates(e.start_date),
       ]
         .filter(Boolean)
         .join(' ');
