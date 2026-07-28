@@ -14,6 +14,8 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../lib/supabase';
+import { canonicalizeVenue } from '../lib/venue';
+import { computeSeriesKey } from '../lib/seriesKey';
 
 type Event = {
   id: string;
@@ -121,62 +123,6 @@ function toggleInSet(current: string[], value: string): string[] {
     : [...current, value];
 }
 
-function canonicalizeVenue(name?: string | null) {
-  if (!name) return 'Unbekannt';
-  const keyRaw = name.trim().toLowerCase();
-  // OVERRIDES migrated to collectors/core/known_venues.ts —
-  // keep client-side heuristics only; authoritative mappings live server-side.
-  // normalize whitespace and separators
-  let s = name.replace(/\(.*?\)/g, '').replace(/[\-–—]/g, ' ').toLowerCase().trim();
-
-  // split on common separators (comma, slash)
-  const parts = s.split(/[,/\\]/).map((p) => p.trim()).filter(Boolean);
-
-  const genericTokens = [
-    'süd','nord','ost','west','arena','club','halle','werkstatt','werk','studio','biergarten',
-    'open air','open-air','openair','all area','festsaal','night','saal','unterer schlosshof','jella',
-    'bereich','saal','lounge'
-  ];
-  const stopwords = ['der','die','das','von','am','in','münchen','muenchen','residenz'];
-  // clean all parts and pick the best candidate
-  function cleanPart(p: string) {
-    let x = p;
-    genericTokens.forEach((g) => {
-      const re = new RegExp('\\b' + g.replace(/[-\s]/g, '\\s?') + '\\b', 'gi');
-      x = x.replace(re, ' ');
-    });
-    stopwords.forEach((w) => {
-      const re = new RegExp('\\b' + w + '\\b', 'gi');
-      x = x.replace(re, ' ');
-    });
-    x = x.replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
-    return x;
-  }
-
-  const cleanedParts = parts.map((p) => cleanPart(p)).filter(Boolean);
-
-  // high-priority tokens to prefer when choosing between parts
-  const highPriority = ['brunnenhof','backstage','bayerischer hof','muffathalle','muffat','zenith','schloss blutenburg','pasinger fabrik','milla','ampere','olympiapark','residenz','hotel'];
-
-  let chosen = '';
-  for (const hp of highPriority) {
-    const found = cleanedParts.find((cp) => cp.includes(hp));
-    if (found) { chosen = found; break; }
-  }
-
-  if (!chosen) {
-    // fall back to the longest cleaned part
-    chosen = cleanedParts.sort((a, b) => b.length - a.length)[0] || parts[0] || s;
-  }
-
-  // Title-case the result
-  return chosen
-    .split(' ')
-    .filter(Boolean)
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
 export default function EventListScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ locations?: string }>();  
@@ -193,6 +139,7 @@ export default function EventListScreen() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showGenreModal, setShowGenreModal] = useState(false);
   const [locationSearch, setLocationSearch] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState<Event[] | null>(null);
 
   useEffect(() => {
     async function loadEvents() {
@@ -284,6 +231,25 @@ export default function EventListScreen() {
       return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate;
     });
   }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, customDate]);
+
+  // Bündelt wiederkehrende Events (gleicher Titel + gleicher Ort, z.B. eine
+  // wöchentliche Partyreihe) zu einer Gruppe. In der Liste wird nur der
+  // nächste Termin gezeigt; ein Antippen öffnet bei mehreren Terminen eine
+  // Übersicht aller künftigen Termine statt direkt zum Event zu springen.
+  const eventGroups = useMemo(() => {
+    const map = new Map<string, Event[]>();
+    for (const e of filteredEvents) {
+      const key = computeSeriesKey(e.title, e.location_name);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(e);
+    }
+    const sortKey = (e: Event) => `${e.start_date}T${e.start_time ?? '00:00'}`;
+    const groups = Array.from(map.values()).map((evts) =>
+      [...evts].sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
+    );
+    groups.sort((a, b) => sortKey(a[0]).localeCompare(sortKey(b[0])));
+    return groups;
+  }, [filteredEvents]);
 
   function handlePickDate(date: Date) {
     setCustomDate(toLocalDateStr(date));
@@ -447,24 +413,36 @@ export default function EventListScreen() {
       </View>
 
       <FlatList
-        data={filteredEvents}
-        keyExtractor={(item) => item.id}
+        data={eventGroups}
+        keyExtractor={(group) => group[0].id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={<Text style={styles.empty}>Keine Events gefunden.</Text>}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => router.push(`/event/${item.id}`)}
-          >
-            {item.category && <Text style={styles.badge}>{item.category}</Text>}
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.meta}>
-              {formatDate(item.start_date, item.start_time)}
-              {item.location_name ? ` · ${item.location_name}` : ''}
-            </Text>
-            {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
-          </TouchableOpacity>
-        )}
+        renderItem={({ item: group }) => {
+          const item = group[0];
+          const hasMore = group.length > 1;
+          return (
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() =>
+                hasMore ? setSelectedGroup(group) : router.push(`/event/${item.id}`)
+              }
+            >
+              <View style={styles.badgeRow}>
+                {item.category && <Text style={styles.badge}>{item.category}</Text>}
+                {hasMore && (
+                  <Text style={styles.seriesBadge}>🔁 {group.length} Termine</Text>
+                )}
+              </View>
+              <Text style={styles.title}>{item.title}</Text>
+              <Text style={styles.meta}>
+                {hasMore ? 'Nächster Termin: ' : ''}
+                {formatDate(item.start_date, item.start_time)}
+                {item.location_name ? ` · ${item.location_name}` : ''}
+              </Text>
+              {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
+            </TouchableOpacity>
+          );
+        }}
       />
 
       {/* Kategorie-Auswahl (Mehrfachauswahl) */}
@@ -620,6 +598,54 @@ export default function EventListScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Alle Termine einer wiederkehrenden Event-Serie */}
+      <Modal
+        visible={selectedGroup !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedGroup(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{selectedGroup?.[0]?.title}</Text>
+            <Text style={styles.modalSubtitle}>
+              {selectedGroup?.length} Termine
+              {selectedGroup?.[0]?.location_name ? ` · ${selectedGroup[0].location_name}` : ''}
+            </Text>
+            <FlatList
+              data={selectedGroup?.slice(0, 12) ?? []}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.modalRow}
+                  onPress={() => {
+                    setSelectedGroup(null);
+                    router.push(`/event/${item.id}`);
+                  }}
+                >
+                  <Text style={styles.modalRowText}>{formatDate(item.start_date, item.start_time)}</Text>
+                </TouchableOpacity>
+              )}
+              ListFooterComponent={
+                selectedGroup && selectedGroup.length > 12 ? (
+                  <Text style={styles.modalFooterHint}>
+                    + {selectedGroup.length - 12} weitere Termine (auf der Quellseite sichtbar)
+                  </Text>
+                ) : null
+              }
+            />
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setSelectedGroup(null)}
+              >
+                <Text style={styles.modalCloseButtonText}>Schließen</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -679,15 +705,31 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 6,
+  },
   badge: {
     fontSize: 11,
     fontWeight: '700',
     color: '#0af',
     textTransform: 'uppercase',
-    marginBottom: 6,
+    marginRight: 8,
+  },
+  seriesBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#999',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   title: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 4 },
   meta: { fontSize: 13, color: '#888' },
+  subMeta: { fontSize: 12, color: '#666', marginTop: 2 },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -705,7 +747,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     paddingHorizontal: 16,
+  },
+  modalSubtitle: {
+    color: '#888',
+    fontSize: 13,
+    paddingHorizontal: 16,
     marginBottom: 10,
+  },
+  modalFooterHint: {
+    color: '#666',
+    fontSize: 12,
+    textAlign: 'center',
+    paddingVertical: 14,
   },
   modalRow: {
     paddingVertical: 14,
