@@ -206,6 +206,12 @@ const GENRE_GROUPS: { label: string; patterns: RegExp[] }[] = [
   { label: 'Markt, Bildung & Familie', patterns: [/markt/i, /flohmarkt/i, /dult/i, /bildung/i, /workshop/i, /yoga/i, /family/i, /kids/i, /community/i] },
 ];
 
+const FREE_PRICE_PATTERN = /kostenlos|kostenfrei|gratis|umsonst|eintritt frei|free entry|\b0([.,]0+)?\s*€/i;
+
+function isFreeEvent(priceInfo: string | null) {
+  return priceInfo !== null && FREE_PRICE_PATTERN.test(priceInfo);
+}
+
 function normalizeGenreGroup(value: string | null) {
   const source = value?.trim();
   if (!source) return 'Sonstiges';
@@ -253,6 +259,7 @@ export default function EventListScreen() {
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [showFreeOnly, setShowFreeOnly] = useState(false);
 
   function toggleNearby() {
     if (userLocation) {
@@ -373,9 +380,10 @@ export default function EventListScreen() {
           ? selectedDates.includes(e.start_date)
           : e.start_date >= from && (to === null || e.start_date <= to);
       const matchesFavorite = !showFavoritesOnly || favorites.includes(e.id);
-      return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate && matchesFavorite;
+      const matchesFree = !showFreeOnly || isFreeEvent(e.price_info);
+      return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate && matchesFavorite && matchesFree;
     });
-  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites]);
+  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites, showFreeOnly]);
 
   // Bündelt wiederkehrende Events (gleicher Titel + gleicher Ort, z.B. eine
   // wöchentliche Partyreihe) zu einer Gruppe. In der Liste wird nur der
@@ -596,6 +604,15 @@ export default function EventListScreen() {
         >
           <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
             {showFavoritesOnly ? '❤️' : '🤍'} Favoriten
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterButton, styles.nearbyButton, showFreeOnly && styles.filterChipActive]}
+          onPress={() => setShowFreeOnly((v) => !v)}
+        >
+          <Text style={[styles.filterButtonText, showFreeOnly && styles.filterChipTextActive]}>
+            🆓 Kostenlos
           </Text>
         </TouchableOpacity>
 

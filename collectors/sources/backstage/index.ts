@@ -105,7 +105,12 @@ async function normalizeEvent(raw: BackstageEvent, supabase: ReturnType<typeof c
     organizer: 'Backstage München',
     source_url: `https://www.backstage.eu/event/${raw.event_id}`,
     image_url: backstageImageUrl(raw.main_image_path),
-    price_info: raw.min_price_cents != null ? `ab ${(raw.min_price_cents / 100).toFixed(2)} €` : null,
+    price_info:
+      raw.min_price_cents == null
+        ? null
+        : raw.min_price_cents === 0
+        ? 'Kostenlos'
+        : `ab ${(raw.min_price_cents / 100).toFixed(2)} €`,
     latitude: coords?.latitude ?? null,
     longitude: coords?.longitude ?? null,
   };
