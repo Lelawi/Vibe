@@ -88,23 +88,33 @@ export function extractJsonLdEvents($: CheerioAPI): ParsedEvent[] {
 // letzter Fallback, wenn weder JSON-LD noch bekannte CSS-Klassen greifen —
 // funktioniert unabhängig vom konkreten Markup, solange Titel+Datum im
 // gleichen Link-Text stehen.
-const NUMERIC_DATE = /\d{1,2}\.\d{1,2}\.\d{2,4}/;
+// Erfordert eine vierstellige Jahreszahl (statt 2-4-stellig), damit zufällige
+// Zahlenfolgen im Seitentext (Telefonnummern, Kurz-IDs etc.) nicht versehentlich
+// als Datum mit falschem Jahrhundert interpretiert werden.
+const NUMERIC_DATE = /\d{1,2}\.\d{1,2}\.\d{4}/;
 const EN_ABBREV_DATE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/i;
 
-export function extractDatedLinks($: CheerioAPI, baseUrl: string): ParsedEvent[] {
+export function extractDatedLinks($: CheerioAPI, baseUrl: string, cityHint = 'München'): ParsedEvent[] {
   const events: ParsedEvent[] = [];
   const seen = new Set<string>();
 
   $('a[href]').each((_, el) => {
     const a = $(el);
     const href = a.attr('href');
-    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
 
-    const text = a.text().replace(/\s+/g, ' ').trim();
-    if (!text || text.length > 250) return;
+    const ownText = a.text().replace(/\s+/g, ' ').trim();
+    if (!ownText) return;
 
-    const numericMatch = text.match(NUMERIC_DATE);
-    const enMatch = text.match(EN_ABBREV_DATE);
+    // Manche Karten-Layouts trennen Titel-Link und Datum in Geschwister-
+    // Elemente statt beides im selben <a> zu verschachteln — deshalb zusätzlich
+    // im direkten Elternelement nach einem Datum suchen, falls der Link selbst
+    // keins enthält.
+    const parentText = a.parent().text().replace(/\s+/g, ' ').trim();
+    const scanText = ownText.length > 250 ? ownText.slice(0, 250) : (parentText.length <= 400 ? parentText : ownText);
+
+    const numericMatch = scanText.match(NUMERIC_DATE);
+    const enMatch = scanText.match(EN_ABBREV_DATE);
     if (!numericMatch && !enMatch) return;
 
     let url: string;
@@ -117,15 +127,26 @@ export function extractDatedLinks($: CheerioAPI, baseUrl: string): ParsedEvent[]
     seen.add(url);
 
     const dateToken = numericMatch?.[0] ?? enMatch?.[0] ?? null;
-    const name = (dateToken ? text.replace(dateToken, '') : text).replace(/^[,\s-]+|[,\s-]+$/g, '').trim() || text.slice(0, 80);
+    let rest = (dateToken ? ownText.replace(dateToken, '') : ownText).replace(/^[,\s-]+|[,\s-]+$/g, '').trim();
+    if (!rest) rest = scanText.replace(dateToken ?? '', '').trim();
+
+    // Viele Listing-Seiten hängen "<Venue>, <Stadt> (DE)" ans Ende des Texts —
+    // wenn das Muster greift, Venue vom Titel abtrennen.
+    let name = rest;
+    let locationName: string | null = null;
+    const venueMatch = rest.match(new RegExp(`([^,]+),\\s*${cityHint}\\s*\\(DE\\)`, 'i'));
+    if (venueMatch) {
+      locationName = venueMatch[1].trim();
+      name = rest.slice(0, venueMatch.index).trim() || rest;
+    }
 
     events.push({
-      name: name || null,
+      name: (name || rest || scanText).slice(0, 200) || null,
       startDate: dateToken,
       description: null,
       url,
       image: null,
-      locationName: null,
+      locationName,
       address: null,
       organizer: null,
     });

@@ -5,6 +5,10 @@ import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
 import { extractJsonLdEvents, parseGermanDate } from '../../core/scrape';
 
+// NICHT in collect-all.ts / im Workflow eingebunden: milla-club.de antwortet
+// mit 403, auch mit einem echten Chrome-User-Agent + Accept-Language-Headern
+// (verifiziert 2026-07) — das ist echter Bot-Schutz, keine simple UA-Prüfung,
+// und lässt sich mit fetch+cheerio nicht umgehen.
 const MILLA_URL = 'https://milla-club.de/category/event/';
 const MILLA_ADDRESS = 'Holzstraße 28, 80469 München';
 

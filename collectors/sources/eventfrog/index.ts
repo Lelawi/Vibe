@@ -23,6 +23,7 @@ export async function run() {
   const urls = envUrls ? envUrls.split(',').map((u) => u.trim()).filter(Boolean) : defaultUrls;
 
   const collected: any[] = [];
+  const today = new Date().toISOString().slice(0, 10);
 
   for (const url of urls) {
     try {
@@ -54,11 +55,16 @@ export async function run() {
             start_date = parseAbbrevEnglishDate(ev.startDate) ?? parseGermanDate(ev.startDate);
           }
         }
-        if (!ev.name || !start_date) continue;
+        // Ohne Datum oder mit Datum in der Vergangenheit (z.B. Fehlparsen einer
+        // zufälligen Zahlenfolge im Seitentext) wird das Event verworfen —
+        // ein einzelner Ausreißer wie "2001-08-22" darf nicht den ganzen
+        // Batch-Upsert wegen anderer Constraints zum Absturz bringen.
+        if (!ev.name || !start_date || start_date < today) continue;
 
         const urlEvent = ev.url ?? url;
         const sourceId = `eventfrog-${Buffer.from(String(urlEvent)).toString('base64').slice(0, 20)}`;
-        const coords = await getCoordinates(supabase, ev.locationName ?? ev.name ?? 'Event', ev.address, 'München');
+        const locationName = ev.locationName ?? 'München';
+        const coords = await getCoordinates(supabase, locationName, ev.address, 'München');
 
         collected.push({
           source_id: sourceId,
@@ -68,7 +74,7 @@ export async function run() {
           subcategory: null,
           start_date,
           start_time,
-          location_name: ev.locationName,
+          location_name: locationName,
           address: ev.address,
           city: 'München',
           organizer: ev.organizer,

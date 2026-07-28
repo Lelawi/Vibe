@@ -31,6 +31,7 @@ export async function run() {
   }
 
   const collected: any[] = [];
+  const today = new Date().toISOString().slice(0, 10);
 
   for (const url of urls) {
     try {
@@ -71,8 +72,11 @@ export async function run() {
               }
             }
 
+            if (!start_date || start_date < today) continue;
+
             const sourceId = `tickettailor-${Buffer.from(String(ev.url ?? name ?? Math.random())).toString('base64').slice(0,20)}`;
-            const coords = await getCoordinates(supabase, location_name ?? name ?? 'Event', address, 'München');
+            location_name = location_name ?? 'München';
+            const coords = await getCoordinates(supabase, location_name, address, 'München');
 
             collected.push({
               source_id: sourceId,

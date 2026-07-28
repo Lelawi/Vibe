@@ -19,6 +19,7 @@ export async function run() {
   ];
 
   const collected: any[] = [];
+  const today = new Date().toISOString().slice(0, 10);
   for (const url of urls) {
     try {
       console.log('[billetto] fetching', url);
@@ -34,12 +35,14 @@ export async function run() {
           const d = new Date(ev.startDate);
           if (!isNaN(d.getTime())) { start_date = d.toISOString().slice(0,10); start_time = d.toISOString().slice(11,16); }
         }
+        if (!start_date || start_date < today) continue;
 
         const eventUrl = ev.url ?? url;
         const sourceId = `billetto-${Buffer.from(String(eventUrl)).toString('base64').slice(0,20)}`;
-        const coords = await getCoordinates(supabase, ev.locationName ?? ev.name ?? 'Event', ev.address, 'München');
+        const locationName = ev.locationName ?? 'München';
+        const coords = await getCoordinates(supabase, locationName, ev.address, 'München');
 
-        collected.push({ source_id: sourceId, title: ev.name ?? 'Unbenannt', description: ev.description, category: 'Sonstiges', subcategory: null, start_date, start_time, location_name: ev.locationName, address: ev.address, city: 'München', organizer: ev.organizer, source_url: eventUrl, image_url: ev.image, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null });
+        collected.push({ source_id: sourceId, title: ev.name ?? 'Unbenannt', description: ev.description, category: 'Sonstiges', subcategory: null, start_date, start_time, location_name: locationName, address: ev.address, city: 'München', organizer: ev.organizer, source_url: eventUrl, image_url: ev.image, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null });
       }
 
       await new Promise(r=>setTimeout(r,600));

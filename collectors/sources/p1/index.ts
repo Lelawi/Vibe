@@ -20,6 +20,7 @@ export async function run() {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const collected: any[] = [];
+  const today = new Date().toISOString().slice(0, 10);
 
   try {
     console.log('[p1] fetching', P1_URL);
@@ -49,7 +50,7 @@ export async function run() {
           start_date = parseGermanDate(ev.startDate);
         }
       }
-      if (!ev.name || !start_date) continue;
+      if (!ev.name || !start_date || start_date < today) continue;
 
       const eventUrl = ev.url ?? P1_URL;
       const sourceId = `p1-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;

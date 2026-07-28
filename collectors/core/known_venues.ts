@@ -31,7 +31,6 @@ export const KNOWN_VENUES: Record<string, string> = {
   'haus der kunst': 'Haus der Kunst',
   'alte kongresshalle': 'Alte Kongresshalle',
   'stadtmuseum': 'Stadtmuseum München',
-  'milla club': 'Milla Club',
   'ampere': 'AMPERE München',
   'kubiz': 'Kubiz München',
   'backstage werke': 'Backstage München',

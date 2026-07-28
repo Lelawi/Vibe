@@ -22,7 +22,12 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "static",
+      "name": "Vibe",
+      "themeColor": "#000000",
+      "backgroundColor": "#000000"
     },
     "plugins": [
       "expo-router",

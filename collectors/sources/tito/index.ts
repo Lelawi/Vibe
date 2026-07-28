@@ -21,6 +21,7 @@ export async function run() {
   }
 
   const collected: any[] = [];
+  const today = new Date().toISOString().slice(0, 10);
   for (const url of urls) {
     try {
       console.log('[tito] fetching', url);
@@ -48,8 +49,11 @@ export async function run() {
             let start_date=null, start_time=null;
             if (start) { const d=new Date(start); if(!isNaN(d.getTime())) { start_date=d.toISOString().slice(0,10); start_time=d.toISOString().slice(11,16); } }
 
+            if (!start_date || start_date < today) continue;
+
             const sourceId = `tito-${Buffer.from(String(ev.url ?? name ?? Math.random())).toString('base64').slice(0,20)}`;
-            const coords = await getCoordinates(supabase, location_name ?? name ?? 'Event', address, 'München');
+            location_name = location_name ?? 'München';
+            const coords = await getCoordinates(supabase, location_name, address, 'München');
 
             collected.push({ source_id: sourceId, title: name ?? 'Unbenannt', description: ev.description ?? null, category: ev.eventType ?? 'Sonstiges', subcategory: null, start_date, start_time, location_name, address, city: 'München', organizer: ev.organizer?.name ?? null, source_url: ev.url ?? url, image_url: Array.isArray(ev.image)?ev.image[0]:ev.image ?? null, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null });
           }

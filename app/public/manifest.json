@@ -1,0 +1,23 @@
+{
+  "name": "Vibe – Events in München",
+  "short_name": "Vibe",
+  "description": "Findet alle Events in München an einem Ort – Konzerte, Comedy, Workshops, Märkte und mehr.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "de",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

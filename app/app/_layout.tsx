@@ -1,18 +1,25 @@
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 
 export default function Layout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: '#000' },
-        headerTintColor: '#fff',
-        headerTitleStyle: { color: '#fff' },
-        contentStyle: { backgroundColor: '#000' },
-      }}
-    >
-      <Stack.Screen name="index" options={{ title: 'Vibe' }} />
-      <Stack.Screen name="event/[id]" options={{ title: 'Event' }} />
-      <Stack.Screen name="map" options={{ title: 'Karte' }} />
-    </Stack>
+    <>
+      {/* App ist komplett dunkel gestylt (#000-Hintergründe überall) — ohne
+          "light" wäre die Statusleiste (Uhrzeit/Akku) dunkel-auf-dunkel und
+          kaum lesbar. */}
+      <StatusBar style="light" />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: '#000' },
+          headerTintColor: '#fff',
+          headerTitleStyle: { color: '#fff' },
+          contentStyle: { backgroundColor: '#000' },
+        }}
+      >
+        <Stack.Screen name="index" options={{ title: 'Vibe' }} />
+        <Stack.Screen name="event/[id]" options={{ title: 'Event' }} />
+        <Stack.Screen name="map" options={{ title: 'Karte' }} />
+      </Stack>
+    </>
   );
 }

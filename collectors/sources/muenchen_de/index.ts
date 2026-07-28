@@ -19,6 +19,7 @@ export async function run() {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const collected: any[] = [];
+  const today = new Date().toISOString().slice(0, 10);
 
   try {
     console.log('[muenchen-de] fetching', MUENCHEN_DE_URL);
@@ -48,11 +49,12 @@ export async function run() {
           start_date = parseGermanDate(ev.startDate);
         }
       }
-      if (!ev.name || !start_date) continue;
+      if (!ev.name || !start_date || start_date < today) continue;
 
       const eventUrl = ev.url ?? MUENCHEN_DE_URL;
       const sourceId = `muenchen-de-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;
-      const coords = await getCoordinates(supabase, ev.locationName ?? ev.name, ev.address, 'München');
+      const locationName = ev.locationName ?? 'München';
+      const coords = await getCoordinates(supabase, locationName, ev.address, 'München');
 
       collected.push({
         source_id: sourceId,
@@ -62,7 +64,7 @@ export async function run() {
         subcategory: null,
         start_date,
         start_time,
-        location_name: ev.locationName,
+        location_name: locationName,
         address: ev.address,
         city: 'München',
         organizer: ev.organizer,

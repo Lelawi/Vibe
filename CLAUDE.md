@@ -40,17 +40,24 @@ npm start          # expo start
 npm run web         # expo start --web
 npm run android      # expo start --android
 npm run ios          # expo start --ios
-./start-tunnel.sh    # expo start --tunnel, auto-retries on ngrok failures (used when developing from a browser/iPhone with no local Xcode/Android Studio)
+npm run build:web    # expo export --platform web -> app/dist, static PWA build for hosting
+./start-tunnel.sh    # expo start --tunnel, auto-retries on ngrok failures
 ```
 
 No lint or test scripts are configured for the app.
 
-Env vars (`.env`, not committed): `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (see `app/lib/supabase.ts`).
+Env vars (`.env`, not committed): `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (see `app/lib/supabase.ts`). These are baked into the web build at build time, so they must also be set as repo secrets for `.github/workflows/deploy-web.yml`.
 
-**Expo version note:** the app targets Expo SDK 54 / a recently changed Expo
-API surface. Per `app/AGENTS.md`, consult the versioned docs at
-https://docs.expo.dev/versions/v57.0.0/ before writing Expo-related code
-rather than relying on older training data.
+**Distribution:** the primary distribution channel is the web build (PWA,
+installable via "Add to Home Screen" in Safari/Chrome) deployed to GitHub
+Pages by `.github/workflows/deploy-web.yml` on every push to `main` that
+touches `app/**`. Native builds (EAS/TestFlight) are possible via the
+`eas:build:*` scripts below but require a paid Apple Developer account and
+are not currently set up.
+
+**Expo version note:** the app targets Expo SDK 54 (`expo: "^54.0.0"`). Ignore
+any reference to Expo v57 docs — that was a stale/incorrect leftover from an
+earlier AI-assisted edit and has been corrected in `app/AGENTS.md`.
 
 ### Collectors (`collectors/`)
 
@@ -113,10 +120,14 @@ script plus a step in `.github/workflows/collect-all.yml`.
 - Queries always filter `duplicate_of is null` and (for upcoming events)
   `start_date >= today` — replicate both filters in any new query against
   `events`.
-- The map screen renders differently per platform: `map.tsx` shows a
-  "not available on web" message and delegates to `components/MapNative.tsx`
-  (native) vs `components/MapNative.web.tsx` (web stub) — Expo's
-  platform-extension file resolution picks the right one automatically.
+- The map screen (`map.tsx`) just renders `<MapNative />`; Expo's
+  platform-extension file resolution automatically picks
+  `components/MapNative.tsx` (native, `react-native-maps`) on iOS/Android or
+  `components/MapNative.web.tsx` (web, `react-leaflet` + OpenStreetMap tiles,
+  no API key) on web. The web version lazy-loads the actual Leaflet map
+  (`components/LeafletMapView.web.tsx`) client-side only, since Leaflet
+  touches `window`/`document` at import time and would break the static
+  web-export's server-side prerender step otherwise.
 - Dark theme is hardcoded inline via `StyleSheet.create` (background `#000`,
   cards `#141414`, accent `#0af`) rather than a theme system — match this
   style when adding UI.

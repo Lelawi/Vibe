@@ -11,7 +11,6 @@ import { run as runTickettailor } from './sources/tickettailor/index.js';
 import { run as runBilletto } from './sources/billetto/index.js';
 import { run as runImportExport } from './sources/import_export/index.js';
 import { run as runTito } from './sources/tito/index.js';
-import { run as runMilla } from './sources/milla/index.js';
 import { run as runP1 } from './sources/p1/index.js';
 import { run as runMuenchenDe } from './sources/muenchen_de/index.js';
 import { run as runAuerDult } from './sources/auer_dult/index.js';
@@ -29,6 +28,8 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 //   Nachfolge-URL gefunden (Stand 2026-07)
 // - lmu, ampere: Programm wird per JavaScript nachgeladen, im Server-HTML steht
 //   nichts — bräuchte einen Headless-Browser (Playwright/Puppeteer), nicht nur fetch+cheerio
+// - milla: milla-club.de blockt Anfragen mit 403, auch mit echten Browser-Headern
+//   (Chrome-UA, Accept-Language) — echter Bot-Schutz, kein simples UA-Sniffing
 // - xing_events: reiner Platzhalter, nie implementiert
 const sources = [
   { name: 'backstage', run: runBackstage },
@@ -40,7 +41,6 @@ const sources = [
   { name: 'billetto', run: runBilletto },
   { name: 'import-export', run: runImportExport },
   { name: 'tito', run: runTito },
-  { name: 'milla', run: runMilla },
   { name: 'p1', run: runP1 },
   { name: 'muenchen-de', run: runMuenchenDe },
   { name: 'auer-dult', run: runAuerDult },
