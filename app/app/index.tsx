@@ -7,6 +7,7 @@ import {
   FlatList,
   ActivityIndicator,
   SafeAreaView,
+  ScrollView,
   TextInput,
   TouchableOpacity,
   Platform,
@@ -153,9 +154,8 @@ export default function EventListScreen() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customDate, setCustomDate] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [showGenreModal, setShowGenreModal] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterTab, setFilterTab] = useState<'category' | 'genre' | 'location'>('category');
   const [locationSearch, setLocationSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<Event[] | null>(null);
 
@@ -281,23 +281,22 @@ export default function EventListScreen() {
     return `📅 ${d}.${m}.${y}`;
   }
 
-  function locationLabel() {
-    if (selectedLocations.length === 0) return '📍 Alle Orte';
-    if (selectedLocations.length === 1) return `📍 ${selectedLocations[0]}`;
-    return `📍 ${selectedLocations.length} Orte`;
-  }
+  const contentFilterCount = selectedCategories.length + selectedGenres.length + selectedLocations.length;
 
-  function categoryLabel() {
-    if (selectedCategories.length === 0) return 'Alle Kategorien';
-    if (selectedCategories.length === 1) return selectedCategories[0];
-    return `${selectedCategories.length} Kategorien`;
-  }
-
-  function genreLabel() {
-    if (selectedGenres.length === 0) return 'Genre wählen';
-    if (selectedGenres.length === 1) return selectedGenres[0];
-    return `${selectedGenres.length} Genres`;
-  }
+  const activeFilterTabData =
+    filterTab === 'category' ? categories : filterTab === 'genre' ? genres : filteredLocationOptions;
+  const activeFilterTabSelected =
+    filterTab === 'category' ? selectedCategories : filterTab === 'genre' ? selectedGenres : selectedLocations;
+  const toggleActiveFilterTab = (value: string) => {
+    if (filterTab === 'category') setSelectedCategories((prev) => toggleInSet(prev, value));
+    else if (filterTab === 'genre') setSelectedGenres((prev) => toggleInSet(prev, value));
+    else setSelectedLocations((prev) => toggleInSet(prev, value));
+  };
+  const resetActiveFilterTab = () => {
+    if (filterTab === 'category') setSelectedCategories([]);
+    else if (filterTab === 'genre') setSelectedGenres([]);
+    else setSelectedLocations([]);
+  };
 
   if (loading) {
     return (
@@ -327,79 +326,95 @@ export default function EventListScreen() {
         onChangeText={setSearch}
       />
 
-      <View style={styles.filterWrap}>
-        {DATE_FILTERS.map((f) => (
-          <TouchableOpacity
-            key={f.key}
-            style={[styles.filterChip, dateFilter === f.key && styles.filterChipActive]}
-            onPress={() => {
-              setDateFilter(f.key);
-              setCustomDate(null);
-            }}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                dateFilter === f.key && styles.filterChipTextActive,
-              ]}
-            >
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-
-        {Platform.OS === 'web' ? (
-          // window.prompt()/alert()/confirm() sind deaktiviert, sobald die
-          // PWA "Zum Home-Bildschirm hinzugefügt" im Standalone-Modus läuft
-          // (bekannte iOS-Einschränkung) — deshalb hier ein echtes, unsichtbar
-          // über den Chip gelegtes <input type="date">, das öffnet den
-          // nativen Browser-Datepicker zuverlässig auch standalone.
-          <View
-            style={[
-              styles.filterChip,
-              dateFilter === 'custom' && styles.filterChipActive,
-              styles.dateInputWrap,
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                dateFilter === 'custom' && styles.filterChipTextActive,
-              ]}
-            >
-              {customDateLabel()}
-            </Text>
-            <input
-              type="date"
-              value={customDate ?? ''}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value) {
-                  setCustomDate(value);
-                  setDateFilter('custom');
-                } else {
-                  setCustomDate(null);
-                  setDateFilter('all');
-                }
+      <View style={styles.controlRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.dateScrollContent}
+          style={styles.dateScroll}
+        >
+          {DATE_FILTERS.map((f) => (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.filterChip, dateFilter === f.key && styles.filterChipActive]}
+              onPress={() => {
+                setDateFilter(f.key);
+                setCustomDate(null);
               }}
-              style={webDateInputStyle}
-            />
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={[styles.filterChip, dateFilter === 'custom' && styles.filterChipActive]}
-            onPress={() => setShowPicker(true)}
-          >
-            <Text
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  dateFilter === f.key && styles.filterChipTextActive,
+                ]}
+              >
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+
+          {Platform.OS === 'web' ? (
+            // window.prompt()/alert()/confirm() sind deaktiviert, sobald die
+            // PWA "Zum Home-Bildschirm hinzugefügt" im Standalone-Modus läuft
+            // (bekannte iOS-Einschränkung) — deshalb hier ein echtes, unsichtbar
+            // über den Chip gelegtes <input type="date">, das öffnet den
+            // nativen Browser-Datepicker zuverlässig auch standalone.
+            <View
               style={[
-                styles.filterChipText,
-                dateFilter === 'custom' && styles.filterChipTextActive,
+                styles.filterChip,
+                dateFilter === 'custom' && styles.filterChipActive,
+                styles.dateInputWrap,
               ]}
             >
-              {customDateLabel()}
-            </Text>
-          </TouchableOpacity>
-        )}
+              <Text
+                style={[
+                  styles.filterChipText,
+                  dateFilter === 'custom' && styles.filterChipTextActive,
+                ]}
+              >
+                {customDateLabel()}
+              </Text>
+              <input
+                type="date"
+                value={customDate ?? ''}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value) {
+                    setCustomDate(value);
+                    setDateFilter('custom');
+                  } else {
+                    setCustomDate(null);
+                    setDateFilter('all');
+                  }
+                }}
+                style={webDateInputStyle}
+              />
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.filterChip, dateFilter === 'custom' && styles.filterChipActive]}
+              onPress={() => setShowPicker(true)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  dateFilter === 'custom' && styles.filterChipTextActive,
+                ]}
+              >
+                {customDateLabel()}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+
+        <TouchableOpacity
+          style={[styles.filterButton, contentFilterCount > 0 && styles.filterChipActive]}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <Text style={[styles.filterButtonText, contentFilterCount > 0 && styles.filterChipTextActive]}>
+            ⚙️ Filter{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {showPicker && Platform.OS !== 'web' && (
@@ -415,49 +430,47 @@ export default function EventListScreen() {
         />
       )}
 
-      <View style={styles.filterWrap}>
-        <TouchableOpacity
-          style={[styles.filterChip, selectedCategories.length > 0 && styles.filterChipActive]}
-          onPress={() => setShowCategoryModal(true)}
-        >
-          <Text
-            style={[
-              styles.filterChipText,
-              selectedCategories.length > 0 && styles.filterChipTextActive,
-            ]}
+      {contentFilterCount > 0 && (
+        <View style={styles.activePillsWrap}>
+          {selectedCategories.map((c) => (
+            <TouchableOpacity
+              key={`cat-${c}`}
+              style={styles.activePill}
+              onPress={() => setSelectedCategories((prev) => prev.filter((v) => v !== c))}
+            >
+              <Text style={styles.activePillText}>{c} ✕</Text>
+            </TouchableOpacity>
+          ))}
+          {selectedGenres.map((g) => (
+            <TouchableOpacity
+              key={`genre-${g}`}
+              style={styles.activePill}
+              onPress={() => setSelectedGenres((prev) => prev.filter((v) => v !== g))}
+            >
+              <Text style={styles.activePillText}>{g} ✕</Text>
+            </TouchableOpacity>
+          ))}
+          {selectedLocations.map((l) => (
+            <TouchableOpacity
+              key={`loc-${l}`}
+              style={styles.activePill}
+              onPress={() => setSelectedLocations((prev) => prev.filter((v) => v !== l))}
+            >
+              <Text style={styles.activePillText}>📍 {l} ✕</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            style={styles.activePillResetAll}
+            onPress={() => {
+              setSelectedCategories([]);
+              setSelectedGenres([]);
+              setSelectedLocations([]);
+            }}
           >
-            {categoryLabel()}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterChip, selectedGenres.length > 0 && styles.filterChipActive]}
-          onPress={() => setShowGenreModal(true)}
-        >
-          <Text
-            style={[
-              styles.filterChipText,
-              selectedGenres.length > 0 && styles.filterChipTextActive,
-            ]}
-          >
-            {genreLabel()}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterChip, selectedLocations.length > 0 && styles.filterChipActive]}
-          onPress={() => setShowLocationModal(true)}
-        >
-          <Text
-            style={[
-              styles.filterChipText,
-              selectedLocations.length > 0 && styles.filterChipTextActive,
-            ]}
-          >
-            {locationLabel()}
-          </Text>
-        </TouchableOpacity>
-      </View>
+            <Text style={styles.activePillResetAllText}>Alle zurücksetzen</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </>
   );
 
@@ -503,139 +516,64 @@ export default function EventListScreen() {
         }}
       />
 
-      {/* Kategorie-Auswahl (Mehrfachauswahl) */}
+      {/* Kombiniertes Filter-Modal: Kategorie/Genre/Ort als Tabs statt drei
+          separater, gleich aussehender Buttons+Modals. */}
       <Modal
-        visible={showCategoryModal}
+        visible={showFilterModal}
         animationType="slide"
         transparent
-        onRequestClose={() => setShowCategoryModal(false)}
+        onRequestClose={() => setShowFilterModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Kategorien wählen</Text>
-              {selectedCategories.length > 0 && (
-                <TouchableOpacity onPress={() => setSelectedCategories([])}>
+              <Text style={styles.modalTitle}>Filter</Text>
+              {activeFilterTabSelected.length > 0 && (
+                <TouchableOpacity onPress={resetActiveFilterTab}>
                   <Text style={styles.modalResetLink}>Zurücksetzen</Text>
                 </TouchableOpacity>
               )}
             </View>
-            <FlatList
-              data={categories}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => {
-                const isActive = selectedCategories.includes(item);
-                return (
-                  <TouchableOpacity
-                    style={[styles.modalRow, isActive && styles.modalRowActive]}
-                    onPress={() =>
-                      setSelectedCategories((prev) => toggleInSet(prev, item))
-                    }
-                  >
-                    <Text style={[styles.modalRowText, isActive && styles.modalRowTextActive]}>
-                      {isActive ? '✓ ' : ''}
-                      {item}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              }}
-            />
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => setShowCategoryModal(false)}
-              >
-                <Text style={styles.modalCloseButtonText}>Fertig</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
-      <Modal
-        visible={showGenreModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowGenreModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Genres wählen</Text>
-              {selectedGenres.length > 0 && (
-                <TouchableOpacity onPress={() => setSelectedGenres([])}>
-                  <Text style={styles.modalResetLink}>Zurücksetzen</Text>
+            <View style={styles.filterTabRow}>
+              {(
+                [
+                  { key: 'category' as const, label: 'Kategorie', count: selectedCategories.length },
+                  { key: 'genre' as const, label: 'Genre', count: selectedGenres.length },
+                  { key: 'location' as const, label: 'Ort', count: selectedLocations.length },
+                ]
+              ).map((tab) => (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[styles.filterTab, filterTab === tab.key && styles.filterTabActive]}
+                  onPress={() => setFilterTab(tab.key)}
+                >
+                  <Text style={[styles.filterTabText, filterTab === tab.key && styles.filterTabTextActive]}>
+                    {tab.label}{tab.count > 0 ? ` (${tab.count})` : ''}
+                  </Text>
                 </TouchableOpacity>
-              )}
+              ))}
             </View>
-            <FlatList
-              data={genres}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => {
-                const isActive = selectedGenres.includes(item);
-                return (
-                  <TouchableOpacity
-                    style={[styles.modalRow, isActive && styles.modalRowActive]}
-                    onPress={() =>
-                      setSelectedGenres((prev) => toggleInSet(prev, item))
-                    }
-                  >
-                    <Text style={[styles.modalRowText, isActive && styles.modalRowTextActive]}>
-                      {isActive ? '✓ ' : ''}
-                      {item}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              }}
-            />
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => setShowGenreModal(false)}
-              >
-                <Text style={styles.modalCloseButtonText}>Fertig</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
-      {/* Orts-Auswahl (Mehrfachauswahl) */}
-      <Modal
-        visible={showLocationModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowLocationModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Orte wählen</Text>
-              {selectedLocations.length > 0 && (
-                <TouchableOpacity onPress={() => setSelectedLocations([])}>
-                  <Text style={styles.modalResetLink}>Zurücksetzen</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <TextInput
-              style={styles.search}
-              placeholder="Ort suchen..."
-              placeholderTextColor="#666"
-              value={locationSearch}
-              onChangeText={setLocationSearch}
-              autoFocus
-            />
+            {filterTab === 'location' && (
+              <TextInput
+                style={styles.search}
+                placeholder="Ort suchen..."
+                placeholderTextColor="#666"
+                value={locationSearch}
+                onChangeText={setLocationSearch}
+              />
+            )}
+
             <FlatList
-              data={filteredLocationOptions}
+              data={activeFilterTabData}
               keyExtractor={(item) => item}
               renderItem={({ item }) => {
-                const isActive = selectedLocations.includes(item);
+                const isActive = activeFilterTabSelected.includes(item);
                 return (
                   <TouchableOpacity
                     style={[styles.modalRow, isActive && styles.modalRowActive]}
-                    onPress={() =>
-                      setSelectedLocations((prev) => toggleInSet(prev, item))
-                    }
+                    onPress={() => toggleActiveFilterTab(item)}
                   >
                     <Text style={[styles.modalRowText, isActive && styles.modalRowTextActive]}>
                       {isActive ? '✓ ' : ''}
@@ -649,7 +587,7 @@ export default function EventListScreen() {
               <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={() => {
-                  setShowLocationModal(false);
+                  setShowFilterModal(false);
                   setLocationSearch('');
                 }}
               >
@@ -743,20 +681,29 @@ const styles = StyleSheet.create({
     // und das Layout muss danach manuell zurückgezoomt werden.
     fontSize: 16,
   },
-  filterWrap: {
+  controlRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 16,
+    alignItems: 'center',
+    paddingLeft: 16,
     marginBottom: 8,
   },
+  dateScroll: { flex: 1 },
+  dateScrollContent: { paddingRight: 8, alignItems: 'center' },
   filterChip: {
     backgroundColor: '#141414',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     marginRight: 8,
-    marginBottom: 8,
   },
+  filterButton: {
+    backgroundColor: '#141414',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginRight: 16,
+  },
+  filterButtonText: { color: '#999', fontSize: 13, fontWeight: '600' },
   dateInputWrap: {
     position: 'relative',
     overflow: 'hidden',
@@ -764,6 +711,43 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: '#0af' },
   filterChipText: { color: '#999', fontSize: 13, fontWeight: '600' },
   filterChipTextActive: { color: '#000' },
+  activePillsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  activePill: {
+    backgroundColor: '#0af2',
+    borderWidth: 1,
+    borderColor: '#0af',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  activePillText: { color: '#0af', fontSize: 12, fontWeight: '600' },
+  activePillResetAll: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  activePillResetAllText: { color: '#666', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
+  filterTabRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  filterTab: {
+    flex: 1,
+    backgroundColor: '#141414',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  filterTabActive: { backgroundColor: '#0af' },
+  filterTabText: { color: '#999', fontSize: 13, fontWeight: '600' },
+  filterTabTextActive: { color: '#000' },
   list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   card: {
