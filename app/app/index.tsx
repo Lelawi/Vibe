@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
 import { fuzzyMatch } from '../lib/fuzzySearch';
+import { addEventsToCalendar } from '../lib/calendar';
 
 type Event = {
   id: string;
@@ -930,6 +931,26 @@ export default function EventListScreen() {
                 ) : null
               }
             />
+            {selectedGroup && selectedGroup.length > 1 && (
+              <TouchableOpacity
+                style={styles.modalSecondaryButton}
+                onPress={() =>
+                  addEventsToCalendar(
+                    selectedGroup.map((ev) => ({
+                      id: ev.id,
+                      title: ev.title,
+                      start_date: ev.start_date,
+                      start_time: ev.start_time,
+                      location_name: ev.location_name,
+                    }))
+                  )
+                }
+              >
+                <Text style={styles.modalSecondaryButtonText}>
+                  📅 Alle {selectedGroup.length} Termine in Kalender speichern
+                </Text>
+              </TouchableOpacity>
+            )}
             <View style={styles.modalButtonRow}>
               <TouchableOpacity
                 style={styles.modalCloseButton}
@@ -1290,4 +1311,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCloseButtonText: { color: '#000', fontWeight: '700' },
+  modalSecondaryButton: {
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  modalSecondaryButtonText: { color: '#fff', fontWeight: '600', fontSize: 13 },
 });

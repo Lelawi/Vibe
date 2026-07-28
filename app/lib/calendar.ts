@@ -35,15 +35,11 @@ function escapeIcsText(text: string) {
   return text.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
 }
 
-export function buildIcsContent(event: CalendarEventInput): string {
+function buildVEventLines(event: CalendarEventInput): string[] {
   const [year, month, day] = event.start_date.split('-').map(Number);
   const location = [event.location_name, event.address].filter(Boolean).join(', ');
 
   const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Vibe//Events//DE',
-    'CALSCALE:GREGORIAN',
     'BEGIN:VEVENT',
     `UID:${event.id}@vibe-app`,
     `DTSTAMP:${formatUtcStamp(new Date())}`,
@@ -66,9 +62,34 @@ export function buildIcsContent(event: CalendarEventInput): string {
   if (location) lines.push(`LOCATION:${escapeIcsText(location)}`);
   if (event.description) lines.push(`DESCRIPTION:${escapeIcsText(event.description)}`);
   if (event.source_url) lines.push(`URL:${event.source_url}`);
-  lines.push('END:VEVENT', 'END:VCALENDAR');
+  lines.push('END:VEVENT');
 
-  return lines.join('\r\n');
+  return lines;
+}
+
+export function buildIcsContent(event: CalendarEventInput): string {
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Vibe//Events//DE',
+    'CALSCALE:GREGORIAN',
+    ...buildVEventLines(event),
+    'END:VCALENDAR',
+  ].join('\r\n');
+}
+
+// Ein VCALENDAR darf mehrere VEVENT-Blöcke enthalten (RFC 5545) — damit
+// lassen sich alle Termine einer wiederkehrenden Event-Serie in einer
+// einzigen .ics-Datei/einem Import-Schritt speichern statt einzeln.
+export function buildIcsContentMulti(events: CalendarEventInput[]): string {
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Vibe//Events//DE',
+    'CALSCALE:GREGORIAN',
+    ...events.flatMap(buildVEventLines),
+    'END:VCALENDAR',
+  ].join('\r\n');
 }
 
 // Öffnet den .ics-Inhalt so, dass Browser/OS ihn als Kalendereintrag anbieten.
@@ -77,6 +98,24 @@ export function buildIcsContent(event: CalendarEventInput): string {
 // den Fall, dass die App doch mal wieder nativ gebaut wird.
 export function addEventToCalendar(event: CalendarEventInput) {
   const ics = buildIcsContent(event);
+
+  if (Platform.OS === 'web') {
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return;
+  }
+
+  const dataUrl = `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
+  Linking.openURL(dataUrl).catch(() => {});
+}
+
+// Wie addEventToCalendar(), aber für eine ganze Event-Serie auf einmal
+// (eine .ics-Datei mit mehreren VEVENTs statt N einzelner Speichervorgänge).
+export function addEventsToCalendar(events: CalendarEventInput[]) {
+  if (events.length === 0) return;
+  const ics = buildIcsContentMulti(events);
 
   if (Platform.OS === 'web') {
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
