@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getCoordinates } from '../../core/geocode';
+import { fileURLToPath } from 'url';
 
 /**
  * Facebook Events collector (template)
@@ -85,4 +86,4 @@ export async function run() {
   }
 }
 
-if (require.main === module) run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });

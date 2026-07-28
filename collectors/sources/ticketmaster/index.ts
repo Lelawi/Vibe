@@ -111,6 +111,6 @@ export async function run() {
   }
 }
 
-if (require.main === module) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   run().then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });
 }

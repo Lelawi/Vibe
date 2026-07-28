@@ -1,8 +1,9 @@
 import fetch from 'node-fetch';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
+import { fileURLToPath } from 'url';
 
 export async function run() {
   console.log('[xing-events] placeholder — implement scraping or API access with TOS checks');
 }
 
-if (require.main === module) run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });

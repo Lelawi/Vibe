@@ -2,47 +2,47 @@
   "name": "vibe-collectors",
   "private": true,
   "type": "module",
-"scripts": {
-  "backstage": "tsx sources/backstage/index.ts",
-  "muenchenticket": "tsx sources/muenchenticket/index.ts",
-  "lostweekend": "tsx sources/lostweekend/index.ts",
-  "muenchenevent": "tsx sources/muenchenevent/index.ts",
-  "dedup": "tsx sources/dedup/index.ts"
-    ,"eventbrite": "tsx sources/eventbrite/index.ts"
-    ,"meetup": "tsx sources/meetup/index.ts"
-    ,"residentadvisor": "tsx sources/residentadvisor/index.ts"
-    ,"muenchen-de": "tsx sources/muenchen_de/index.ts"
-    ,"eventim": "tsx sources/eventim/index.ts"
-    ,"p1": "tsx sources/p1/index.ts"
-    ,"milla": "tsx sources/milla/index.ts"
-    ,"ampere": "tsx sources/ampere/index.ts"
-    ,"flohmarkt-olympiapark": "tsx sources/flohmarkt_olympiapark/index.ts"
-    ,"auer-dult": "tsx sources/auer_dult/index.ts"
-    ,"reddit": "tsx sources/reddit/index.ts"
-    ,"lmu": "tsx sources/lmu/index.ts"
-    ,"ticketmaster": "tsx sources/ticketmaster/index.ts"
-    ,"eventfrog": "tsx sources/eventfrog/index.ts"
-    ,"facebook-events": "tsx sources/facebook_events/index.ts"
-    ,"tz-az": "tsx sources/tz_az/index.ts"
-    ,"sueddeutsche": "tsx sources/sueddeutsche/index.ts"
-    ,"kulturserver": "tsx sources/kulturserver/index.ts"
-    ,"xing-events": "tsx sources/xing_events/index.ts"
-    ,"tickettailor": "tsx sources/tickettailor/index.ts"
-    ,"billetto": "tsx sources/billetto/index.ts"
-    ,"tito": "tsx sources/tito/index.ts"
-    ,"tickets-de": "tsx sources/tickets_de/index.ts"
-    ,"collect-all": "npm run backstage && npm run muenchenticket && npm run lostweekend && npm run muenchenevent && npm run eventbrite && npm run meetup && npm run residentadvisor && npm run muenchen-de && npm run eventfrog && npm run ticketmaster && npm run tickettailor && npm run billetto && npm run ticketmaster && npm run facebook-events && npm run tz-az && npm run sueddeutsche && npm run kulturserver && npm run xing-events && npm run tito && npm run tickets-de"
-    ,"collect-all": "npm run backstage && npm run muenchenticket && npm run lostweekend && npm run muenchenevent && npm run eventbrite && npm run meetup && npm run residentadvisor && npm run muenchen-de && npm run eventfrog && npm run ticketmaster && npm run tickettailor && npm run billetto && npm run ticketmaster && npm run facebook-events && npm run tz-az && npm run sueddeutsche && npm run kulturserver && npm run xing-events && npm run tito && npm run tickets-de",
+  "scripts": {
+    "backstage": "tsx sources/backstage/index.ts",
+    "muenchenticket": "tsx sources/muenchenticket/index.ts",
+    "lostweekend": "tsx sources/lostweekend/index.ts",
+    "muenchenevent": "tsx sources/muenchenevent/index.ts",
+    "dedup": "tsx sources/dedup/index.ts",
+    "eventbrite": "tsx sources/eventbrite/index.ts",
+    "meetup": "tsx sources/meetup/index.ts",
+    "residentadvisor": "tsx sources/residentadvisor/index.ts",
+    "muenchen-de": "tsx sources/muenchen_de/index.ts",
+    "eventim": "tsx sources/eventim/index.ts",
+    "p1": "tsx sources/p1/index.ts",
+    "milla": "tsx sources/milla/index.ts",
+    "ampere": "tsx sources/ampere/index.ts",
+    "flohmarkt-olympiapark": "tsx sources/flohmarkt_olympiapark/index.ts",
+    "auer-dult": "tsx sources/auer_dult/index.ts",
+    "reddit": "tsx sources/reddit/index.ts",
+    "lmu": "tsx sources/lmu/index.ts",
+    "ticketmaster": "tsx sources/ticketmaster/index.ts",
+    "eventfrog": "tsx sources/eventfrog/index.ts",
+    "facebook-events": "tsx sources/facebook_events/index.ts",
+    "tz-az": "tsx sources/tz_az/index.ts",
+    "sueddeutsche": "tsx sources/sueddeutsche/index.ts",
+    "kulturserver": "tsx sources/kulturserver/index.ts",
+    "xing-events": "tsx sources/xing_events/index.ts",
+    "tickettailor": "tsx sources/tickettailor/index.ts",
+    "billetto": "tsx sources/billetto/index.ts",
+    "tito": "tsx sources/tito/index.ts",
+    "tickets-de": "tsx sources/tickets_de/index.ts",
+    "collect-all": "npm run backstage && npm run muenchenticket && npm run lostweekend && npm run muenchenevent && npm run eventbrite && npm run meetup && npm run residentadvisor && npm run muenchen-de && npm run eventfrog && npm run ticketmaster && npm run tickettailor && npm run billetto && npm run ticketmaster && npm run facebook-events && npm run tz-az && npm run sueddeutsche && npm run kulturserver && npm run xing-events && npm run tito && npm run tickets-de",
     "collect-all:runner": "tsx collect-all.ts"
-},
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "cheerio": "^1.0.0",
+    "dotenv": "^17.4.2",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
+    "@types/node": "^20.14.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.5.0",
-    "@types/node": "^20.14.0"
+    "typescript": "^5.5.0"
   }
 }

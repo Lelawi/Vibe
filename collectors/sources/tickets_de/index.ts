@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
 
 export async function run() {
@@ -80,4 +81,4 @@ export async function run() {
   if (collected.length) { console.log('[tickets-de] upserting', collected.length); const { error } = await supabase.from('events').upsert(collected, { onConflict: 'source_id' }); if (error) console.error('[tickets-de] upsert error', error); }
 }
 
-if (require.main === module) run().then(()=>process.exit(0)).catch((e)=>{ console.error(e); process.exit(1); });
+if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(()=>process.exit(0)).catch((e)=>{ console.error(e); process.exit(1); });
