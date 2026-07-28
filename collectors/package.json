@@ -29,6 +29,7 @@
     "xing-events": "tsx sources/xing_events/index.ts",
     "import-export": "tsx sources/import_export/index.ts",
     "hofflohmarkt": "tsx sources/hofflohmarkt/index.ts",
+    "glockenbachwerkstatt": "tsx sources/glockenbachwerkstatt/index.ts",
     "tickettailor": "tsx sources/tickettailor/index.ts",
     "billetto": "tsx sources/billetto/index.ts",
     "tito": "tsx sources/tito/index.ts",

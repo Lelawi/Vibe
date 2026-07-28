@@ -15,6 +15,7 @@ import { run as runMuenchenDe } from './sources/muenchen_de/index.js';
 import { run as runAuerDult } from './sources/auer_dult/index.js';
 import { run as runFlohmarktOlympiapark } from './sources/flohmarkt_olympiapark/index.js';
 import { run as runHofflohmarkt } from './sources/hofflohmarkt/index.js';
+import { run as runGlockenbachwerkstatt } from './sources/glockenbachwerkstatt/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -53,6 +54,7 @@ const sources = [
   { name: 'auer-dult', run: runAuerDult },
   { name: 'flohmarkt-olympiapark', run: runFlohmarktOlympiapark },
   { name: 'hofflohmarkt', run: runHofflohmarkt },
+  { name: 'glockenbachwerkstatt', run: runGlockenbachwerkstatt },
 ];
 
 async function runAll() {
