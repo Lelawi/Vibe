@@ -147,6 +147,14 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'weekend', label: 'Wochenende' },
 ];
 
+const RADIUS_OPTIONS: { value: number | null; label: string }[] = [
+  { value: 1, label: '1 km' },
+  { value: 5, label: '5 km' },
+  { value: 10, label: '10 km' },
+  { value: 25, label: '25 km' },
+  { value: null, label: 'Alle' },
+];
+
 const GENRE_GROUPS: { label: string; patterns: RegExp[] }[] = [
   { label: 'Pop & Rock', patterns: [/pop/i, /rock/i, /alternative/i, /indie/i, /singer/i, /schlager/i] },
   { label: 'Electronic', patterns: [/house/i, /techno/i, /trance/i, /electro/i, /dance/i, /rave/i, /dnb/i, /drum & bass/i, /deep house/i, /tech-house/i, /dj/i] },
@@ -200,6 +208,7 @@ export default function EventListScreen() {
   const [selectedGroup, setSelectedGroup] = useState<Event[] | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
+  const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
 
   function toggleNearby() {
     if (userLocation) {
@@ -344,11 +353,16 @@ export default function EventListScreen() {
           ? distanceKm(userLocation.lat, userLocation.lng, e.latitude, e.longitude)
           : Infinity;
       groups.sort((a, b) => dist(a[0]) - dist(b[0]));
+      if (nearbyRadiusKm !== null) {
+        // Events ohne Koordinaten (dist === Infinity) fallen bei aktivem
+        // Umkreis automatisch raus, da ihre Entfernung nicht bestimmbar ist.
+        return groups.filter((g) => dist(g[0]) <= nearbyRadiusKm);
+      }
     } else {
       groups.sort((a, b) => sortKey(a[0]).localeCompare(sortKey(b[0])));
     }
     return groups;
-  }, [filteredEvents, userLocation]);
+  }, [filteredEvents, userLocation, nearbyRadiusKm]);
 
   function openCalendar() {
     const base = customDate ? new Date(customDate) : new Date();
@@ -495,6 +509,28 @@ export default function EventListScreen() {
         <Text style={styles.locationHint}>
           Standort nicht verfügbar — bitte Standortzugriff im Browser erlauben.
         </Text>
+      )}
+
+      {userLocation && (
+        <View style={styles.radiusRow}>
+          <Text style={styles.radiusLabel}>Umkreis:</Text>
+          {RADIUS_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.label}
+              style={[styles.radiusChip, nearbyRadiusKm === opt.value && styles.radiusChipActive]}
+              onPress={() => setNearbyRadiusKm(opt.value)}
+            >
+              <Text
+                style={[
+                  styles.radiusChipText,
+                  nearbyRadiusKm === opt.value && styles.radiusChipTextActive,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       )}
 
       <Modal
@@ -858,6 +894,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
   },
+  radiusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  radiusLabel: { color: '#888', fontSize: 12, marginRight: 4 },
+  radiusChip: {
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  radiusChipActive: { backgroundColor: '#0af', borderColor: '#0af' },
+  radiusChipText: { color: '#999', fontSize: 12, fontWeight: '600' },
+  radiusChipTextActive: { color: '#000' },
   calendarBackdrop: {
     flex: 1,
     backgroundColor: '#000a',
