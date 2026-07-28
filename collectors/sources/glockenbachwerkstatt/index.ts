@@ -61,6 +61,7 @@ export async function run() {
 
       const timeMatch = timeText.match(/(\d{1,2}):(\d{2})/);
       const start_time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
+      const price_info = el$.find('.eventtime.price').first().text().trim() || null;
 
       collected.push({
         source_id: `glockenbachwerkstatt-${href.split('/').filter(Boolean).pop()}`,
@@ -76,6 +77,8 @@ export async function run() {
         organizer: 'Glockenbachwerkstatt',
         source_url: new URL(href, GLOCKENBACH_URL).toString(),
         image_url: null,
+        price_info,
+        sold_out: null,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
       });

@@ -80,6 +80,8 @@ export async function run() {
           organizer: ev.organizer,
           source_url: urlEvent,
           image_url: ev.image,
+          price_info: ev.priceInfo,
+          sold_out: ev.soldOut,
           latitude: coords?.latitude ?? null,
           longitude: coords?.longitude ?? null,
         });

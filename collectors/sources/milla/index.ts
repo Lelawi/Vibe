@@ -54,6 +54,12 @@ export async function run() {
       const timeMatch = content.match(/Beginn\s*(\d{1,2})[:.](\d{2})/i) ?? content.match(/Einlass\s*(\d{1,2})[:.](\d{2})/i);
       const start_time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
 
+      // Preisangaben stehen als Freitext wie "VVK 20 € zzgl. Gebühren // AK 25 €"
+      // im Post, meist mit HTML-Tags durchsetzt (<strong>, <br> etc.).
+      const plainText = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      const priceMatch = plainText.match(/(VVK|AK|Eintritt)[^~]{0,80}/i);
+      const price_info = priceMatch ? priceMatch[0].trim() : null;
+
       collected.push({
         source_id: `milla-${Buffer.from(link).toString('base64').slice(0, 20)}`,
         title,
@@ -68,6 +74,8 @@ export async function run() {
         organizer: 'Milla Club',
         source_url: link,
         image_url: null,
+        price_info,
+        sold_out: null,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
       });

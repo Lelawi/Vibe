@@ -78,6 +78,10 @@ export async function run() {
             location_name = location_name ?? 'München';
             const coords = await getCoordinates(supabase, location_name, address, 'München');
 
+            const offer = Array.isArray(ev.offers) ? ev.offers[0] : ev.offers;
+            const price_info = offer?.price ? `${offer.price} ${offer.priceCurrency ?? 'EUR'}` : null;
+            const sold_out = typeof offer?.availability === 'string' ? offer.availability.includes('SoldOut') : null;
+
             collected.push({
               source_id: sourceId,
               title: name ?? 'Unbenannt',
@@ -92,6 +96,8 @@ export async function run() {
               organizer: ev.organizer?.name ?? null,
               source_url: ev.url ?? url,
               image_url: Array.isArray(ev.image) ? ev.image[0] : ev.image ?? null,
+              price_info,
+              sold_out,
               latitude: coords?.latitude ?? null,
               longitude: coords?.longitude ?? null,
             });

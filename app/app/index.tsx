@@ -45,6 +45,8 @@ type Event = {
   description: string | null;
   source_url: string | null;
   image_url: string | null;
+  price_info: string | null;
+  sold_out: boolean | null;
   start_date: string;
   start_time: string | null;
   location_name: string | null;
@@ -165,7 +167,7 @@ export default function EventListScreen() {
 
       const { data, error } = await supabase
         .from('events')
-        .select('id, title, category, subcategory, organizer, address, description, source_url, image_url, start_date, start_time, location_name')
+        .select('id, title, category, subcategory, organizer, address, description, source_url, image_url, price_info, sold_out, start_date, start_time, location_name')
         .gte('start_date', today)
         .is('duplicate_of', null)
         .order('start_date', { ascending: true })
@@ -502,6 +504,7 @@ export default function EventListScreen() {
                   {hasMore && (
                     <Text style={styles.seriesBadge}>🔁 {group.length} Termine</Text>
                   )}
+                  {item.sold_out === true && <Text style={styles.soldOutBadge}>Ausverkauft</Text>}
                 </View>
                 <Text style={styles.title}>{item.title}</Text>
                 <Text style={styles.meta}>
@@ -510,6 +513,7 @@ export default function EventListScreen() {
                   {item.location_name ? ` · ${item.location_name}` : ''}
                 </Text>
                 {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
+                {item.price_info ? <Text style={styles.priceMeta}>{item.price_info}</Text> : null}
               </View>
             </TouchableOpacity>
           );
@@ -790,6 +794,16 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 4 },
   meta: { fontSize: 13, color: '#888' },
   subMeta: { fontSize: 12, color: '#666', marginTop: 2 },
+  priceMeta: { fontSize: 12, color: '#7cd992', marginTop: 4, fontWeight: '600' },
+  soldOutBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ff6b6b',
+    backgroundColor: '#ff6b6b22',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',

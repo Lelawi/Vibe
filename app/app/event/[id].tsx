@@ -28,6 +28,8 @@ type EventDetail = {
   organizer: string | null;
   source_url: string | null;
   image_url: string | null;
+  price_info: string | null;
+  sold_out: boolean | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -57,7 +59,7 @@ export default function EventDetailScreen() {
       const { data, error } = await supabase
         .from('events')
         .select(
-          'id, title, description, category, subcategory, start_date, start_time, location_name, address, organizer, source_url, image_url, latitude, longitude'
+          'id, title, description, category, subcategory, start_date, start_time, location_name, address, organizer, source_url, image_url, price_info, sold_out, latitude, longitude'
         )
         .eq('id', id)
         .single();
@@ -133,6 +135,16 @@ export default function EventDetailScreen() {
               {formatDate(event.start_date, event.start_time)}
             </Text>
           </View>
+
+          {(event.price_info || event.sold_out !== null) && (
+            <View style={styles.infoBlock}>
+              <Text style={styles.infoLabel}>Preis</Text>
+              <Text style={styles.infoValue}>
+                {event.price_info ?? 'Keine Preisinfo verfügbar'}
+                {event.sold_out === true ? '  🔴 Ausverkauft' : ''}
+              </Text>
+            </View>
+          )}
 
           {event.location_name && (
             <TouchableOpacity

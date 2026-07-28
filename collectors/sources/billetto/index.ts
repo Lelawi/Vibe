@@ -42,7 +42,7 @@ export async function run() {
         const locationName = ev.locationName ?? 'München';
         const coords = await getCoordinates(supabase, locationName, ev.address, 'München');
 
-        collected.push({ source_id: sourceId, title: ev.name ?? 'Unbenannt', description: ev.description, category: 'Sonstiges', subcategory: null, start_date, start_time, location_name: locationName, address: ev.address, city: 'München', organizer: ev.organizer, source_url: eventUrl, image_url: ev.image, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null });
+        collected.push({ source_id: sourceId, title: ev.name ?? 'Unbenannt', description: ev.description, category: 'Sonstiges', subcategory: null, start_date, start_time, location_name: locationName, address: ev.address, city: 'München', organizer: ev.organizer, source_url: eventUrl, image_url: ev.image, price_info: ev.priceInfo, sold_out: ev.soldOut, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null });
       }
 
       await new Promise(r=>setTimeout(r,600));

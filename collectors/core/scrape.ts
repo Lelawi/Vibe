@@ -12,12 +12,38 @@ export interface ParsedEvent {
   locationName: string | null;
   address: string | null;
   organizer: string | null;
+  priceInfo: string | null;
+  soldOut: boolean | null;
 }
 
 function addressToString(a: any): string | null {
   if (!a) return null;
   if (typeof a === 'string') return a;
   return [a.streetAddress, a.addressLocality, a.addressRegion, a.postalCode].filter(Boolean).join(', ') || null;
+}
+
+// schema.org Event.offers ist ein einzelnes Offer-Objekt oder ein Array davon.
+// Baut daraus einen Freitext-Preis ("12 EUR", "ab 12 EUR" bei mehreren Preisen)
+// und liest availability fÃ¼r den Ausverkauft-Status aus.
+function offersToPriceInfo(offers: any): { priceInfo: string | null; soldOut: boolean | null } {
+  if (!offers) return { priceInfo: null, soldOut: null };
+  const list = Array.isArray(offers) ? offers : [offers];
+  const prices = list
+    .map((o) => (o?.price !== undefined && o?.price !== null && o?.price !== '' ? `${o.price} ${o.priceCurrency ?? 'EUR'}` : null))
+    .filter((p): p is string => Boolean(p));
+
+  let priceInfo: string | null = null;
+  if (prices.length === 1) priceInfo = prices[0];
+  else if (prices.length > 1) priceInfo = `ab ${prices.sort()[0]}`;
+
+  const availability: string | undefined = list[0]?.availability;
+  let soldOut: boolean | null = null;
+  if (typeof availability === 'string') {
+    if (availability.includes('SoldOut')) soldOut = true;
+    else if (availability.includes('InStock') || availability.includes('InStoreOnly') || availability.includes('LimitedAvailability')) soldOut = false;
+  }
+
+  return { priceInfo, soldOut };
 }
 
 function nodeToEvent(node: any): ParsedEvent | null {
@@ -29,6 +55,7 @@ function nodeToEvent(node: any): ParsedEvent | null {
     locationName = typeof location === 'string' ? location : location.name ?? null;
     address = addressToString(location.address);
   }
+  const { priceInfo, soldOut } = offersToPriceInfo(node.offers);
   return {
     name: node.name ?? null,
     startDate: node.startDate ?? null,
@@ -38,6 +65,8 @@ function nodeToEvent(node: any): ParsedEvent | null {
     locationName,
     address,
     organizer: node.organizer?.name ?? null,
+    priceInfo,
+    soldOut,
   };
 }
 
@@ -149,6 +178,8 @@ export function extractDatedLinks($: CheerioAPI, baseUrl: string, cityHint = 'MÃ
       locationName,
       address: null,
       organizer: null,
+      priceInfo: null,
+      soldOut: null,
     });
   });
 
@@ -192,6 +223,8 @@ export function extractInMuenchenTeasers($: CheerioAPI, baseUrl: string): Parsed
       locationName,
       address: null,
       organizer: null,
+      priceInfo: null,
+      soldOut: null,
     });
   });
 
