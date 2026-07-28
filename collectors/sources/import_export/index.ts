@@ -1,11 +1,10 @@
-import https from 'https';
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
 
-const IMPORT_EXPORT_URL = 'http://import-export.cc/';
+const IMPORT_EXPORT_URL = 'https://import-export.cc/';
 const EVENT_LINK_SELECTOR = '.event.event-link.item > a.content';
 const USER_AGENT = 'VibeApp-Collector/1.0';
 
@@ -19,10 +18,9 @@ export async function run() {
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
-  const agent = new https.Agent({ rejectUnauthorized: false });
 
   try {
-    const res = await fetch(IMPORT_EXPORT_URL, { headers: { 'User-Agent': USER_AGENT }, agent });
+    const res = await fetch(IMPORT_EXPORT_URL, { headers: { 'User-Agent': USER_AGENT } });
     if (!res.ok) {
       console.error('[import-export] homepage fetch failed', res.status);
       return;
@@ -41,7 +39,8 @@ export async function run() {
 
       if (!href || !title) return;
 
-      const sourceId = `import-export-${href.split('/').filter(Boolean).pop()}`;
+      const sourceUrl = href.startsWith('http') ? href : new URL(href, IMPORT_EXPORT_URL).toString();
+      const sourceId = `import-export-${new URL(sourceUrl).pathname.split('/').filter(Boolean).pop()}`;
       const [weekday, ...dateParts] = dateText.split('.').map((part) => part.trim()).filter(Boolean);
       let start_date = null;
       let start_time = null;
@@ -71,7 +70,7 @@ export async function run() {
         address: 'Oberanger 30, 80331 München',
         city: 'München',
         organizer: 'Import Export München',
-        source_url: href,
+        source_url: sourceUrl,
         image_url: img,
         latitude: null,
         longitude: null,

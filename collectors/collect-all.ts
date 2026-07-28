@@ -6,10 +6,6 @@ import { run as runBackstage } from './sources/backstage/index.js';
 import { run as runMuenchenticket } from './sources/muenchenticket/index.js';
 import { run as runLostweekend } from './sources/lostweekend/index.js';
 import { run as runMuenchenevent } from './sources/muenchenevent/index.js';
-import { run as runEventbrite } from './sources/eventbrite/index.js';
-import { run as runMeetup } from './sources/meetup/index.js';
-import { run as runResidentadvisor } from './sources/residentadvisor/index.js';
-import { run as runMuenchenDe } from './sources/muenchen_de/index.js';
 import { run as runEventfrog } from './sources/eventfrog/index.js';
 import { run as runTicketmaster } from './sources/ticketmaster/index.js';
 import { run as runTickettailor } from './sources/tickettailor/index.js';
@@ -18,7 +14,6 @@ import { run as runFacebookEvents } from './sources/facebook_events/index.js';
 import { run as runTzAz } from './sources/tz_az/index.js';
 import { run as runSueddeutsche } from './sources/sueddeutsche/index.js';
 import { run as runKulturserver } from './sources/kulturserver/index.js';
-import { run as runXingEvents } from './sources/xing_events/index.js';
 import { run as runImportExport } from './sources/import_export/index.js';
 import { run as runTito } from './sources/tito/index.js';
 import { run as runTicketsDe } from './sources/tickets_de/index.js';
@@ -30,10 +25,6 @@ const sources = [
   { name: 'muenchenticket', run: runMuenchenticket },
   { name: 'lostweekend', run: runLostweekend },
   { name: 'muenchenevent', run: runMuenchenevent },
-  { name: 'eventbrite', run: runEventbrite },
-  { name: 'meetup', run: runMeetup },
-  { name: 'residentadvisor', run: runResidentadvisor },
-  { name: 'muenchen-de', run: runMuenchenDe },
   { name: 'eventfrog', run: runEventfrog },
   { name: 'ticketmaster', run: runTicketmaster },
   { name: 'tickettailor', run: runTickettailor },
@@ -42,7 +33,6 @@ const sources = [
   { name: 'tz-az', run: runTzAz },
   { name: 'sueddeutsche', run: runSueddeutsche },
   { name: 'kulturserver', run: runKulturserver },
-  { name: 'xing-events', run: runXingEvents },
   { name: 'import-export', run: runImportExport },
   { name: 'tito', run: runTito },
   { name: 'tickets-de', run: runTicketsDe },
