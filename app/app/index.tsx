@@ -442,6 +442,7 @@ export default function EventListScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={[styles.stickyControls, Platform.OS === 'web' && styles.stickyControlsWeb]}>
       <TextInput
         style={styles.search}
         placeholder="Event, Ort, Genre oder Datum suchen..."
@@ -657,6 +658,7 @@ export default function EventListScreen() {
           </TouchableOpacity>
         </View>
       )}
+      </View>
     </>
   );
 
@@ -860,6 +862,20 @@ const styles = StyleSheet.create({
   },
   header: { fontSize: 28, fontWeight: '800', color: '#fff' },
   subheader: { fontSize: 14, color: '#999' },
+  stickyControls: { paddingTop: 12 },
+  // position:"sticky" reicht auf Web als reines CSS aus (React Native Web
+  // gibt das 1:1 durch) — bleibt beim Scrollen der Liste am oberen Rand
+  // hängen, ohne wie ein position:"fixed"-Sibling mit der iOS-Tastatur zu
+  // kollidieren (siehe Kommentar zum ListHeaderComponent weiter oben), weil
+  // es Teil des normalen Scroll-Flows der Liste bleibt statt eigenständig
+  // positioniert zu sein. Nativ absichtlich nicht aktiviert (dort weniger
+  // zuverlässig unterstützt und PWA/Web ist der primäre Vertriebsweg).
+  stickyControlsWeb: {
+    position: 'sticky' as any,
+    top: 0,
+    zIndex: 20,
+    backgroundColor: '#000',
+  },
   mapButton: {
     backgroundColor: '#141414',
     borderRadius: 20,
