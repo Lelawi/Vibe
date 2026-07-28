@@ -84,12 +84,11 @@ export default function EventDetailScreen() {
 
   const hasCoords = event.latitude !== null && event.longitude !== null;
 
-  function openInGoogleMaps() {
-    if (!hasCoords) return;
-    const query = `${event!.latitude},${event!.longitude}(${encodeURIComponent(event!.location_name ?? '')})`;
-    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-    Linking.openURL(url);
-  }
+function openInGoogleMaps() {
+  if (!hasCoords) return;
+  const url = `https://www.google.com/maps/search/?api=1&query=${event!.latitude},${event!.longitude}`;
+  Linking.openURL(url);
+}
 
   return (
     <SafeAreaView style={styles.container}>

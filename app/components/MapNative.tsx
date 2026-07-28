@@ -25,10 +25,8 @@ function venueTitle(names: string[]) {
   return `${names[0]} + ${names.length - 1} weitere`;
 }
 
-function openInGoogleMaps(lat: number, lng: number, label: string) {
-  const query = `${lat},${lng}(${encodeURIComponent(label)})`;
-  const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-  console.log('Google Maps URL:', url);
+function openInGoogleMaps(lat: number, lng: number) {
+  const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
   Linking.openURL(url);
 }
 
@@ -137,7 +135,7 @@ export default function MapNative() {
                 </View>
               </CalloutSubview>
               <CalloutSubview
-                onPress={() => openInGoogleMaps(v.latitude, v.longitude, v.names[0])}
+                onPress={() => openInGoogleMaps(v.latitude, v.longitude)}
               >
                 <View style={styles.calloutMapsButton}>
                   <Text style={styles.calloutMapsButtonText}>In Google Maps öffnen</Text>
