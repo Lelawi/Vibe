@@ -1,14 +1,12 @@
-import { Platform, StyleSheet, View, Text, SafeAreaView } from 'react-native';
+import { Platform, StyleSheet, Text, SafeAreaView } from 'react-native';
 
-// react-native-maps wird nur bei Bedarf geladen (nicht im Browser),
-// damit der Web-Bundler das native Paket erst gar nicht anfasst
-let NativeMapScreen: React.ComponentType | null = null;
+let MapNative: React.ComponentType | null = null;
 if (Platform.OS !== 'web') {
-  NativeMapScreen = require('./_map.native').default;
+  MapNative = require('../components/MapNative').default;
 }
 
 export default function MapScreen() {
-  if (Platform.OS === 'web' || !NativeMapScreen) {
+  if (Platform.OS === 'web' || !MapNative) {
     return (
       <SafeAreaView style={styles.container}>
         <Text style={styles.title}>Kartenansicht</Text>
@@ -20,7 +18,7 @@ export default function MapScreen() {
     );
   }
 
-  return <NativeMapScreen />;
+  return <MapNative />;
 }
 
 const styles = StyleSheet.create({

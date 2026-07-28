@@ -25,7 +25,7 @@ function venueTitle(names: string[]) {
   return `${names[0]} + ${names.length - 1} weitere`;
 }
 
-export default function NativeMapScreen() {
+export default function MapNative() {
   const router = useRouter();
   const params = useLocalSearchParams<{ lat?: string; lng?: string }>();
   const [events, setEvents] = useState<RawEvent[]>([]);
