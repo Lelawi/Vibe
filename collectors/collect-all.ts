@@ -6,8 +6,6 @@ import { run as runBackstage } from './sources/backstage/index.js';
 import { run as runMuenchenticket } from './sources/muenchenticket/index.js';
 import { run as runLostweekend } from './sources/lostweekend/index.js';
 import { run as runMuenchenevent } from './sources/muenchenevent/index.js';
-import { run as runEventfrog } from './sources/eventfrog/index.js';
-import { run as runBilletto } from './sources/billetto/index.js';
 import { run as runImportExport } from './sources/import_export/index.js';
 import { run as runMilla } from './sources/milla/index.js';
 import { run as runP1 } from './sources/p1/index.js';
@@ -33,20 +31,32 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // - tickettailor, tito: keine plattformweite München-Suche vorhanden (nur pro
 //   Veranstalter eigene Seiten) — ohne kuratierte Liste bekannter Accounts
 //   liefern sie strukturell nie Events, daher ganz entfernt statt nur zu skippen
+// - eventfrog: eventfrog.de rendert die Event-Liste über eine <efrg-event-search>
+//   Web-Component (Angular/Stencil) — im Server-HTML steht kein einziges Datum,
+//   die Karten entstehen komplett client-seitig per JS. Wie ampere/lmu: mit
+//   fetch+cheerio strukturell nie erreichbar, kein Konfigurationsfehler.
+// - billetto: das <script type="application/ld+json"> auf billetto.eu ist nur
+//   eine Alpine.js-Vorlage (x-text="event.schema") — der eigentliche JSON-Inhalt
+//   wird erst im Browser per JS eingesetzt, im rohen Server-HTML ist das
+//   Script-Tag leer. Gleiches Problem wie eventfrog, daher ebenfalls entfernt.
 //
-// Hinweis zu milla: node-fetch aus GitHub Actions bekam vorher 403, ein
-// identischer Request vom normalen Nutzer-Netz aus (PowerShell) hat aber
-// funktioniert — vermutlich blockt milla-club.de bekannte Cloud-/Rechenzentrums-
-// IP-Bereiche. Wieder aktiviert (jetzt über den RSS-Feed statt HTML-Scraping,
-// robuster); falls der GH-Actions-Lauf erneut 403 zeigt, war die Vermutung
-// bestätigt und milla müsste wieder raus oder über einen Proxy laufen.
+// Hinweis zu milla/p1/muenchen-de/glockenbachwerkstatt: Stand 2026-07 liefern
+// alle vier in der Produktion (GitHub Actions) 0 Events, obwohl direkte Abrufe
+// derselben URLs von einem normalen Nutzer-Netz aus einwandfreie, zum Code
+// passende Markup/Daten zurückgeben (echte Events, korrektes Datumsformat) —
+// der Code ist also nicht das Problem. Wahrscheinlichste Ursache: GitHub
+// Actions' Cloud-IP-Bereiche werden von diesen Seiten geblockt oder gedrosselt
+// (bei milla bereits einmal als 403 beobachtet, siehe Commit-Historie;
+// glockenbachwerkstatt.de war bei einem Testabruf zudem ungewöhnlich langsam
+// und lief in ein 30s-Timeout, bevor ein zweiter Versuch klappte). Lässt sich
+// ohne Zugriff auf die tatsächlichen GH-Actions-Logs nicht abschließend
+// bestätigen — nächster Schritt wäre, den Workflow-Log nach einem Lauf direkt
+// zu prüfen.
 const sources = [
   { name: 'backstage', run: runBackstage },
   { name: 'muenchenticket', run: runMuenchenticket },
   { name: 'lostweekend', run: runLostweekend },
   { name: 'muenchenevent', run: runMuenchenevent },
-  { name: 'eventfrog', run: runEventfrog },
-  { name: 'billetto', run: runBilletto },
   { name: 'import-export', run: runImportExport },
   { name: 'milla', run: runMilla },
   { name: 'p1', run: runP1 },

@@ -5,21 +5,22 @@ import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
 
 // Hofflohmärkte München: an wechselnden Terminen öffnen alle Höfe eines
-// Stadtviertels gleichzeitig für einen Flohmarkt. Bundesweiter Veranstalter
-// (hofflohmaerkte.de) veröffentlicht die Münchner Termine als Fließtext
-// (Datum · Viertel (Uhrzeit)), kein strukturiertes Markup — daher Text-Parsing
-// statt CSS-Selektoren, ähnlich wie bei auer_dult.
+// Stadtviertels gleichzeitig für einen Flohmarkt. Die Seite ist mittlerweile
+// (Stand 2026-07, war vorher reiner Fließtext) ein Shopify-Produkt zur
+// Hof-Anmeldung — die Termine selbst stecken strukturiert als JSON in einem
+// <script type="application/json">-Tag (Produktvarianten), z.B.
+// {"title":"Dachau Udldinger Weiher · So. 14.06.26 · 11 - 16 Uhr", ...}.
+// Das ist robuster als der alte Fließtext-Regex und bleibt der öffentlich
+// relevante Termin, auch wenn die Seite sich an Standbetreiber statt Besucher
+// richtet.
 const HOFFLOHMARKT_URL = 'https://www.hofflohmaerkte.de/pages/hofflohmarkte-munchen';
 
-const GERMAN_MONTHS: Record<string, number> = {
-  januar: 1, februar: 2, märz: 3, april: 4, mai: 5, juni: 6, juli: 7,
-  august: 8, september: 9, oktober: 10, november: 11, dezember: 12,
-};
-
-// Matched z.B. "31. Juli · Kieferngarten (17-22 Uhr)" oder "12. September ·
-// Ramersdorf (10-16 Uhr)" — Datum, Viertelname, Startzeit.
-const ENTRY_PATTERN =
-  /(\d{1,2})\.\s*(Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s*[·:\-–]?\s*([A-ZÄÖÜ][\wäöüßÄÖÜ&.\- ]{2,40}?)\s*\((\d{1,2})(?::\d{2})?\s*[-–]\s*\d{1,2}(?::\d{2})?\s*Uhr\)/g;
+// Matched z.B. "Dachau Udldinger Weiher · So. 14.06.26 · 11 - 16 Uhr" oder
+// "Kleinhadern & Blumenau · Sa. 23.05.2026 · 10 - 16 Uhr" (Titel eines
+// Shopify-Produktvarianten-Eintrags, Jahr auf der Seite uneinheitlich 2- oder
+// 4-stellig) — Viertel, Datum, Startzeit.
+const TITLE_PATTERN =
+  /^(.+?)\s*·\s*[A-Za-zÄÖÜäöü]{2}\.\s*(\d{2})\.(\d{2})\.(\d{2}|\d{4})\s*·\s*(\d{1,2})(?::(\d{2}))?\s*-\s*\d{1,2}(?::\d{2})?\s*Uhr/;
 
 export async function run() {
   console.log('[hofflohmarkt] starting');
@@ -43,51 +44,67 @@ export async function run() {
     if (!res.ok) { console.warn('[hofflohmarkt] fetch failed', res.status); return; }
     const html = await res.text();
     const $ = cheerio.load(html);
-    const text = $('body').text().replace(/\s+/g, ' ');
 
-    const now = new Date();
     const seen = new Set<string>();
 
-    for (const match of text.matchAll(ENTRY_PATTERN)) {
-      const [, dayStr, monthName, districtRaw, hourStr] = match;
-      const day = parseInt(dayStr, 10);
-      const month = GERMAN_MONTHS[monthName.toLowerCase()];
-      const district = districtRaw.trim();
-      if (!district || district.length < 3) continue;
+    const scripts = $('script[type="application/json"]')
+      .toArray()
+      .map((el) => $(el).html())
+      .filter(Boolean) as string[];
 
-      let year = now.getFullYear();
-      let candidate = new Date(year, month - 1, day);
-      if (candidate < now) {
-        year += 1;
-        candidate = new Date(year, month - 1, day);
+    for (const raw of scripts) {
+      let data: unknown;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        continue; // andere application/json-Blöcke auf der Seite ignorieren
       }
-      const start_date = candidate.toISOString().slice(0, 10);
-      if (start_date < today) continue;
+      if (!Array.isArray(data)) continue;
 
-      const dedupeKey = `${district}-${start_date}`;
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
+      for (const entry of data) {
+        const title = (entry as { title?: unknown })?.title;
+        if (typeof title !== 'string') continue;
 
-      const locationName = `Hofflohmarkt ${district}`;
-      const coords = await getCoordinates(supabase, `${district}, München`, null, 'München');
+        const m = title.match(TITLE_PATTERN);
+        if (!m) continue;
+        const [, districtRaw, dayStr, monthStr, yearStr, hourStr, minStr] = m;
+        const district = districtRaw.trim();
+        if (!district) continue;
 
-      collected.push({
-        source_id: `hofflohmarkt-${district.toLowerCase().replace(/[^a-zäöüß0-9]+/g, '-')}-${start_date}`,
-        title: locationName,
-        description: `Nachbarschafts-Flohmarkt im Viertel ${district} — Details/Tourplan auf ${HOFFLOHMARKT_URL}`,
-        category: 'Märkte',
-        subcategory: 'Hofflohmarkt',
-        start_date,
-        start_time: `${hourStr.padStart(2, '0')}:00`,
-        location_name: locationName,
-        address: null,
-        city: 'München',
-        organizer: 'hofflohmaerkte.de',
-        source_url: HOFFLOHMARKT_URL,
-        image_url: null,
-        latitude: coords?.latitude ?? null,
-        longitude: coords?.longitude ?? null,
-      });
+        const day = parseInt(dayStr, 10);
+        const month = parseInt(monthStr, 10);
+        const year = yearStr.length === 2 ? 2000 + parseInt(yearStr, 10) : parseInt(yearStr, 10);
+        const candidate = new Date(year, month - 1, day);
+        if (isNaN(candidate.getTime())) continue;
+        const start_date = candidate.toISOString().slice(0, 10);
+        if (start_date < today) continue;
+
+        const dedupeKey = `${district}-${start_date}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+
+        const start_time = `${hourStr.padStart(2, '0')}:${minStr ?? '00'}`;
+        const locationName = `Hofflohmarkt ${district}`;
+        const coords = await getCoordinates(supabase, `${district}, München`, null, 'München');
+
+        collected.push({
+          source_id: `hofflohmarkt-${district.toLowerCase().replace(/[^a-zäöüß0-9]+/g, '-')}-${start_date}`,
+          title: locationName,
+          description: `Nachbarschafts-Flohmarkt im Viertel ${district} — Details/Tourplan auf ${HOFFLOHMARKT_URL}`,
+          category: 'Märkte',
+          subcategory: 'Hofflohmarkt',
+          start_date,
+          start_time,
+          location_name: locationName,
+          address: null,
+          city: 'München',
+          organizer: 'hofflohmaerkte.de',
+          source_url: HOFFLOHMARKT_URL,
+          image_url: null,
+          latitude: coords?.latitude ?? null,
+          longitude: coords?.longitude ?? null,
+        });
+      }
     }
   } catch (err) {
     console.warn('[hofflohmarkt] error', err);

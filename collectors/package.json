@@ -13,11 +13,9 @@
     "milla": "tsx sources/milla/index.ts",
     "flohmarkt-olympiapark": "tsx sources/flohmarkt_olympiapark/index.ts",
     "auer-dult": "tsx sources/auer_dult/index.ts",
-    "eventfrog": "tsx sources/eventfrog/index.ts",
     "import-export": "tsx sources/import_export/index.ts",
     "hofflohmarkt": "tsx sources/hofflohmarkt/index.ts",
     "glockenbachwerkstatt": "tsx sources/glockenbachwerkstatt/index.ts",
-    "billetto": "tsx sources/billetto/index.ts",
     "collect-all": "npm run collect-all:runner",
     "collect-all:runner": "tsx collect-all.ts"
   },
