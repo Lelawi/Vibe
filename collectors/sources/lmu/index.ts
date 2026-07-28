@@ -1,3 +1,7 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: der Kalender lädt seine
+// Einträge per JavaScript/API nach — im Server-HTML steht keine einzige
+// Veranstaltung (verifiziert 2026-07). Bräuchte einen Headless-Browser
+// (Playwright/Puppeteer) statt fetch+cheerio, oder eine direkte API/ICS-Quelle.
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';

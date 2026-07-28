@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents } from '../../core/scrape';
+import { extractJsonLdEvents, extractDatedLinks, parseAbbrevEnglishDate, parseGermanDate } from '../../core/scrape';
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { fileURLToPath } from 'url';
@@ -36,7 +36,12 @@ export async function run() {
       const html = await res.text();
       const $ = cheerio.load(html);
 
+      // eventfrog.de rendert die Karten serverseitig ohne JSON-LD; als Fallback
+      // werden Links mit erkennbarem Datum im Linktext ausgewertet (Format
+      // z.B. "Jul 28" statt deutschem Datum).
       const events = extractJsonLdEvents($);
+      if (!events.length) events.push(...extractDatedLinks($, url));
+
       for (const ev of events) {
         let start_date = null;
         let start_time = null;
@@ -45,8 +50,11 @@ export async function run() {
           if (!isNaN(d.getTime())) {
             start_date = d.toISOString().slice(0, 10);
             start_time = d.toISOString().slice(11, 16);
+          } else {
+            start_date = parseAbbrevEnglishDate(ev.startDate) ?? parseGermanDate(ev.startDate);
           }
         }
+        if (!ev.name || !start_date) continue;
 
         const urlEvent = ev.url ?? url;
         const sourceId = `eventfrog-${Buffer.from(String(urlEvent)).toString('base64').slice(0, 20)}`;

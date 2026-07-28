@@ -1,3 +1,6 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: tz.de/muenchen/veranstaltungen
+// antwortet mit 404 (verifiziert 2026-07) — keine funktionierende Nachfolge-URL
+// für einen echten Veranstaltungskalender auf tz.de gefunden.
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';

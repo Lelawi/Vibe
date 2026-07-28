@@ -5,8 +5,11 @@ import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
 import { extractJsonLdEvents, parseGermanDate } from '../../core/scrape';
 
-// Der Ampere ist der kleinere Club-Saal im Muffatwerk und hat keine eigene
-// Domain — das Programm läuft über muffatwerk.de.
+// NICHT in collect-all.ts / im Workflow eingebunden: muffatwerk.de/de/pages/ampere
+// lädt das Programm per JavaScript nach — im Server-HTML steht keine einzige
+// Veranstaltung (verifiziert 2026-07). Bräuchte einen Headless-Browser statt
+// fetch+cheerio. Der Ampere ist der kleinere Club-Saal im Muffatwerk und hat
+// keine eigene Domain — das Programm läuft über muffatwerk.de.
 const AMPERE_URL = 'https://www.muffatwerk.de/de/pages/ampere';
 const AMPERE_ADDRESS = 'Zellstraße 4, 81667 München';
 

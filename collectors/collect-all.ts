@@ -9,11 +9,8 @@ import { run as runMuenchenevent } from './sources/muenchenevent/index.js';
 import { run as runEventfrog } from './sources/eventfrog/index.js';
 import { run as runTickettailor } from './sources/tickettailor/index.js';
 import { run as runBilletto } from './sources/billetto/index.js';
-import { run as runTzAz } from './sources/tz_az/index.js';
 import { run as runImportExport } from './sources/import_export/index.js';
 import { run as runTito } from './sources/tito/index.js';
-import { run as runLmu } from './sources/lmu/index.js';
-import { run as runAmpere } from './sources/ampere/index.js';
 import { run as runMilla } from './sources/milla/index.js';
 import { run as runP1 } from './sources/p1/index.js';
 import { run as runMuenchenDe } from './sources/muenchen_de/index.js';
@@ -28,6 +25,10 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // - residentadvisor, eventim: keine freie API, starker Bot-Schutz (Cloudflare/SPA)
 // - reddit: keine strukturierten Eventdaten, ungeeignet als Quelle
 // - kulturserver, tickets_de, sueddeutsche: keine echte/erreichbare München-Quelle
+// - tz_az: tz.de/muenchen/veranstaltungen antwortet mit 404, keine funktionierende
+//   Nachfolge-URL gefunden (Stand 2026-07)
+// - lmu, ampere: Programm wird per JavaScript nachgeladen, im Server-HTML steht
+//   nichts — bräuchte einen Headless-Browser (Playwright/Puppeteer), nicht nur fetch+cheerio
 // - xing_events: reiner Platzhalter, nie implementiert
 const sources = [
   { name: 'backstage', run: runBackstage },
@@ -37,11 +38,8 @@ const sources = [
   { name: 'eventfrog', run: runEventfrog },
   { name: 'tickettailor', run: runTickettailor },
   { name: 'billetto', run: runBilletto },
-  { name: 'tz-az', run: runTzAz },
   { name: 'import-export', run: runImportExport },
   { name: 'tito', run: runTito },
-  { name: 'lmu', run: runLmu },
-  { name: 'ampere', run: runAmpere },
   { name: 'milla', run: runMilla },
   { name: 'p1', run: runP1 },
   { name: 'muenchen-de', run: runMuenchenDe },

@@ -3,12 +3,13 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, parseGermanDate } from '../../core/scrape';
+import { extractJsonLdEvents, extractDatedLinks, parseGermanDate } from '../../core/scrape';
 
 // P1 selbst betreibt keine öffentliche Event-Seite (nur Corporate-Events-Seite
-// ohne Programm) — die einzige strukturierte, frei zugängliche Quelle für das
-// Clubprogramm ist die venue-spezifische Seite auf muenchen.de.
-const P1_URL = 'https://www.muenchen.de/veranstaltungen/discos-und-clubs/p1-club';
+// ohne Programm), und die muenchen.de-Venue-Seite zeigt "0 Veranstaltungen"
+// und verweist auf in-muenchen.de — dort liegt tatsächlich ein gepflegter,
+// serverseitig gerenderter Terminkalender für den Club.
+const P1_URL = 'https://www.in-muenchen.de/locations/p1-club.html';
 const P1_ADDRESS = 'Prinzregentenstraße 1, 80538 München';
 
 export async function run() {
@@ -22,32 +23,19 @@ export async function run() {
 
   try {
     console.log('[p1] fetching', P1_URL);
-    const res = await fetch(P1_URL, { headers: { 'User-Agent': 'VibeApp-Collector/1.0' } });
+    const res = await fetch(P1_URL, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+      },
+    });
     if (!res.ok) { console.warn('[p1] fetch failed', res.status); return; }
     const html = await res.text();
     const $ = cheerio.load(html);
 
     const events = extractJsonLdEvents($);
-
-    if (!events.length) {
-      $('a[href*="/veranstaltung"], article, .event-teaser').each((_, el) => {
-        const el$ = $(el);
-        const name = el$.find('h1, h2, h3').first().text().trim();
-        const dateText = el$.find('time').attr('datetime') || el$.find('time').text().trim();
-        const href = el$.is('a') ? el$.attr('href') : el$.find('a').first().attr('href');
-        if (!name || !href) return;
-        events.push({
-          name,
-          startDate: dateText || null,
-          description: null,
-          url: new URL(href, P1_URL).toString(),
-          image: null,
-          locationName: 'P1',
-          address: P1_ADDRESS,
-          organizer: 'P1',
-        });
-      });
-    }
+    if (!events.length) events.push(...extractDatedLinks($, P1_URL));
 
     for (const ev of events) {
       let start_date: string | null = null;

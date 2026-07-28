@@ -3,13 +3,13 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, parseGermanDate } from '../../core/scrape';
+import { extractJsonLdEvents, extractDatedLinks, parseGermanDate } from '../../core/scrape';
 
-// Offizielles Stadtportal münchen.de. Die volle Veranstaltungssuche lädt Treffer
-// per JS/API nach, weshalb ein einfacher HTML-Fetch nur die serverseitig
-// gerenderten Highlights auf der Übersichtsseite erfasst — besser als nichts,
-// aber bewusst kein vollständiger Ersatz für eine echte API-Anbindung.
-const MUENCHEN_DE_URL = 'https://www.muenchen.de/veranstaltungen/events';
+// Das offizielle Stadtportal muenchen.de lädt seine Veranstaltungssuche per
+// JS/API nach (im Server-HTML steht praktisch nichts, verifiziert 2026-07).
+// in-muenchen.de ist dagegen ein serverseitig gerendertes Verzeichnis mit
+// echten, datierten Veranstaltungen und wird hier stattdessen genutzt.
+const MUENCHEN_DE_URL = 'https://www.in-muenchen.de/veranstaltungen';
 
 export async function run() {
   console.log('[muenchen-de] starting');
@@ -22,32 +22,19 @@ export async function run() {
 
   try {
     console.log('[muenchen-de] fetching', MUENCHEN_DE_URL);
-    const res = await fetch(MUENCHEN_DE_URL, { headers: { 'User-Agent': 'VibeApp-Collector/1.0' } });
+    const res = await fetch(MUENCHEN_DE_URL, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+      },
+    });
     if (!res.ok) { console.warn('[muenchen-de] fetch failed', res.status); return; }
     const html = await res.text();
     const $ = cheerio.load(html);
 
     const events = extractJsonLdEvents($);
-
-    if (!events.length) {
-      $('a[href*="/veranstaltungen/event/"], a[href*="/veranstaltungen/"] article').each((_, el) => {
-        const el$ = $(el);
-        const name = el$.find('h1, h2, h3').first().text().trim() || el$.attr('title')?.trim();
-        const dateText = el$.find('time').attr('datetime') || el$.find('time').text().trim();
-        const href = el$.is('a') ? el$.attr('href') : el$.find('a').first().attr('href');
-        if (!name || !href) return;
-        events.push({
-          name,
-          startDate: dateText || null,
-          description: null,
-          url: new URL(href, MUENCHEN_DE_URL).toString(),
-          image: el$.find('img').attr('src') ?? null,
-          locationName: null,
-          address: null,
-          organizer: null,
-        });
-      });
-    }
+    if (!events.length) events.push(...extractDatedLinks($, MUENCHEN_DE_URL));
 
     for (const ev of events) {
       let start_date: string | null = null;

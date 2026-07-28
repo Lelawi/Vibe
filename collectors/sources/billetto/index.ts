@@ -46,7 +46,10 @@ export async function run() {
     } catch (err) { console.warn('[billetto] error', err); }
   }
 
-  if (collected.length) { console.log('[billetto] upserting', collected.length); const { error } = await supabase.from('events').upsert(collected, { onConflict: 'source_id' }); if (error) console.error('[billetto] upsert error', error); }
+  if (!collected.length) { console.log('[billetto] no events parsed'); return; }
+  console.log('[billetto] upserting', collected.length);
+  const { error } = await supabase.from('events').upsert(collected, { onConflict: 'source_id' });
+  if (error) console.error('[billetto] upsert error', error);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(()=>process.exit(0)).catch((e)=>{ console.error(e); process.exit(1); });

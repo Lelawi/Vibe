@@ -83,6 +83,77 @@ export function extractJsonLdEvents($: CheerioAPI): ParsedEvent[] {
   return events;
 }
 
+// Findet Links auf einer Seite, deren sichtbarer Text ein erkennbares Datum
+// enthält (z.B. "Day Club Mi, 29.07.2026" oder "Konzert Jul 28"). Nützlich als
+// letzter Fallback, wenn weder JSON-LD noch bekannte CSS-Klassen greifen —
+// funktioniert unabhängig vom konkreten Markup, solange Titel+Datum im
+// gleichen Link-Text stehen.
+const NUMERIC_DATE = /\d{1,2}\.\d{1,2}\.\d{2,4}/;
+const EN_ABBREV_DATE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/i;
+
+export function extractDatedLinks($: CheerioAPI, baseUrl: string): ParsedEvent[] {
+  const events: ParsedEvent[] = [];
+  const seen = new Set<string>();
+
+  $('a[href]').each((_, el) => {
+    const a = $(el);
+    const href = a.attr('href');
+    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+
+    const text = a.text().replace(/\s+/g, ' ').trim();
+    if (!text || text.length > 250) return;
+
+    const numericMatch = text.match(NUMERIC_DATE);
+    const enMatch = text.match(EN_ABBREV_DATE);
+    if (!numericMatch && !enMatch) return;
+
+    let url: string;
+    try {
+      url = new URL(href, baseUrl).toString();
+    } catch {
+      return;
+    }
+    if (seen.has(url)) return;
+    seen.add(url);
+
+    const dateToken = numericMatch?.[0] ?? enMatch?.[0] ?? null;
+    const name = (dateToken ? text.replace(dateToken, '') : text).replace(/^[,\s-]+|[,\s-]+$/g, '').trim() || text.slice(0, 80);
+
+    events.push({
+      name: name || null,
+      startDate: dateToken,
+      description: null,
+      url,
+      image: null,
+      locationName: null,
+      address: null,
+      organizer: null,
+    });
+  });
+
+  return events;
+}
+
+const EN_MONTHS: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+// Parst "Jul 28" / "Jul 28 2026"-artige englische Kurzformen, wie sie z.B.
+// eventfrog.de für Datumsangaben ohne Jahreszahl nutzt.
+export function parseAbbrevEnglishDate(text: string, reference = new Date()): string | null {
+  const m = text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b\s*,?\s*(\d{4})?/i);
+  if (!m) return null;
+  const month = EN_MONTHS[m[1].toLowerCase()];
+  const day = parseInt(m[2], 10);
+  let year = m[3] ? parseInt(m[3], 10) : reference.getFullYear();
+  let candidate = new Date(Date.UTC(year, month - 1, day));
+  if (!m[3] && candidate < reference) {
+    year += 1;
+    candidate = new Date(Date.UTC(year, month - 1, day));
+  }
+  return isNaN(candidate.getTime()) ? null : candidate.toISOString().slice(0, 10);
+}
+
 const GERMAN_MONTHS: Record<string, number> = {
   januar: 1, februar: 2, märz: 3, maerz: 3, april: 4, mai: 5, juni: 6, juli: 7,
   august: 8, september: 9, oktober: 10, november: 11, dezember: 12,

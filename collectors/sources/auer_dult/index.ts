@@ -35,19 +35,20 @@ export async function run() {
     for (const dultName of DULT_NAMES) {
       const idx = text.indexOf(dultName);
       if (idx === -1) continue;
-      // Sucht im Text nach dem Dult-Namen den ersten Tag, den ersten Monatsnamen
-      // und die erste Jahreszahl danach — reicht, um den Beginn des Datums-
-      // bereichs zu bestimmen, z.B. "25. April bis 3. Mai 2026" -> 25. April 2026
+      // Sucht im Text nach dem Dult-Namen den ersten Tag und den ersten
+      // Monatsnamen danach, z.B. "Kirchweihdult: 17. Oktober bis 25. Oktober"
+      // -> 17. Oktober. Die offizielle Seite nennt oft kein Jahr direkt dabei;
+      // parseGermanDate nimmt dann das aktuelle bzw. nächste passende Jahr an.
       const window = text.slice(idx, idx + 200);
       const dayMatch = window.match(/(\d{1,2})\./);
       const monthMatch = window.match(/(januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)/i);
-      const yearMatch = window.match(/(\d{4})/);
-      if (!dayMatch || !monthMatch || !yearMatch) continue;
+      if (!dayMatch || !monthMatch) continue;
 
-      const start_date = parseGermanDate(`${dayMatch[1]}. ${monthMatch[1]} ${yearMatch[1]}`);
+      const yearMatch = window.match(/(\d{4})/);
+      const start_date = parseGermanDate(`${dayMatch[1]}. ${monthMatch[1]} ${yearMatch?.[1] ?? ''}`);
       if (!start_date) continue;
 
-      const sourceId = `auer-dult-${dultName.toLowerCase()}-${yearMatch[1]}`;
+      const sourceId = `auer-dult-${dultName.toLowerCase()}-${start_date.slice(0, 4)}`;
       collected.push({
         source_id: sourceId,
         title: `${dultName} auf dem Mariahilfplatz`,

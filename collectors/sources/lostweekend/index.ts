@@ -83,7 +83,11 @@ async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createC
   const coords = await getCoordinates(supabase, raw.locationName, raw.address, 'München');
 
   return {
-    source_id: `lostweekend-${raw.eventId}`,
+    // eventId allein reicht nicht als Schlüssel: MEC (das Kalender-Plugin von
+    // lostweekend.de) vergibt bei wiederkehrenden Terminen dieselbe eventId für
+    // jedes Datum — ohne startDate im source_id würden alle bis auf einen
+    // Termin beim Dedup-Map in normalizeEvents kollabieren.
+    source_id: `lostweekend-${raw.eventId}-${startDate}`,
     title: raw.title,
     description: null,
     category: 'Kultur',
