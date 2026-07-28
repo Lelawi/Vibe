@@ -1,0 +1,67 @@
+// Canonical venue name map for München locations.
+// Use lowercase keys for matching incoming venue strings.
+export const KNOWN_VENUES: Record<string, string> = {
+  'muffathalle': 'Muffathalle München',
+  'muffatwerk': 'Muffathalle München',
+  'zenith': 'Zenith München',
+  'zenith münchen': 'Zenith München',
+  'backstage halle': 'Backstage München',
+  'backstage club': 'Backstage München',
+  'backstage': 'Backstage München',
+  'gasteig': 'Gasteig München',
+  'kulturzentrum gasteig': 'Gasteig München',
+  'münchner kammerspiele': 'Münchner Kammerspiele',
+  'kammerspiele': 'Münchner Kammerspiele',
+  'pasinger fabrik': 'Pasinger Fabrik',
+  'pasing fabrik': 'Pasinger Fabrik',
+  'glyptothek': 'Glyptothek München',
+  'freie theater': 'Freies Theater München',
+  'forum am deutschen theater': 'Forum am Deutschen Theater',
+  'schlachthof': 'Gasteig HP8 / Schlachthof',
+  'gasteig hp8': 'Gasteig HP8 / Schlachthof',
+  'kultfabrik': 'Kultfabrik/Optimolwerke',
+  'optimolwerke': 'Kultfabrik/Optimolwerke',
+  'werk': 'Kultfabrik/Optimolwerke',
+  'backstage arena': 'Backstage München',
+  'milla': 'Milla Club',
+  'technikum': 'Technikum München',
+  'tonhalle': 'TonHalle München',
+  'glockenbachwerkstatt': 'Glockenbachwerkstatt',
+  'halle 2': 'Halle 2',
+  'freie universitÄt': 'Freie Universität (München)',
+  'kreativquartier': 'Kreativquartier München',
+  'haus der kunst': 'Haus der Kunst',
+  'alte kongresshalle': 'Alte Kongresshalle',
+  'stadtmuseum': 'Stadtmuseum München',
+  'milla club': 'Milla Club',
+  'ampere': 'AMPERE München',
+  'kubiz': 'Kubiz München',
+  'backstage werke': 'Backstage München',
+  'kongress am park': 'Kongress am Park',
+  'kulturbahnhof': 'Kulturbahnhof',
+};
+
+export function getCanonicalVenue(name?: string | null): string | null {
+  if (!name) return null;
+  const key = name.trim().toLowerCase();
+  return KNOWN_VENUES[key] ?? null;
+}
+
+// Optional: known addresses for venues to improve geocoding accuracy.
+export const KNOWN_VENUE_ADDRESSES: Record<string, string> = {
+  'backstage münchen': 'Reitknechtstr. 6, 80639 München',
+  'muffathalle münchen': 'Zellstr. 4, 81667 München',
+  'zenith münchen': 'Lilienthalallee 29, 80939 München',
+  'gasteig münchen': 'Rosenheimer Str. 5, 81667 München',
+  'münchner kammerspiele': 'Maximilianstr. 1, 80539 München',
+  'pasinger fabrik': 'Helfensteinstr. 35, 81241 München',
+  'milla club': 'Hirschgartenallee 1, 80639 München',
+  'ampere münchen': 'Zenettistr. 9, 81679 München',
+  'kubiz münchen': 'Seidlstr. 10, 80335 München',
+};
+
+export function getVenueAddress(canonicalOrName?: string | null): string | null {
+  if (!canonicalOrName) return null;
+  const key = canonicalOrName.trim().toLowerCase();
+  return KNOWN_VENUE_ADDRESSES[key] ?? null;
+}

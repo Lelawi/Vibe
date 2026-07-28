@@ -8,6 +8,18 @@
   "lostweekend": "tsx sources/lostweekend/index.ts",
   "muenchenevent": "tsx sources/muenchenevent/index.ts",
   "dedup": "tsx sources/dedup/index.ts"
+    ,"eventbrite": "tsx sources/eventbrite/index.ts"
+    ,"meetup": "tsx sources/meetup/index.ts"
+    ,"residentadvisor": "tsx sources/residentadvisor/index.ts"
+    ,"muenchen-de": "tsx sources/muenchen_de/index.ts"
+    ,"eventim": "tsx sources/eventim/index.ts"
+    ,"p1": "tsx sources/p1/index.ts"
+    ,"milla": "tsx sources/milla/index.ts"
+    ,"ampere": "tsx sources/ampere/index.ts"
+    ,"flohmarkt-olympiapark": "tsx sources/flohmarkt_olympiapark/index.ts"
+    ,"auer-dult": "tsx sources/auer_dult/index.ts"
+    ,"reddit": "tsx sources/reddit/index.ts"
+    ,"lmu": "tsx sources/lmu/index.ts"
 },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

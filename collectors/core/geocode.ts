@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getCanonicalVenue, getVenueAddress } from './known_venues';
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const USER_AGENT = 'VibeApp-EventAggregator/1.0 (nicht-kommerzieller München Event-Aggregator)';
@@ -33,9 +34,15 @@ export async function getCoordinates(
 ): Promise<Coords | null> {
   await loadCache(supabase);
 
-  // Adresse ist der zuverlässigste Schlüssel (mehrere Säle an derselben Adresse
-  // sollen sich nur einmal geokodieren lassen), sonst Location-Name + Stadt
-  const cacheKey = address ?? `${locationName}, ${city}`;
+  // Normalize known venue names to a canonical name to improve geocoding
+  const canonical = getCanonicalVenue(locationName) ?? locationName;
+
+  // Wenn keine Adresse vom Collector übergeben wird, nutze eine bekannte Adresse
+  // für den canonical Namen, falls verfügbar. Adresse ist der zuverlässigste
+  // Schlüssel (mehrere Säle an derselben Adresse sollen sich nur einmal
+  // geokodieren lassen), sonst canonical Name + Stadt
+  const resolvedAddress = address ?? getVenueAddress(canonical) ?? null;
+  const cacheKey = resolvedAddress ?? `${canonical}, ${city}`;
 
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey) ?? null;
