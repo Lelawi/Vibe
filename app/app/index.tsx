@@ -106,16 +106,44 @@ function getMonthMatrix(year: number, month: number): { date: Date; inMonth: boo
   });
 }
 
-function getDateRange(
-  filter: DateFilter,
-  customDate: string | null
-): { from: string; to: string | null } {
+// Baut alle Datumsstrings zwischen zwei Tagen (inklusive), unabhängig davon,
+// welcher der beiden zuerst angetippt wurde — für die "zweiter Tap = Zeitraum"-
+// Kalenderauswahl (Touch-Äquivalent zu Shift-Klick).
+function buildDateRangeArray(aStr: string, bStr: string): string[] {
+  const a = new Date(aStr);
+  const b = new Date(bStr);
+  const start = a <= b ? a : b;
+  const end = a <= b ? b : a;
+  const result: string[] = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    result.push(toLocalDateStr(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return result;
+}
+
+function arraysEqual(a: string[], b: string[]) {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+// Wenn eine Kalenderauswahl exakt einem der Schnellfilter (Heute, Morgen,
+// Diese Woche, Wochenende) entspricht, soll der entsprechende Chip aktiv
+// erscheinen statt einer redundanten "Custom"-Auswahl für dieselben Tage.
+function matchesQuickFilter(dates: string[]): DateFilter | null {
+  if (dates.length === 0) return null;
+  const presets: DateFilter[] = ['today', 'tomorrow', 'week', 'weekend'];
+  for (const preset of presets) {
+    const { from, to } = getDateRange(preset);
+    const presetDates = buildDateRangeArray(from, to ?? from);
+    if (arraysEqual(dates, presetDates)) return preset;
+  }
+  return null;
+}
+
+function getDateRange(filter: DateFilter): { from: string; to: string | null } {
   const today = new Date();
   const todayStr = toLocalDateStr(today);
-
-  if (filter === 'custom' && customDate) {
-    return { from: customDate, to: customDate };
-  }
 
   if (filter === 'today') {
     return { from: todayStr, to: todayStr };
@@ -204,7 +232,11 @@ export default function EventListScreen() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
-  const [customDate, setCustomDate] = useState<string | null>(null);
+  // Touch-Äquivalent zu Strg/Shift-Klick: mehrere einzelne Tage antippen
+  // wählt sie alle aus (Ctrl-artig), ein zweiter Tap direkt nach dem ersten
+  // füllt stattdessen automatisch den Zeitraum dazwischen (Shift-artig) —
+  // siehe pickCalendarDay().
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const d = new Date();
@@ -297,7 +329,7 @@ export default function EventListScreen() {
   }, [locations, locationSearch]);
 
   const filteredEvents = useMemo(() => {
-    const { from, to } = getDateRange(dateFilter, customDate);
+    const { from, to } = dateFilter === 'custom' ? { from: '', to: null } : getDateRange(dateFilter);
 
     return events.filter((e) => {
       const formattedDate = formatDate(e.start_date, e.start_time);
@@ -333,10 +365,12 @@ export default function EventListScreen() {
         selectedLocations.length === 0 ||
         selectedLocations.includes(eventCanonical);
       const matchesDate =
-        e.start_date >= from && (to === null || e.start_date <= to);
+        dateFilter === 'custom'
+          ? selectedDates.includes(e.start_date)
+          : e.start_date >= from && (to === null || e.start_date <= to);
       return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate;
     });
-  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, customDate]);
+  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates]);
 
   // Bündelt wiederkehrende Events (gleicher Titel + gleicher Ort, z.B. eine
   // wöchentliche Partyreihe) zu einer Gruppe. In der Liste wird nur der
@@ -373,23 +407,42 @@ export default function EventListScreen() {
   }, [filteredEvents, userLocation, nearbyRadiusKm]);
 
   function openCalendar() {
-    const base = customDate ? new Date(customDate) : new Date();
+    const base = selectedDates[0] ? new Date(selectedDates[0]) : new Date();
     setCalendarMonth({ year: base.getFullYear(), month: base.getMonth() });
     setShowPicker(true);
   }
 
+  // Touch-Äquivalent zu Strg/Shift-Klick (siehe selectedDates-State oben):
+  // 1. Tap auf leerer Auswahl -> dieser eine Tag.
+  // 2. Tap auf zweiten, anderen Tag direkt danach -> Zeitraum dazwischen
+  //    wird komplett aufgefüllt (Shift-artig).
+  // 3. Jeder weitere Tap schaltet den angetippten Tag einzeln an/aus
+  //    (Strg-artig) — so lassen sich z.B. einzelne Tage aus einem Zeitraum
+  //    wieder entfernen oder zusätzliche, nicht zusammenhängende Tage ergänzen.
+  // Entspricht das Ergebnis exakt einem Schnellfilter (Heute, Morgen, Diese
+  // Woche, Wochenende), wird dieser statt einer Custom-Auswahl aktiviert.
   function pickCalendarDay(date: Date) {
     const dateStr = toLocalDateStr(date);
-    if (dateStr === toLocalDateStr(new Date())) {
-      // Heute antippen soll denselben Zustand ergeben wie der "Heute"-Chip,
-      // statt eine redundante zweite "Custom"-Auswahl für denselben Tag zu erzeugen.
-      setCustomDate(null);
-      setDateFilter('today');
+    let next: string[];
+    if (selectedDates.length === 0) {
+      next = [dateStr];
+    } else if (selectedDates.length === 1) {
+      next = selectedDates[0] === dateStr ? [] : buildDateRangeArray(selectedDates[0], dateStr);
     } else {
-      setCustomDate(dateStr);
-      setDateFilter('custom');
+      next = selectedDates.includes(dateStr)
+        ? selectedDates.filter((d) => d !== dateStr)
+        : [...selectedDates, dateStr].sort();
     }
-    setShowPicker(false);
+
+    const quickFilter = matchesQuickFilter(next);
+    if (quickFilter) {
+      setSelectedDates([]);
+      setDateFilter(quickFilter);
+      if (next.length === 1) setShowPicker(false);
+      return;
+    }
+    setSelectedDates(next);
+    setDateFilter(next.length === 0 ? 'all' : 'custom');
   }
 
   function shiftCalendarMonth(delta: number) {
@@ -400,9 +453,19 @@ export default function EventListScreen() {
   }
 
   function customDateLabel() {
-    if (!customDate) return '📅 Datum wählen';
-    const [y, m, d] = customDate.split('-');
-    return `📅 ${d}.${m}.${y}`;
+    if (selectedDates.length === 0) return '📅 Datum wählen';
+    if (selectedDates.length === 1) {
+      const [y, m, d] = selectedDates[0].split('-');
+      return `📅 ${d}.${m}.${y}`;
+    }
+    const sorted = [...selectedDates].sort();
+    const isContiguous = arraysEqual(sorted, buildDateRangeArray(sorted[0], sorted[sorted.length - 1]));
+    if (isContiguous) {
+      const [, m1, d1] = sorted[0].split('-');
+      const [, m2, d2] = sorted[sorted.length - 1].split('-');
+      return `📅 ${d1}.${m1}.–${d2}.${m2}.`;
+    }
+    return `📅 ${selectedDates.length} Tage`;
   }
 
   const contentFilterCount = selectedCategories.length + selectedGenres.length + selectedLocations.length;
@@ -429,6 +492,19 @@ export default function EventListScreen() {
       </SafeAreaView>
     );
   }
+
+  // Für die Hervorhebung im Kalender: welche Tage sind gerade aktiv,
+  // unabhängig davon ob über einen Schnellfilter-Chip oder manuell im
+  // Kalender ausgewählt.
+  const activeDateSet =
+    dateFilter === 'custom'
+      ? selectedDates
+      : dateFilter === 'all'
+      ? []
+      : (() => {
+          const { from, to } = getDateRange(dateFilter);
+          return buildDateRangeArray(from, to ?? from);
+        })();
 
   const listHeader = (
     <>
@@ -471,7 +547,7 @@ export default function EventListScreen() {
               style={[styles.filterChip, dateFilter === f.key && styles.filterChipActive]}
               onPress={() => {
                 setDateFilter(f.key);
-                setCustomDate(null);
+                setSelectedDates([]);
               }}
             >
               <Text
@@ -520,6 +596,10 @@ export default function EventListScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      <Text style={styles.resultCount}>
+        {eventGroups.length} {eventGroups.length === 1 ? 'Event' : 'Events'} gefunden
+      </Text>
 
       {locationStatus === 'denied' && (
         <Text style={styles.locationHint}>
@@ -583,7 +663,7 @@ export default function EventListScreen() {
               {getMonthMatrix(calendarMonth.year, calendarMonth.month).map(({ date, inMonth }) => {
                 const dateStr = toLocalDateStr(date);
                 const isToday = dateStr === toLocalDateStr(new Date());
-                const isSelected = customDate === dateStr || (isToday && dateFilter === 'today');
+                const isSelected = activeDateSet.includes(dateStr);
                 return (
                   <TouchableOpacity
                     key={dateStr}
@@ -608,18 +688,26 @@ export default function EventListScreen() {
               })}
             </View>
 
-            {customDate && (
+            <View style={styles.calendarFooterRow}>
+              {activeDateSet.length > 0 && (
+                <TouchableOpacity
+                  style={styles.calendarClearBtn}
+                  onPress={() => {
+                    setSelectedDates([]);
+                    setDateFilter('all');
+                    setShowPicker(false);
+                  }}
+                >
+                  <Text style={styles.calendarClearText}>Zurücksetzen</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                style={styles.calendarClearBtn}
-                onPress={() => {
-                  setCustomDate(null);
-                  setDateFilter('all');
-                  setShowPicker(false);
-                }}
+                style={styles.calendarDoneBtn}
+                onPress={() => setShowPicker(false)}
               >
-                <Text style={styles.calendarClearText}>Auswahl zurücksetzen</Text>
+                <Text style={styles.calendarDoneText}>Fertig</Text>
               </TouchableOpacity>
-            )}
+            </View>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -948,6 +1036,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
   },
+  resultCount: {
+    color: '#666',
+    fontSize: 12,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
   radiusRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1023,12 +1117,24 @@ const styles = StyleSheet.create({
   calendarDayText: { color: '#eee', fontSize: 14 },
   calendarDayTextMuted: { color: '#444' },
   calendarDayTextSelected: { color: '#000', fontWeight: '700' },
-  calendarClearBtn: {
-    marginTop: 12,
-    paddingVertical: 10,
+  calendarFooterRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 12,
+    gap: 16,
+  },
+  calendarClearBtn: {
+    paddingVertical: 10,
   },
   calendarClearText: { color: '#888', fontSize: 13, textDecorationLine: 'underline' },
+  calendarDoneBtn: {
+    backgroundColor: '#0af',
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  calendarDoneText: { color: '#000', fontSize: 14, fontWeight: '700' },
   filterChipActive: { backgroundColor: '#0af' },
   filterChipText: { color: '#999', fontSize: 13, fontWeight: '600' },
   filterChipTextActive: { color: '#000' },
