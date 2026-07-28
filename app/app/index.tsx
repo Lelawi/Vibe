@@ -14,27 +14,10 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
 import { fuzzyMatch } from '../lib/fuzzySearch';
-
-// Unsichtbar über den Datums-Chip gelegtes <input type="date"> (nur Web) —
-// reines CSS-Objekt für das native DOM-Element, keine RN-StyleSheet.
-const webDateInputStyle = {
-  position: 'absolute' as const,
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  width: '100%',
-  height: '100%',
-  opacity: 0,
-  cursor: 'pointer',
-  border: 'none',
-  padding: 0,
-};
 
 type Event = {
   id: string;
@@ -51,7 +34,25 @@ type Event = {
   start_date: string;
   start_time: string | null;
   location_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
+
+// Haversine-Formel für die Distanz zweier Koordinaten in km.
+function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistance(km: number): string {
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
+}
 
 type DateFilter = 'all' | 'today' | 'week' | 'weekend' | 'custom';
 
@@ -71,6 +72,28 @@ function toLocalDateStr(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const MONTH_LABELS = [
+  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+];
+
+// Baut ein 6x7-Raster für die Monatsansicht des Kalenders: führende/
+// nachfolgende Tage aus Nachbarmonaten werden mitgeliefert (inMonth: false),
+// damit das Raster immer volle Wochen zeigt statt abgeschnittener Zeilen.
+function getMonthMatrix(year: number, month: number): { date: Date; inMonth: boolean }[] {
+  const firstOfMonth = new Date(year, month, 1);
+  // getDay(): 0=So..6=Sa -> auf Montag-Start (0=Mo..6=So) verschieben
+  const startOffset = (firstOfMonth.getDay() + 6) % 7;
+  const gridStart = new Date(year, month, 1 - startOffset);
+
+  return Array.from({ length: 42 }, (_, i) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + i);
+    return { date, inMonth: date.getMonth() === month };
+  });
 }
 
 function getDateRange(
@@ -157,10 +180,37 @@ export default function EventListScreen() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customDate, setCustomDate] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [filterTab, setFilterTab] = useState<'category' | 'genre' | 'location'>('category');
   const [locationSearch, setLocationSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<Event[] | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
+
+  function toggleNearby() {
+    if (userLocation) {
+      setUserLocation(null);
+      setLocationStatus('idle');
+      return;
+    }
+    if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationStatus('denied');
+      return;
+    }
+    setLocationStatus('loading');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocationStatus('idle');
+      },
+      () => setLocationStatus('denied'),
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  }
 
   useEffect(() => {
     async function loadEvents() {
@@ -168,7 +218,7 @@ export default function EventListScreen() {
 
       const { data, error } = await supabase
         .from('events')
-        .select('id, title, category, subcategory, organizer, address, description, source_url, image_url, price_info, sold_out, start_date, start_time, location_name')
+        .select('id, title, category, subcategory, organizer, address, description, source_url, image_url, price_info, sold_out, start_date, start_time, location_name, latitude, longitude')
         .gte('start_date', today)
         .is('duplicate_of', null)
         .order('start_date', { ascending: true })
@@ -275,14 +325,37 @@ export default function EventListScreen() {
     const groups = Array.from(map.values()).map((evts) =>
       [...evts].sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
     );
-    groups.sort((a, b) => sortKey(a[0]).localeCompare(sortKey(b[0])));
-    return groups;
-  }, [filteredEvents]);
 
-  function handlePickDate(date: Date) {
+    if (userLocation) {
+      // Events ohne Koordinaten ans Ende, Rest nach Entfernung aufsteigend.
+      const dist = (e: Event) =>
+        e.latitude !== null && e.longitude !== null
+          ? distanceKm(userLocation.lat, userLocation.lng, e.latitude, e.longitude)
+          : Infinity;
+      groups.sort((a, b) => dist(a[0]) - dist(b[0]));
+    } else {
+      groups.sort((a, b) => sortKey(a[0]).localeCompare(sortKey(b[0])));
+    }
+    return groups;
+  }, [filteredEvents, userLocation]);
+
+  function openCalendar() {
+    const base = customDate ? new Date(customDate) : new Date();
+    setCalendarMonth({ year: base.getFullYear(), month: base.getMonth() });
+    setShowPicker(true);
+  }
+
+  function pickCalendarDay(date: Date) {
     setCustomDate(toLocalDateStr(date));
     setDateFilter('custom');
     setShowPicker(false);
+  }
+
+  function shiftCalendarMonth(delta: number) {
+    setCalendarMonth((prev) => {
+      const d = new Date(prev.year, prev.month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
   }
 
   function customDateLabel() {
@@ -363,58 +436,19 @@ export default function EventListScreen() {
             </TouchableOpacity>
           ))}
 
-          {Platform.OS === 'web' ? (
-            // window.prompt()/alert()/confirm() sind deaktiviert, sobald die
-            // PWA "Zum Home-Bildschirm hinzugefügt" im Standalone-Modus läuft
-            // (bekannte iOS-Einschränkung) — deshalb hier ein echtes, unsichtbar
-            // über den Chip gelegtes <input type="date">, das öffnet den
-            // nativen Browser-Datepicker zuverlässig auch standalone.
-            <View
+          <TouchableOpacity
+            style={[styles.filterChip, dateFilter === 'custom' && styles.filterChipActive]}
+            onPress={openCalendar}
+          >
+            <Text
               style={[
-                styles.filterChip,
-                dateFilter === 'custom' && styles.filterChipActive,
-                styles.dateInputWrap,
+                styles.filterChipText,
+                dateFilter === 'custom' && styles.filterChipTextActive,
               ]}
             >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  dateFilter === 'custom' && styles.filterChipTextActive,
-                ]}
-              >
-                {customDateLabel()}
-              </Text>
-              <input
-                type="date"
-                value={customDate ?? ''}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value) {
-                    setCustomDate(value);
-                    setDateFilter('custom');
-                  } else {
-                    setCustomDate(null);
-                    setDateFilter('all');
-                  }
-                }}
-                style={webDateInputStyle}
-              />
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={[styles.filterChip, dateFilter === 'custom' && styles.filterChipActive]}
-              onPress={() => setShowPicker(true)}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  dateFilter === 'custom' && styles.filterChipTextActive,
-                ]}
-              >
-                {customDateLabel()}
-              </Text>
-            </TouchableOpacity>
-          )}
+              {customDateLabel()}
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
 
         <TouchableOpacity
@@ -425,20 +459,99 @@ export default function EventListScreen() {
             ⚙️ Filter{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
           </Text>
         </TouchableOpacity>
+
+        {Platform.OS === 'web' && (
+          <TouchableOpacity
+            style={[styles.filterButton, styles.nearbyButton, userLocation && styles.filterChipActive]}
+            onPress={toggleNearby}
+          >
+            <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
+              {locationStatus === 'loading' ? '📍 ...' : '📍 Nähe'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {showPicker && Platform.OS !== 'web' && (
-        <DateTimePicker
-          value={customDate ? new Date(customDate) : new Date()}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          themeVariant="dark"
-          onChange={(_, date) => {
-            if (Platform.OS === 'android') setShowPicker(false);
-            if (date) handlePickDate(date);
-          }}
-        />
+      {locationStatus === 'denied' && (
+        <Text style={styles.locationHint}>
+          Standort nicht verfügbar — bitte Standortzugriff im Browser erlauben.
+        </Text>
       )}
+
+      <Modal
+        visible={showPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.calendarBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowPicker(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.calendarBox} onPress={() => {}}>
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity onPress={() => shiftCalendarMonth(-1)} style={styles.calendarNavBtn}>
+                <Text style={styles.calendarNavText}>‹</Text>
+              </TouchableOpacity>
+              <Text style={styles.calendarTitle}>
+                {MONTH_LABELS[calendarMonth.month]} {calendarMonth.year}
+              </Text>
+              <TouchableOpacity onPress={() => shiftCalendarMonth(1)} style={styles.calendarNavBtn}>
+                <Text style={styles.calendarNavText}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.calendarWeekRow}>
+              {WEEKDAY_LABELS.map((w) => (
+                <Text key={w} style={styles.calendarWeekLabel}>{w}</Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarGrid}>
+              {getMonthMatrix(calendarMonth.year, calendarMonth.month).map(({ date, inMonth }) => {
+                const dateStr = toLocalDateStr(date);
+                const isSelected = customDate === dateStr;
+                const isToday = dateStr === toLocalDateStr(new Date());
+                return (
+                  <TouchableOpacity
+                    key={dateStr}
+                    style={[
+                      styles.calendarDay,
+                      isSelected && styles.calendarDaySelected,
+                      isToday && !isSelected && styles.calendarDayToday,
+                    ]}
+                    onPress={() => pickCalendarDay(date)}
+                  >
+                    <Text
+                      style={[
+                        styles.calendarDayText,
+                        !inMonth && styles.calendarDayTextMuted,
+                        isSelected && styles.calendarDayTextSelected,
+                      ]}
+                    >
+                      {date.getDate()}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {customDate && (
+              <TouchableOpacity
+                style={styles.calendarClearBtn}
+                onPress={() => {
+                  setCustomDate(null);
+                  setDateFilter('all');
+                  setShowPicker(false);
+                }}
+              >
+                <Text style={styles.calendarClearText}>Auswahl zurücksetzen</Text>
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {contentFilterCount > 0 && (
         <View style={styles.activePillsWrap}>
@@ -519,6 +632,9 @@ export default function EventListScreen() {
                   {hasMore ? 'Nächster Termin: ' : ''}
                   {formatDate(item.start_date, item.start_time)}
                   {item.location_name ? ` · ${item.location_name}` : ''}
+                  {userLocation && item.latitude != null && item.longitude != null
+                    ? ` · ${formatDistance(distanceKm(userLocation.lat, userLocation.lng, item.latitude, item.longitude))}`
+                    : ''}
                 </Text>
                 {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
                 {item.price_info ? <Text style={styles.priceMeta}>{item.price_info}</Text> : null}
@@ -716,10 +832,75 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   filterButtonText: { color: '#999', fontSize: 13, fontWeight: '600' },
-  dateInputWrap: {
-    position: 'relative',
-    overflow: 'hidden',
+  nearbyButton: { marginRight: 16 },
+  locationHint: {
+    color: '#888',
+    fontSize: 12,
+    paddingHorizontal: 16,
+    marginBottom: 8,
   },
+  calendarBackdrop: {
+    flex: 1,
+    backgroundColor: '#000a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calendarBox: {
+    backgroundColor: '#141414',
+    borderRadius: 16,
+    padding: 16,
+    width: 320,
+    maxWidth: '90%',
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  calendarNavBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  calendarNavText: { color: '#0af', fontSize: 20, fontWeight: '700' },
+  calendarTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  calendarWeekRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  calendarWeekLabel: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  calendarDay: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    marginVertical: 1,
+  },
+  calendarDaySelected: { backgroundColor: '#0af' },
+  calendarDayToday: {
+    borderWidth: 1,
+    borderColor: '#0af',
+  },
+  calendarDayText: { color: '#eee', fontSize: 14 },
+  calendarDayTextMuted: { color: '#444' },
+  calendarDayTextSelected: { color: '#000', fontWeight: '700' },
+  calendarClearBtn: {
+    marginTop: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  calendarClearText: { color: '#888', fontSize: 13, textDecorationLine: 'underline' },
   filterChipActive: { backgroundColor: '#0af' },
   filterChipText: { color: '#999', fontSize: 13, fontWeight: '600' },
   filterChipTextActive: { color: '#000' },
