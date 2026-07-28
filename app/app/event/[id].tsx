@@ -83,9 +83,22 @@ export default function EventDetailScreen() {
     if (id) loadEvent();
   }, [id]);
 
+  // Bei einem direkt geöffneten Share-Link (z.B. aus WhatsApp) ist diese
+  // Seite der erste und einzige Eintrag im Navigations-Stack — router.back()
+  // hätte dann nichts, wohin es zurückgehen könnte, und der native Header
+  // zeigt entsprechend gar keinen Zurück-Pfeil. Deshalb hier ein eigener,
+  // immer sichtbarer Button, der in dem Fall stattdessen zur Startseite geht.
+  function goBack() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.center}>
+        <TouchableOpacity style={styles.backBar} onPress={goBack}>
+          <Text style={styles.backBarText}>‹ Übersicht</Text>
+        </TouchableOpacity>
         <ActivityIndicator size="large" color="#fff" />
       </SafeAreaView>
     );
@@ -94,6 +107,9 @@ export default function EventDetailScreen() {
   if (!event) {
     return (
       <SafeAreaView style={styles.center}>
+        <TouchableOpacity style={styles.backBar} onPress={goBack}>
+          <Text style={styles.backBarText}>‹ Übersicht</Text>
+        </TouchableOpacity>
         <Text style={styles.errorText}>Event nicht gefunden.</Text>
       </SafeAreaView>
     );
@@ -104,7 +120,7 @@ export default function EventDetailScreen() {
 
   function openInGoogleMaps() {
     if (!hasCoords) return;
-    const query = [event.location_name, event.address]
+    const query = [event!.location_name, event!.address]
       .filter(Boolean)
       .join(' ')
       .trim();
@@ -144,6 +160,9 @@ export default function EventDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <TouchableOpacity style={styles.backBar} onPress={goBack}>
+        <Text style={styles.backBarText}>‹ Übersicht</Text>
+      </TouchableOpacity>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {hasImage && (
           <Image
@@ -265,8 +284,12 @@ export default function EventDetailScreen() {
         transparent
         onRequestClose={() => setShowReportModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowReportModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>Was stimmt nicht?</Text>
 
             {reportStatus === 'sent' ? (
@@ -313,8 +336,8 @@ export default function EventDetailScreen() {
                 </View>
               </>
             )}
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -325,6 +348,11 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 32 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
   errorText: { color: '#888', fontSize: 15 },
+  backBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backBarText: { color: '#0af', fontSize: 15, fontWeight: '600' },
   image: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#141414' },
   content: { padding: 16 },
   badge: {

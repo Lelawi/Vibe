@@ -707,8 +707,12 @@ export default function EventListScreen() {
         transparent
         onRequestClose={() => setShowFilterModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowFilterModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitle}>Filter</Text>
               {activeFilterTabSelected.length > 0 && (
@@ -777,8 +781,8 @@ export default function EventListScreen() {
                 <Text style={styles.modalCloseButtonText}>Fertig</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Alle Termine einer wiederkehrenden Event-Serie */}
@@ -788,8 +792,12 @@ export default function EventListScreen() {
         transparent
         onRequestClose={() => setSelectedGroup(null)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setSelectedGroup(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>{selectedGroup?.[0]?.title}</Text>
             <Text style={styles.modalSubtitle}>
               {selectedGroup?.length} Termine
@@ -825,8 +833,8 @@ export default function EventListScreen() {
                 <Text style={styles.modalCloseButtonText}>Schließen</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
