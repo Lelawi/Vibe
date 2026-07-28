@@ -16,6 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { addEventToCalendar } from '../../lib/calendar';
 import { shareEvent } from '../../lib/share';
+import { useFavorites } from '../../lib/favorites';
 
 const REPORT_REASONS = ['Ort/Adresse falsch', 'Datum/Uhrzeit falsch', 'Bereits vorbei', 'Doppelt vorhanden', 'Sonstiges'];
 
@@ -61,6 +62,7 @@ export default function EventDetailScreen() {
   const [reportReason, setReportReason] = useState<string | null>(null);
   const [reportNote, setReportNote] = useState('');
   const [reportStatus, setReportStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const { isFavorite, toggleFavorite } = useFavorites();
 
   useEffect(() => {
     async function loadEvent() {
@@ -173,7 +175,15 @@ export default function EventDetailScreen() {
         )}
 
         <View style={styles.content}>
-          {event.category && <Text style={styles.badge}>{event.category}</Text>}
+          <View style={styles.titleRow}>
+            {event.category && <Text style={styles.badge}>{event.category}</Text>}
+            <TouchableOpacity
+              style={styles.favoriteBtn}
+              onPress={() => toggleFavorite(event.id)}
+            >
+              <Text style={styles.favoriteBtnText}>{isFavorite(event.id) ? '❤️ Favorit' : '🤍 Merken'}</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.title}>{event.title}</Text>
 
           <View style={styles.infoBlock}>
@@ -362,6 +372,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 8,
   },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  favoriteBtn: { paddingVertical: 2, paddingHorizontal: 4 },
+  favoriteBtnText: { fontSize: 13, fontWeight: '600', color: '#fff' },
   title: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 20 },
   infoBlock: { marginBottom: 16 },
   infoLabel: { fontSize: 12, color: '#666', textTransform: 'uppercase', marginBottom: 4 },

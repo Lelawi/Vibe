@@ -19,6 +19,7 @@ import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
 import { fuzzyMatch } from '../lib/fuzzySearch';
 import { addEventsToCalendar } from '../lib/calendar';
+import { useFavorites } from '../lib/favorites';
 
 type Event = {
   id: string;
@@ -250,6 +251,8 @@ export default function EventListScreen() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
+  const { favorites, isFavorite, toggleFavorite } = useFavorites();
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   function toggleNearby() {
     if (userLocation) {
@@ -369,9 +372,10 @@ export default function EventListScreen() {
         dateFilter === 'custom'
           ? selectedDates.includes(e.start_date)
           : e.start_date >= from && (to === null || e.start_date <= to);
-      return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate;
+      const matchesFavorite = !showFavoritesOnly || favorites.includes(e.id);
+      return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate && matchesFavorite;
     });
-  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates]);
+  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites]);
 
   // Bündelt wiederkehrende Events (gleicher Titel + gleicher Ort, z.B. eine
   // wöchentliche Partyreihe) zu einer Gruppe. In der Liste wird nur der
@@ -586,6 +590,15 @@ export default function EventListScreen() {
           </Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={[styles.filterButton, styles.nearbyButton, showFavoritesOnly && styles.filterChipActive]}
+          onPress={() => setShowFavoritesOnly((v) => !v)}
+        >
+          <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
+            {showFavoritesOnly ? '❤️' : '🤍'} Favoriten
+          </Text>
+        </TouchableOpacity>
+
         {Platform.OS === 'web' && (
           <TouchableOpacity
             style={[styles.filterButton, styles.nearbyButton, userLocation && styles.filterChipActive]}
@@ -777,6 +790,15 @@ export default function EventListScreen() {
                 hasMore ? setSelectedGroup(group) : router.push(`/event/${item.id}`)
               }
             >
+              <TouchableOpacity
+                style={styles.favoriteBtn}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(item.id);
+                }}
+              >
+                <Text style={styles.favoriteBtnText}>{isFavorite(item.id) ? '❤️' : '🤍'}</Text>
+              </TouchableOpacity>
               {item.image_url ? (
                 <Image source={{ uri: item.image_url }} style={styles.cardThumb} />
               ) : null}
@@ -1204,7 +1226,16 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
+    position: 'relative',
   },
+  favoriteBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    padding: 6,
+    zIndex: 1,
+  },
+  favoriteBtnText: { fontSize: 16 },
   cardThumb: {
     width: 64,
     height: 64,
