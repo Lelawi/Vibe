@@ -32,6 +32,9 @@
     "plugins": [
       "expo-router",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "experiments": {
+      "baseUrl": "/Vibe"
+    }
   }
 }

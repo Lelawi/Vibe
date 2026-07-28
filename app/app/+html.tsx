@@ -18,8 +18,11 @@ export default function Root({ children }: PropsWithChildren) {
         />
         <meta name="theme-color" content="#000000" />
 
-        <link rel="manifest" href="/manifest.json" />
-        <link rel="apple-touch-icon" href="/icon.png" />
+        {/* Absolute Pfade mit /Vibe-Präfix, da GitHub Pages dieses Repo unter
+            https://lelawi.github.io/Vibe/ ausliefert, nicht am Domain-Root
+            (muss zu experiments.baseUrl in app.json passen). */}
+        <link rel="manifest" href="/Vibe/manifest.json" />
+        <link rel="apple-touch-icon" href="/Vibe/icon.png" />
 
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
