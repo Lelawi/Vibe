@@ -236,6 +236,9 @@ export default function EventListScreen() {
   const params = useLocalSearchParams<{ locations?: string }>();  
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(
+    Platform.OS === 'web' && typeof navigator !== 'undefined' ? !navigator.onLine : false
+  );
   const [search, setSearch] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
@@ -311,6 +314,18 @@ export default function EventListScreen() {
     setSelectedLocations(params.locations.split(','));
   }
 }, [params.locations]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const goOnline = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   const categories = useMemo(() => {
     const unique = new Set(events.map((e) => e.category).filter(Boolean));
@@ -538,6 +553,14 @@ export default function EventListScreen() {
           </TouchableOpacity>
         </View>
       </LinearGradient>
+
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>
+            📴 Offline — zeige zuletzt geladene Events
+          </Text>
+        </View>
+      )}
 
       <View style={[styles.stickyControls, Platform.OS === 'web' && styles.stickyControlsWeb]}>
       <View style={styles.searchWrap}>
@@ -1030,6 +1053,12 @@ const styles = StyleSheet.create({
   },
   header: { fontSize: 30, fontWeight: '800', color: '#fff' },
   subheader: { fontSize: 14, color: '#cbb8f0' },
+  offlineBanner: {
+    backgroundColor: '#3a2a00',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  offlineBannerText: { color: '#f2c94c', fontSize: 12, fontWeight: '600', textAlign: 'center' },
   stickyControls: { paddingTop: 12 },
   // position:"sticky" reicht auf Web als reines CSS aus (React Native Web
   // gibt das 1:1 durch) — bleibt beim Scrollen der Liste am oberen Rand

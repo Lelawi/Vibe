@@ -1,7 +1,19 @@
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 export default function Layout() {
+  useEffect(() => {
+    // Service Worker fürs Offline-Caching nur im Web-Build relevant — Pfad
+    // mit dem GitHub-Pages-Unterordner (siehe experiments.baseUrl in
+    // app.json), sonst würde die Registrierung im Root-Scope landen und ins
+    // Leere laufen.
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/Vibe/service-worker.js').catch(() => {});
+    }
+  }, []);
+
   return (
     <>
       {/* App ist komplett dunkel gestylt (#000-Hintergründe überall) — ohne
