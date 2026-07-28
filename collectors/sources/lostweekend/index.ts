@@ -15,6 +15,7 @@ interface RawEvent {
   time: string | null;
   locationName: string;
   address: string | null;
+  image: string | null;
 }
 
 function convertTo24h(timeStr: string): string | null {
@@ -68,8 +69,9 @@ async function fetchLostWeekendEvents(): Promise<RawEvent[]> {
     const locationName =
       article.find('.mec-venue-details > span').first().text().trim() || 'Lost Weekend';
     const address = article.find('.mec-event-address span').text().trim() || null;
+    const image = article.find('.mec-event-image img').first().attr('src') || null;
 
-    events.push({ eventId, title, url, year, month, day, time, locationName, address });
+    events.push({ eventId, title, url, year, month, day, time, locationName, address, image });
   });
 
   return events;
@@ -99,7 +101,7 @@ async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createC
     city: 'München',
     organizer: 'Lost Weekend',
     source_url: raw.url,
-    image_url: null,
+    image_url: raw.image,
     latitude: coords?.latitude ?? null,
     longitude: coords?.longitude ?? null,
   };

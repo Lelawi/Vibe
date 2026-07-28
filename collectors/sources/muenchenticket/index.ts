@@ -7,7 +7,7 @@ const ALGOLIA_URL = `https://${ALGOLIA_APP_ID.toLowerCase()}-dsn.algolia.net/1/i
 
 interface AlgoliaHit {
   event_object_id: string;
-  event: { id: string; title: string };
+  event: { id: string; title: string; hero_media?: string[] };
   external_shop_link: string;
   uri: string;
   venue: { title: string; city: string };
@@ -18,6 +18,20 @@ interface AlgoliaHit {
   type?: string;
   visible: boolean;
   _geoloc?: { lat: number; lng: number };
+  hero_media?: string[];
+}
+
+// hero_media kommt als "file://<id>" (interne Algolia-Referenz), das reale
+// Bild liegt bei Cloudflare Images unter einer festen Account-URL — per
+// direktem Seitenabruf verifiziert (og:image auf einer echten Event-Seite:
+// https://www.muenchenticket.de/cdn-cgi/imagedelivery/<hash>/<id>/public).
+const MUENCHENTICKET_IMAGE_BASE = 'https://www.muenchenticket.de/cdn-cgi/imagedelivery/G-nI_gKZu0ITxcZoDAx8pA';
+
+function heroMediaToImageUrl(heroMedia?: string[]): string | null {
+  const ref = heroMedia?.[0];
+  if (!ref) return null;
+  const id = ref.replace(/^file:\/\//, '');
+  return id ? `${MUENCHENTICKET_IMAGE_BASE}/${id}/public` : null;
 }
 
 function unixToDateTime(unixSeconds: number) {
@@ -85,7 +99,7 @@ function normalizeEvent(hit: AlgoliaHit) {
     city: hit.venue.city,
     organizer: hit.organizer?.title ?? hit.venue.title,
     source_url: hit.external_shop_link || `https://www.muenchenticket.de/${hit.uri}`,
-    image_url: null,
+    image_url: heroMediaToImageUrl(hit.event?.hero_media ?? hit.hero_media),
     latitude: hit._geoloc?.lat ?? null,
     longitude: hit._geoloc?.lng ?? null,
   };

@@ -12,6 +12,7 @@ interface RawEvent {
   url: string;
   isoDateTime: string;
   venue: string;
+  image: string | null;
 }
 
 function isoToLocalDateTime(iso: string) {
@@ -67,7 +68,16 @@ async function fetchMuenchenEventEvents(): Promise<RawEvent[]> {
       url = `${BASE_URL}${url}`;
     }
 
-    events.push({ eventId, title, url, isoDateTime, venue });
+    // Events ohne eigenes Bild zeigen ein generisches "logo_event_mm.svg"
+    // Platzhalterlogo statt eines echten Fotos — das überspringen wir.
+    const imgSrc = item
+      .find('img')
+      .filter((_, im) => !($(im).attr('src') || '').includes('logo_event_mm'))
+      .first()
+      .attr('src');
+    const image = imgSrc ? (imgSrc.startsWith('http') ? imgSrc : `${BASE_URL}${imgSrc}`) : null;
+
+    events.push({ eventId, title, url, isoDateTime, venue, image });
   });
 
   return events;
@@ -90,7 +100,7 @@ async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createC
     city: 'München',
     organizer: 'MünchenEvent',
     source_url: raw.url,
-    image_url: null,
+    image_url: raw.image,
     latitude: coords?.latitude ?? null,
     longitude: coords?.longitude ?? null,
   };

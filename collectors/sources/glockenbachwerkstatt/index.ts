@@ -62,6 +62,11 @@ export async function run() {
       const timeMatch = timeText.match(/(\d{1,2}):(\d{2})/);
       const start_time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
       const price_info = el$.find('.eventtime.price').first().text().trim() || null;
+      // .eventlink img zeigt bei den meisten Events nur das generische
+      // Glockenbachwerkstatt-Logo als Fallback — das echte Eventbild sitzt
+      // in .event__image.
+      const imageSrc = el$.find('.event__image img').first().attr('src') || null;
+      const image_url = imageSrc ? new URL(imageSrc, GLOCKENBACH_URL).toString() : null;
 
       collected.push({
         source_id: `glockenbachwerkstatt-${href.split('/').filter(Boolean).pop()}`,
@@ -76,7 +81,7 @@ export async function run() {
         city: 'München',
         organizer: 'Glockenbachwerkstatt',
         source_url: new URL(href, GLOCKENBACH_URL).toString(),
-        image_url: null,
+        image_url,
         price_info,
         sold_out: null,
         latitude: coords?.latitude ?? null,

@@ -20,6 +20,19 @@ interface BackstageEvent {
   genres: BackstageGenre[];
   location_name: string | null;
   cancelled: boolean;
+  main_image_path: string | null;
+  min_price_cents: number | null;
+}
+
+// main_image_path ist relativ ("<event_id>/<file>.webp") — die Backstage-API
+// selbst läuft auf Supabase (vhhdjliwckyzbqtjrjpp), Bilder liegen im
+// öffentlichen "media"-Storage-Bucket desselben Projekts; per Direktabruf
+// verifiziert (200, image/webp).
+const BACKSTAGE_IMAGE_BASE =
+  'https://vhhdjliwckyzbqtjrjpp.supabase.co/storage/v1/object/public/media';
+
+function backstageImageUrl(path: string | null): string | null {
+  return path ? `${BACKSTAGE_IMAGE_BASE}/${path}` : null;
 }
 
 async function fetchBackstageEvents(): Promise<BackstageEvent[]> {
@@ -91,7 +104,8 @@ async function normalizeEvent(raw: BackstageEvent, supabase: ReturnType<typeof c
     city: 'München',
     organizer: 'Backstage München',
     source_url: `https://www.backstage.eu/event/${raw.event_id}`,
-    image_url: null,
+    image_url: backstageImageUrl(raw.main_image_path),
+    price_info: raw.min_price_cents != null ? `ab ${(raw.min_price_cents / 100).toFixed(2)} €` : null,
     latitude: coords?.latitude ?? null,
     longitude: coords?.longitude ?? null,
   };
