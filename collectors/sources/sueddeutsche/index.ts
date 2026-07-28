@@ -1,3 +1,6 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: die SZ-Thema-Seite listet
+// Nachrichtenartikel über Veranstaltungen, keinen strukturierten Event-Kalender
+// mit schema.org-Markup — als Eventquelle ungeeignet.
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';

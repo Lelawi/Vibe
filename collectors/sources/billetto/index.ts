@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { extractJsonLdEvents } from '../../core/scrape';
 
 export async function run() {
   console.log('[billetto] starting');
@@ -11,8 +12,10 @@ export async function run() {
   if (!supabaseUrl || !supabaseKey) { console.log('[billetto] missing supabase envs — skipping'); return; }
   const supabase = createClient(supabaseUrl, supabaseKey);
 
+  // billetto.co.uk ist der britische Marktplatz ohne München-Bezug; die
+  // deutsche/europäische Instanz billetto.eu hat eine eigene München-Stadtseite
   const urls = process.env.BILLETTO_SEARCH_URLS ? process.env.BILLETTO_SEARCH_URLS.split(',').map(s=>s.trim()).filter(Boolean) : [
-    'https://billetto.co.uk/search?q=Munich',
+    'https://billetto.eu/en/c/munchen-l',
   ];
 
   const collected: any[] = [];
@@ -24,37 +27,19 @@ export async function run() {
       const html = await res.text();
       const $ = cheerio.load(html);
 
-      const scripts = $('script[type="application/ld+json"]').toArray().map(el=>$(el).html()).filter(Boolean);
-      for (const s of scripts) {
-        try {
-          const doc = JSON.parse(s!);
-          if (doc['@type'] === 'Event') {
-            const ev = doc;
-            const name = ev.name ?? null;
-            const start = ev.startDate ?? null;
-            const location = ev.location ?? null;
+      const events = extractJsonLdEvents($);
+      for (const ev of events) {
+        let start_date = null, start_time = null;
+        if (ev.startDate) {
+          const d = new Date(ev.startDate);
+          if (!isNaN(d.getTime())) { start_date = d.toISOString().slice(0,10); start_time = d.toISOString().slice(11,16); }
+        }
 
-            let location_name = null;
-            let address = null;
-            if (location) {
-              location_name = typeof location === 'string' ? location : location.name ?? null;
-              if (location.address) {
-                const a = location.address;
-                address = [a.streetAddress, a.addressLocality, a.addressRegion, a.postalCode].filter(Boolean).join(', ');
-              }
-            }
+        const eventUrl = ev.url ?? url;
+        const sourceId = `billetto-${Buffer.from(String(eventUrl)).toString('base64').slice(0,20)}`;
+        const coords = await getCoordinates(supabase, ev.locationName ?? ev.name ?? 'Event', ev.address, 'München');
 
-            let start_date = null, start_time = null;
-            if (start) {
-              const d = new Date(start); if (!isNaN(d.getTime())) { start_date = d.toISOString().slice(0,10); start_time = d.toISOString().slice(11,16); }
-            }
-
-            const sourceId = `billetto-${Buffer.from(String(ev.url ?? name ?? Math.random())).toString('base64').slice(0,20)}`;
-            const coords = await getCoordinates(supabase, location_name ?? name ?? 'Event', address, 'München');
-
-            collected.push({ source_id: sourceId, title: name ?? 'Unbenannt', description: ev.description ?? null, category: ev.eventType ?? 'Sonstiges', subcategory: null, start_date, start_time, location_name, address, city: 'München', organizer: ev.organizer?.name ?? null, source_url: ev.url ?? url, image_url: Array.isArray(ev.image)?ev.image[0]:ev.image ?? null, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null });
-          }
-        } catch (e) {}
+        collected.push({ source_id: sourceId, title: ev.name ?? 'Unbenannt', description: ev.description, category: 'Sonstiges', subcategory: null, start_date, start_time, location_name: ev.locationName, address: ev.address, city: 'München', organizer: ev.organizer, source_url: eventUrl, image_url: ev.image, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null });
       }
 
       await new Promise(r=>setTimeout(r,600));

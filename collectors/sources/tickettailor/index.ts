@@ -20,17 +20,17 @@ export async function run() {
   }
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const apiKey = process.env.TICKETTAILOR_API_KEY ?? null;
   const urlsEnv = process.env.TICKETTAILOR_SEARCH_URLS ?? '';
-  const urls = urlsEnv ? urlsEnv.split(',').map((s) => s.trim()).filter(Boolean) : [
-    'https://tickettailor.com/search?q=Munich',
-  ];
+  const urls = urlsEnv.split(',').map((s) => s.trim()).filter(Boolean);
+  if (urls.length === 0) {
+    // Ticket Tailor hat keine plattformweite Such-/Discovery-Seite (jeder
+    // Veranstalter hat nur seine eigene "Box Office"-Seite) — ohne eine
+    // konkrete Liste bekannter Münchner Box-Office-URLs gibt es nichts zu scrapen.
+    console.log('[tickettailor] no TICKETTAILOR_SEARCH_URLS configured (no platform-wide search exists) — skipping');
+    return;
+  }
 
   const collected: any[] = [];
-
-  if (apiKey) {
-    console.log('[tickettailor] API key present — API mode not yet implemented fully; falling back to listing fetch');
-  }
 
   for (const url of urls) {
     try {

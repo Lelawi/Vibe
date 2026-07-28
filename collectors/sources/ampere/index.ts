@@ -1,47 +1,99 @@
+import fetch from 'node-fetch';
+import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { extractJsonLdEvents, parseGermanDate } from '../../core/scrape';
 
-const OUR_SUPABASE_URL = process.env.SUPABASE_URL!;
-const OUR_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Der Ampere ist der kleinere Club-Saal im Muffatwerk und hat keine eigene
+// Domain — das Programm läuft über muffatwerk.de.
+const AMPERE_URL = 'https://www.muffatwerk.de/de/pages/ampere';
+const AMPERE_ADDRESS = 'Zellstraße 4, 81667 München';
 
-// AMPERE club stub
-async function normalizeEvent(raw: any, supabase: ReturnType<typeof createClient>) {
-  return {
-    source_id: `ampere-${raw.id}`,
-    title: raw.title ?? 'Unnamed',
-    description: raw.description ?? null,
-    category: 'Clubs',
-    subcategory: null,
-    start_date: raw.date ?? null,
-    start_time: raw.time ?? null,
-    location_name: 'AMPERE München',
-    address: null,
-    city: 'München',
-    organizer: null,
-    source_url: raw.url ?? null,
-    image_url: null,
-    latitude: null,
-    longitude: null,
-  };
-}
+export async function run() {
+  console.log('[ampere] starting');
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey) { console.log('[ampere] missing supabase envs — skipping'); return; }
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
-async function main() {
-  console.log('AMPERE collector stub started — implement scraping.');
-  const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);
-  const normalizedEvents: any[] = [];
+  const collected: any[] = [];
 
-  if (normalizedEvents.length === 0) {
-    console.log('No events fetched (stub).');
-    return;
+  try {
+    console.log('[ampere] fetching', AMPERE_URL);
+    const res = await fetch(AMPERE_URL, { headers: { 'User-Agent': 'VibeApp-Collector/1.0' } });
+    if (!res.ok) { console.warn('[ampere] fetch failed', res.status); return; }
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    const events = extractJsonLdEvents($);
+
+    if (!events.length) {
+      $('a[href*="/event"], article, .event, .teaser').each((_, el) => {
+        const el$ = $(el);
+        const name = el$.find('h1, h2, h3').first().text().trim();
+        const dateText = el$.find('time').attr('datetime') || el$.find('time').text().trim();
+        const href = el$.is('a') ? el$.attr('href') : el$.find('a').first().attr('href');
+        if (!name || !href) return;
+        events.push({
+          name,
+          startDate: dateText || null,
+          description: null,
+          url: new URL(href, AMPERE_URL).toString(),
+          image: null,
+          locationName: 'Ampere München',
+          address: AMPERE_ADDRESS,
+          organizer: 'Muffatwerk',
+        });
+      });
+    }
+
+    for (const ev of events) {
+      let start_date: string | null = null;
+      let start_time: string | null = null;
+      if (ev.startDate) {
+        const d = new Date(ev.startDate);
+        if (!isNaN(d.getTime())) {
+          start_date = d.toISOString().slice(0, 10);
+          start_time = d.toISOString().slice(11, 16);
+        } else {
+          start_date = parseGermanDate(ev.startDate);
+        }
+      }
+      if (!ev.name || !start_date) continue;
+
+      const eventUrl = ev.url ?? AMPERE_URL;
+      const sourceId = `ampere-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;
+      const coords = await getCoordinates(supabase, 'Ampere München', AMPERE_ADDRESS, 'München');
+
+      collected.push({
+        source_id: sourceId,
+        title: ev.name,
+        description: ev.description,
+        category: 'Konzerte',
+        subcategory: null,
+        start_date,
+        start_time,
+        location_name: 'Ampere München',
+        address: AMPERE_ADDRESS,
+        city: 'München',
+        organizer: ev.organizer ?? 'Muffatwerk',
+        source_url: eventUrl,
+        image_url: ev.image,
+        latitude: coords?.latitude ?? null,
+        longitude: coords?.longitude ?? null,
+      });
+    }
+  } catch (err) {
+    console.warn('[ampere] error', err);
   }
 
-  const { error } = await supabase.from('events').upsert(normalizedEvents, { onConflict: 'source_id' });
-  if (error) {
-    console.error('Fehler beim Speichern:', error);
-    process.exit(1);
-  }
-
-  console.log(`${normalizedEvents.length} Events gespeichert/aktualisiert.`);
+  if (collected.length === 0) { console.log('[ampere] no events parsed'); return; }
+  console.log('[ampere] upserting', collected.length, 'events');
+  const { error } = await supabase.from('events').upsert(collected, { onConflict: 'source_id' });
+  if (error) console.error('[ampere] upsert error', error);
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+
+export default run;

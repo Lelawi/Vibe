@@ -1,3 +1,6 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: kulturserver.de/veranstaltungen
+// ist offline bzw. nicht mehr auffindbar (siehe Recherche Juli 2026) — es gibt
+// aktuell keine echte Münchner Veranstaltungsquelle unter dieser Domain.
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';

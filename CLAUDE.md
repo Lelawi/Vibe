@@ -57,17 +57,20 @@ rather than relying on older training data.
 ```
 cd collectors
 npm install
-npm run backstage       # scrape/fetch Backstage München events
-npm run muenchenticket   # scrape muenchenticket.de (Algolia-backed)
-npm run lostweekend       # scrape lostweekend.de
-npm run muenchenevent     # scrape muenchenevent.de
-npm run dedup             # run mark_duplicate_events() Postgres RPC
+npm run collect-all      # runs every active source in collect-all.ts, in sequence
+npm run dedup             # run mark_duplicate_events() Postgres RPC — always run last
+npm run backstage         # or run a single source directly, e.g. for debugging
 ```
 
-Each collector is run independently (see `.github/workflows/collect-all.yml`,
-scheduled twice daily via cron). There is no single "run all" script locally
-— run each `npm run <source>` command in turn, then `npm run dedup` last so
-newly inserted events get deduplicated.
+`collect-all.ts` is the single source of truth for which collectors run
+automatically (imported and listed in its `sources` array) — the GitHub
+workflow (`.github/workflows/collect-all.yml`, scheduled twice daily via cron)
+just calls `npm run collect-all` followed by `npm run dedup`. When adding a
+new source to the automatic run, add it to `collect-all.ts`'s `sources` array,
+not as a separate workflow step. Several source files exist under
+`collectors/sources/` but are deliberately **not** in `collect-all.ts` — see
+the comment above the `sources` array for why (missing/paid API keys, no
+real public data source found, etc.).
 
 Env vars (`.env`, not committed): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 (service role, not anon — collectors write directly to the `events` table).

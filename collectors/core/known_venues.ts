@@ -103,8 +103,8 @@ export const KNOWN_VENUE_ADDRESSES: Record<string, string> = {
   'gasteig münchen': 'Rosenheimer Str. 5, 81667 München',
   'münchner kammerspiele': 'Maximilianstr. 1, 80539 München',
   'pasinger fabrik': 'Helfensteinstr. 35, 81241 München',
-  'milla club': 'Hirschgartenallee 1, 80639 München',
-  'ampere münchen': 'Zenettistr. 9, 81679 München',
+  'milla club': 'Holzstraße 28, 80469 München',
+  'ampere münchen': 'Zellstr. 4, 81667 München',
   'kubiz münchen': 'Seidlstr. 10, 80335 München',
 };
 

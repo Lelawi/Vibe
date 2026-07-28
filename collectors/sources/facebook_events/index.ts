@@ -3,9 +3,10 @@ import { getCoordinates } from '../../core/geocode';
 import { fileURLToPath } from 'url';
 
 /**
- * Facebook Events collector (template)
- * - Prefer the Graph API and page access tokens; scraping is fragile and may violate TOS.
- * - Env: `FACEBOOK_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+ * Facebook Events collector — NICHT in collect-all.ts / im Workflow eingebunden,
+ * da kein FACEBOOK_ACCESS_TOKEN / keine FACEBOOK_PAGE_IDS konfiguriert sind.
+ * Benötigt eine Facebook-App + Page-Access-Token pro zu beobachtender Seite.
+ * Env: `FACEBOOK_ACCESS_TOKEN`, `FACEBOOK_PAGE_IDS`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
  */
 
 export async function run() {

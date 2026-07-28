@@ -1,3 +1,6 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: Eventim bietet keine
+// freie öffentliche API an, die Website hat starken Bot-Schutz. Scraping
+// würde vermutlich auch gegen die Nutzungsbedingungen verstoßen.
 import { createClient } from '@supabase/supabase-js';
 import { getCoordinates } from '../../core/geocode';
 

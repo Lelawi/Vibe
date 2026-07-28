@@ -1,3 +1,7 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: Eventbrite hat die
+// öffentliche Event-Search-API 2020 für Drittanbieter abgeschaltet — es gibt
+// keinen freien Weg mehr, München-Events zu durchsuchen. Erst reaktivieren,
+// wenn ein Eventbrite-Partnerzugang vorliegt.
 import { createClient } from '@supabase/supabase-js';
 import { getCoordinates } from '../../core/geocode';
 

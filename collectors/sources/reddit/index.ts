@@ -1,3 +1,8 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: Reddit-Posts sind
+// Freitext ohne verlässliche Struktur für Titel/Datum/Ort — als "Event"-Quelle
+// würde das primär Datenmüll in die events-Tabelle schreiben. Die öffentliche
+// r/Munich JSON-API ist zwar erreichbar, aber das Grundproblem ist die fehlende
+// Datenstruktur, nicht der Zugriff.
 import { createClient } from '@supabase/supabase-js';
 import { getCoordinates } from '../../core/geocode';
 

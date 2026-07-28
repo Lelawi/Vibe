@@ -1,3 +1,6 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: "tickets.de" existiert
+// nicht als eigenständige Ticketing-Plattform (siehe Recherche Juli 2026) —
+// der Domain-Name wurde offenbar geraten, nicht verifiziert.
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';

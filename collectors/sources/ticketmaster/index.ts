@@ -2,10 +2,12 @@ import { createClient } from '@supabase/supabase-js';
 import { getCoordinates } from '../../core/geocode';
 
 /**
- * Ticketmaster collector (template)
- * - Prefer using Ticketmaster Discovery API (requires API key) over scraping.
- * - Environment variables: `TICKETMASTER_API_KEY` (if used), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
- * - Respect rate limits and check TOS before enabling.
+ * Ticketmaster collector — NICHT in collect-all.ts / im Workflow eingebunden,
+ * da kein TICKETMASTER_API_KEY konfiguriert ist (Discovery API ist kostenlos,
+ * erfordert aber Registrierung: https://developer.ticketmaster.com/).
+ * Nach Eintragen des Keys in .env/Secrets manuell testen (`npm run ticketmaster`)
+ * und dann wieder in collect-all.ts aufnehmen.
+ * Environment variables: `TICKETMASTER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
  */
 
 const OUR_SUPABASE_URL = process.env.SUPABASE_URL ?? null;

@@ -1,3 +1,6 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: die Meetup-API erfordert
+// mittlerweile einen kostenpflichtigen Pro/Business-Zugang für OAuth-Zugriff.
+// Erst reaktivieren, wenn ein solcher Account vorhanden ist.
 import { createClient } from '@supabase/supabase-js';
 import { getCoordinates } from '../../core/geocode';
 

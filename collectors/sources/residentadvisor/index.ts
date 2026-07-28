@@ -1,3 +1,7 @@
+// NICHT in collect-all.ts / im Workflow eingebunden: Resident Advisor hat
+// keine öffentliche API mehr, die Seite ist eine JS-App mit Bot-Schutz
+// (Cloudflare) — mit einfachem HTTP-Fetch + cheerio nicht zuverlässig
+// scrapebar. Bräuchte einen Headless-Browser (Playwright/Puppeteer).
 import { createClient } from '@supabase/supabase-js';
 import { getCoordinates } from '../../core/geocode';
 

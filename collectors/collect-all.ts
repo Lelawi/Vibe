@@ -7,35 +7,46 @@ import { run as runMuenchenticket } from './sources/muenchenticket/index.js';
 import { run as runLostweekend } from './sources/lostweekend/index.js';
 import { run as runMuenchenevent } from './sources/muenchenevent/index.js';
 import { run as runEventfrog } from './sources/eventfrog/index.js';
-import { run as runTicketmaster } from './sources/ticketmaster/index.js';
 import { run as runTickettailor } from './sources/tickettailor/index.js';
 import { run as runBilletto } from './sources/billetto/index.js';
-import { run as runFacebookEvents } from './sources/facebook_events/index.js';
 import { run as runTzAz } from './sources/tz_az/index.js';
-import { run as runSueddeutsche } from './sources/sueddeutsche/index.js';
-import { run as runKulturserver } from './sources/kulturserver/index.js';
 import { run as runImportExport } from './sources/import_export/index.js';
 import { run as runTito } from './sources/tito/index.js';
-import { run as runTicketsDe } from './sources/tickets_de/index.js';
+import { run as runLmu } from './sources/lmu/index.js';
+import { run as runAmpere } from './sources/ampere/index.js';
+import { run as runMilla } from './sources/milla/index.js';
+import { run as runP1 } from './sources/p1/index.js';
+import { run as runMuenchenDe } from './sources/muenchen_de/index.js';
+import { run as runAuerDult } from './sources/auer_dult/index.js';
+import { run as runFlohmarktOlympiapark } from './sources/flohmarkt_olympiapark/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
+// Nicht enthalten (bewusst, siehe jeweilige Kommentare in den Source-Dateien):
+// - eventbrite, meetup, ticketmaster, facebook-events: benötigen kostenpflichtige/
+//   OAuth-gebundene API-Keys, die hier nicht konfiguriert sind
+// - residentadvisor, eventim: keine freie API, starker Bot-Schutz (Cloudflare/SPA)
+// - reddit: keine strukturierten Eventdaten, ungeeignet als Quelle
+// - kulturserver, tickets_de, sueddeutsche: keine echte/erreichbare München-Quelle
+// - xing_events: reiner Platzhalter, nie implementiert
 const sources = [
   { name: 'backstage', run: runBackstage },
   { name: 'muenchenticket', run: runMuenchenticket },
   { name: 'lostweekend', run: runLostweekend },
   { name: 'muenchenevent', run: runMuenchenevent },
   { name: 'eventfrog', run: runEventfrog },
-  { name: 'ticketmaster', run: runTicketmaster },
   { name: 'tickettailor', run: runTickettailor },
   { name: 'billetto', run: runBilletto },
-  { name: 'facebook-events', run: runFacebookEvents },
   { name: 'tz-az', run: runTzAz },
-  { name: 'sueddeutsche', run: runSueddeutsche },
-  { name: 'kulturserver', run: runKulturserver },
   { name: 'import-export', run: runImportExport },
   { name: 'tito', run: runTito },
-  { name: 'tickets-de', run: runTicketsDe },
+  { name: 'lmu', run: runLmu },
+  { name: 'ampere', run: runAmpere },
+  { name: 'milla', run: runMilla },
+  { name: 'p1', run: runP1 },
+  { name: 'muenchen-de', run: runMuenchenDe },
+  { name: 'auer-dult', run: runAuerDult },
+  { name: 'flohmarkt-olympiapark', run: runFlohmarktOlympiapark },
 ];
 
 async function runAll() {

@@ -11,9 +11,14 @@ export async function run() {
   if (!supabaseUrl || !supabaseKey) { console.log('[tito] missing supabase envs — skipping'); return; }
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const urls = process.env.TITO_SEARCH_URLS ? process.env.TITO_SEARCH_URLS.split(',').map(s=>s.trim()).filter(Boolean) : [
-    'https://ti.to/search?q=Munich',
-  ];
+  const urls = (process.env.TITO_SEARCH_URLS ?? '').split(',').map(s=>s.trim()).filter(Boolean);
+  if (urls.length === 0) {
+    // Tito hat keine plattformweite Discovery-Seite, nur pro Account eine
+    // Timeline (ti.to/<account>) — ohne konkrete Liste bekannter Münchner
+    // Accounts/Events gibt es nichts zu scrapen.
+    console.log('[tito] no TITO_SEARCH_URLS configured (no platform-wide search exists) — skipping');
+    return;
+  }
 
   const collected: any[] = [];
   for (const url of urls) {

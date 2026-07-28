@@ -1,14 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { getCoordinates } from '../../core/geocode';
+import { extractJsonLdEvents } from '../../core/scrape';
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { fileURLToPath } from 'url';
-
-/**
- * Eventfrog collector (template)
- * - Implement scraping responsibly; check robots.txt and TOS.
- * - No API key required for placeholder mode.
- */
 
 export async function run() {
   console.log('[eventfrog] starting');
@@ -21,11 +16,9 @@ export async function run() {
 
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Configurable list of search/listing pages to try (comma-separated ENVs allowed)
-  const defaultUrls = [
-    'https://eventfrog.ch/de/events?search=M%C3%BCnchen',
-    'https://eventfrog.ch/de/events?search=Munich',
-  ];
+  // eventfrog.ch ist die Schweizer Plattform ohne München-Bezug; die deutsche
+  // Instanz eventfrog.de listet die Münchner Veranstaltungen unter /muenchen.html
+  const defaultUrls = ['https://www.eventfrog.de/de/events/muenchen.html'];
   const envUrls = process.env.EVENTFROG_SEARCH_URLS;
   const urls = envUrls ? envUrls.split(',').map((u) => u.trim()).filter(Boolean) : defaultUrls;
 
@@ -43,85 +36,39 @@ export async function run() {
       const html = await res.text();
       const $ = cheerio.load(html);
 
-      // Prefer structured data (JSON-LD)
-      const scripts = $('script[type="application/ld+json"]')
-        .toArray()
-        .map((el) => $(el).html())
-        .filter(Boolean);
-
-      for (const s of scripts) {
-        try {
-          const doc = JSON.parse(s!);
-          // Event or EventList
-          const items: any[] = [];
-          if (doc['@type'] === 'Event') items.push(doc);
-          if (doc['@type'] === 'ItemList' && Array.isArray(doc.itemListElement)) {
-            for (const it of doc.itemListElement) {
-              if (it && it['@type'] === 'ListItem' && it.item) items.push(it.item);
-            }
+      const events = extractJsonLdEvents($);
+      for (const ev of events) {
+        let start_date = null;
+        let start_time = null;
+        if (ev.startDate) {
+          const d = new Date(ev.startDate);
+          if (!isNaN(d.getTime())) {
+            start_date = d.toISOString().slice(0, 10);
+            start_time = d.toISOString().slice(11, 16);
           }
-          if (Array.isArray(doc['@graph'])) {
-            for (const node of doc['@graph']) if (node['@type'] === 'Event') items.push(node);
-          }
-
-          for (const ev of items) {
-            const name = ev.name ?? ev['@id'] ?? null;
-            const start = ev.startDate ?? ev.startDate;
-            const description = ev.description ?? null;
-            const urlEvent = ev.url ?? ev['@id'] ?? url;
-            const image = ev.image?.url ?? (Array.isArray(ev.image) ? ev.image[0] : ev.image) ?? null;
-            const location = ev.location ?? null;
-
-            let location_name = null;
-            let address = null;
-            if (location) {
-              if (typeof location === 'string') location_name = location;
-              else {
-                location_name = location.name ?? null;
-                if (location.address) {
-                  const a = location.address;
-                  address = [a.streetAddress, a.addressLocality, a.addressRegion, a.postalCode]
-                    .filter(Boolean)
-                    .join(', ');
-                }
-              }
-            }
-
-            let start_date = null;
-            let start_time = null;
-            if (start) {
-              const d = new Date(start);
-              if (!isNaN(d.getTime())) {
-                start_date = d.toISOString().slice(0, 10);
-                start_time = d.toISOString().slice(11, 16);
-              }
-            }
-
-            const sourceId = `eventfrog-${Buffer.from(String(urlEvent)).toString('base64').slice(0, 20)}`;
-
-            const coords = await getCoordinates(supabase, location_name ?? name ?? 'Event', address, 'München');
-
-            collected.push({
-              source_id: sourceId,
-              title: name ?? 'Unbenannt',
-              description,
-              category: ev.eventType ?? 'Sonstiges',
-              subcategory: null,
-              start_date,
-              start_time,
-              location_name,
-              address,
-              city: 'München',
-              organizer: ev.organizer?.name ?? null,
-              source_url: urlEvent,
-              image_url: image,
-              latitude: coords?.latitude ?? null,
-              longitude: coords?.longitude ?? null,
-            });
-          }
-        } catch (e) {
-          // ignore parse errors
         }
+
+        const urlEvent = ev.url ?? url;
+        const sourceId = `eventfrog-${Buffer.from(String(urlEvent)).toString('base64').slice(0, 20)}`;
+        const coords = await getCoordinates(supabase, ev.locationName ?? ev.name ?? 'Event', ev.address, 'München');
+
+        collected.push({
+          source_id: sourceId,
+          title: ev.name ?? 'Unbenannt',
+          description: ev.description,
+          category: 'Sonstiges',
+          subcategory: null,
+          start_date,
+          start_time,
+          location_name: ev.locationName,
+          address: ev.address,
+          city: 'München',
+          organizer: ev.organizer,
+          source_url: urlEvent,
+          image_url: ev.image,
+          latitude: coords?.latitude ?? null,
+          longitude: coords?.longitude ?? null,
+        });
       }
 
       // small polite delay
