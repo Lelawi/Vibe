@@ -7,10 +7,9 @@ import { run as runMuenchenticket } from './sources/muenchenticket/index.js';
 import { run as runLostweekend } from './sources/lostweekend/index.js';
 import { run as runMuenchenevent } from './sources/muenchenevent/index.js';
 import { run as runEventfrog } from './sources/eventfrog/index.js';
-import { run as runTickettailor } from './sources/tickettailor/index.js';
 import { run as runBilletto } from './sources/billetto/index.js';
 import { run as runImportExport } from './sources/import_export/index.js';
-import { run as runTito } from './sources/tito/index.js';
+import { run as runMilla } from './sources/milla/index.js';
 import { run as runP1 } from './sources/p1/index.js';
 import { run as runMuenchenDe } from './sources/muenchen_de/index.js';
 import { run as runAuerDult } from './sources/auer_dult/index.js';
@@ -29,19 +28,26 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 //   Nachfolge-URL gefunden (Stand 2026-07)
 // - lmu, ampere: Programm wird per JavaScript nachgeladen, im Server-HTML steht
 //   nichts — bräuchte einen Headless-Browser (Playwright/Puppeteer), nicht nur fetch+cheerio
-// - milla: milla-club.de blockt Anfragen mit 403, auch mit echten Browser-Headern
-//   (Chrome-UA, Accept-Language) — echter Bot-Schutz, kein simples UA-Sniffing
 // - xing_events: reiner Platzhalter, nie implementiert
+// - tickettailor, tito: keine plattformweite München-Suche vorhanden (nur pro
+//   Veranstalter eigene Seiten) — ohne kuratierte Liste bekannter Accounts
+//   liefern sie strukturell nie Events, daher ganz entfernt statt nur zu skippen
+//
+// Hinweis zu milla: node-fetch aus GitHub Actions bekam vorher 403, ein
+// identischer Request vom normalen Nutzer-Netz aus (PowerShell) hat aber
+// funktioniert — vermutlich blockt milla-club.de bekannte Cloud-/Rechenzentrums-
+// IP-Bereiche. Wieder aktiviert (jetzt über den RSS-Feed statt HTML-Scraping,
+// robuster); falls der GH-Actions-Lauf erneut 403 zeigt, war die Vermutung
+// bestätigt und milla müsste wieder raus oder über einen Proxy laufen.
 const sources = [
   { name: 'backstage', run: runBackstage },
   { name: 'muenchenticket', run: runMuenchenticket },
   { name: 'lostweekend', run: runLostweekend },
   { name: 'muenchenevent', run: runMuenchenevent },
   { name: 'eventfrog', run: runEventfrog },
-  { name: 'tickettailor', run: runTickettailor },
   { name: 'billetto', run: runBilletto },
   { name: 'import-export', run: runImportExport },
-  { name: 'tito', run: runTito },
+  { name: 'milla', run: runMilla },
   { name: 'p1', run: runP1 },
   { name: 'muenchen-de', run: runMuenchenDe },
   { name: 'auer-dult', run: runAuerDult },

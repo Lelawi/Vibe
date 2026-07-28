@@ -3,14 +3,20 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, parseGermanDate } from '../../core/scrape';
 
-// NICHT in collect-all.ts / im Workflow eingebunden: milla-club.de antwortet
-// mit 403, auch mit einem echten Chrome-User-Agent + Accept-Language-Headern
-// (verifiziert 2026-07) — das ist echter Bot-Schutz, keine simple UA-Prüfung,
-// und lässt sich mit fetch+cheerio nicht umgehen.
-const MILLA_URL = 'https://milla-club.de/category/event/';
+// milla-club.de rendert die Kategorie-Archivseite ungewöhnlich (ein voller
+// Blogpost pro "Seite", Datum als Freitext irgendwo im Artikeltext, z.B.
+// "~~~~~ 12.11.2026 Einlass 19:00 ~~~~~") — der RSS-Feed liefert dieselben
+// Posts sauber strukturiert (Titel, Link, Volltext), das echte Konzertdatum
+// muss trotzdem aus dem Volltext geregext werden, da RSS `pubDate` nur das
+// Veröffentlichungsdatum des Blogposts ist, nicht der Konzerttermin.
+const MILLA_FEED_URL = 'https://milla-club.de/category/event/feed/';
 const MILLA_ADDRESS = 'Holzstraße 28, 80469 München';
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+};
 
 export async function run() {
   console.log('[milla] starting');
@@ -20,67 +26,38 @@ export async function run() {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const collected: any[] = [];
+  const today = new Date().toISOString().slice(0, 10);
 
   try {
-    console.log('[milla] fetching', MILLA_URL);
-    // milla-club.de blockt den generischen "VibeApp-Collector"-User-Agent (403) —
-    // mit einem browserähnlichen UA + Accept-Headern klappt der Zugriff meist.
-    const res = await fetch(MILLA_URL, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
-      },
-    });
+    console.log('[milla] fetching', MILLA_FEED_URL);
+    const res = await fetch(MILLA_FEED_URL, { headers: BROWSER_HEADERS });
     if (!res.ok) { console.warn('[milla] fetch failed', res.status); return; }
-    const html = await res.text();
-    const $ = cheerio.load(html);
+    const xml = await res.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
 
-    const events = extractJsonLdEvents($);
+    const coords = await getCoordinates(supabase, 'Milla Club', MILLA_ADDRESS, 'München');
 
-    // WordPress-Blog/Kategorie-Archiv als Fallback: jeder Artikel ist ein Event-Post
-    if (!events.length) {
-      $('article, .post').each((_, el) => {
-        const el$ = $(el);
-        const name = el$.find('h1, h2, .entry-title').first().text().trim();
-        const dateText = el$.find('time').attr('datetime') || el$.find('time').text().trim() || el$.text();
-        const href = el$.find('a').first().attr('href');
-        if (!name || !href) return;
-        events.push({
-          name,
-          startDate: dateText || null,
-          description: null,
-          url: new URL(href, MILLA_URL).toString(),
-          image: el$.find('img').attr('src') ?? null,
-          locationName: 'Milla Club',
-          address: MILLA_ADDRESS,
-          organizer: 'Milla Club',
-        });
-      });
-    }
+    $('item').each((_, el) => {
+      const item$ = $(el);
+      const title = item$.find('title').first().text().trim();
+      const link = item$.find('link').first().text().trim();
+      const content = item$.find('content\\:encoded').first().text() || item$.find('description').first().text();
+      if (!title || !link || !content) return;
 
-    for (const ev of events) {
-      let start_date: string | null = null;
-      let start_time: string | null = null;
-      if (ev.startDate) {
-        const d = new Date(ev.startDate);
-        if (!isNaN(d.getTime())) {
-          start_date = d.toISOString().slice(0, 10);
-          start_time = d.toISOString().slice(11, 16);
-        } else {
-          start_date = parseGermanDate(ev.startDate);
-        }
-      }
-      if (!ev.name || !start_date) continue;
+      const dateMatch = content.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+      if (!dateMatch) return; // Post ohne erkennbares Konzertdatum im Text — ignorieren
 
-      const eventUrl = ev.url ?? MILLA_URL;
-      const sourceId = `milla-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;
-      const coords = await getCoordinates(supabase, 'Milla Club', MILLA_ADDRESS, 'München');
+      const [, day, month, year] = dateMatch;
+      const start_date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      if (start_date < today) return;
+
+      const timeMatch = content.match(/Beginn\s*(\d{1,2})[:.](\d{2})/i) ?? content.match(/Einlass\s*(\d{1,2})[:.](\d{2})/i);
+      const start_time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
 
       collected.push({
-        source_id: sourceId,
-        title: ev.name,
-        description: ev.description,
+        source_id: `milla-${Buffer.from(link).toString('base64').slice(0, 20)}`,
+        title,
+        description: null,
         category: 'Clubs',
         subcategory: null,
         start_date,
@@ -88,13 +65,13 @@ export async function run() {
         location_name: 'Milla Club',
         address: MILLA_ADDRESS,
         city: 'München',
-        organizer: ev.organizer ?? 'Milla Club',
-        source_url: eventUrl,
-        image_url: ev.image,
+        organizer: 'Milla Club',
+        source_url: link,
+        image_url: null,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
       });
-    }
+    });
   } catch (err) {
     console.warn('[milla] error', err);
   }

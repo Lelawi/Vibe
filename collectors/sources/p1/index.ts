@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, extractDatedLinks, parseGermanDate } from '../../core/scrape';
+import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate } from '../../core/scrape';
 
 // P1 selbst betreibt keine öffentliche Event-Seite (nur Corporate-Events-Seite
 // ohne Programm), und die muenchen.de-Venue-Seite zeigt "0 Veranstaltungen"
@@ -36,7 +36,7 @@ export async function run() {
     const $ = cheerio.load(html);
 
     const events = extractJsonLdEvents($);
-    if (!events.length) events.push(...extractDatedLinks($, P1_URL));
+    if (!events.length) events.push(...extractInMuenchenTeasers($, P1_URL));
 
     for (const ev of events) {
       let start_date: string | null = null;
@@ -48,6 +48,8 @@ export async function run() {
           start_time = d.toISOString().slice(11, 16);
         } else {
           start_date = parseGermanDate(ev.startDate);
+          const timeMatch = ev.startDate.match(/(\d{1,2}):(\d{2})\s*Uhr/);
+          if (timeMatch) start_time = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
         }
       }
       if (!ev.name || !start_date || start_date < today) continue;

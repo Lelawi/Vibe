@@ -155,6 +155,49 @@ export function extractDatedLinks($: CheerioAPI, baseUrl: string, cityHint = 'MÃ
   return events;
 }
 
+// in-muenchen.de-spezifischer Extractor (genutzt von p1, muenchen_de). Echte
+// Markup-Struktur per direktem HTML-Abruf verifiziert (2026-07):
+// <div class="teaser-item">
+//   <div class="teaser-info">
+//     <div class="title-row"><a class="title" href="...">Titel</a></div>
+//     <div class="meta">
+//       <div class="date"><span>Mi, 29.07.2026, 19:00 Uhr</span></div>
+//       <div class="location"><div></div><div><a>Venue</a></div></div>
+export function extractInMuenchenTeasers($: CheerioAPI, baseUrl: string): ParsedEvent[] {
+  const events: ParsedEvent[] = [];
+
+  $('.teaser-item').each((_, el) => {
+    const el$ = $(el);
+    const titleLink = el$.find('.title-row a, a.title').first();
+    const name = titleLink.text().trim();
+    const href = titleLink.attr('href');
+    if (!name || !href) return;
+
+    const dateText = el$.find('.date span, .date').first().text().trim();
+    const locationName = el$.find('.location a').first().text().trim() || null;
+
+    let url: string;
+    try {
+      url = new URL(href, baseUrl).toString();
+    } catch {
+      return;
+    }
+
+    events.push({
+      name,
+      startDate: dateText || null,
+      description: null,
+      url,
+      image: null,
+      locationName,
+      address: null,
+      organizer: null,
+    });
+  });
+
+  return events;
+}
+
 const EN_MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
