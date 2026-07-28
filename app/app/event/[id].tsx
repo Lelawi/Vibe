@@ -8,12 +8,16 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  TextInput,
+  Modal,
   Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { addEventToCalendar } from '../../lib/calendar';
 import { shareEvent } from '../../lib/share';
+
+const REPORT_REASONS = ['Ort/Adresse falsch', 'Datum/Uhrzeit falsch', 'Bereits vorbei', 'Doppelt vorhanden', 'Sonstiges'];
 
 type EventDetail = {
   id: string;
@@ -53,6 +57,10 @@ export default function EventDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied'>('idle');
   const [imageFailed, setImageFailed] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState<string | null>(null);
+  const [reportNote, setReportNote] = useState('');
+  const [reportStatus, setReportStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
 
   useEffect(() => {
     async function loadEvent() {
@@ -112,6 +120,26 @@ export default function EventDetailScreen() {
       setShareStatus('copied');
       setTimeout(() => setShareStatus('idle'), 2000);
     }
+  }
+
+  async function submitReport() {
+    if (!reportReason) return;
+    setReportStatus('sending');
+    const { error } = await supabase
+      .from('event_reports')
+      .insert({ event_id: event!.id, reason: reportReason, note: reportNote || null });
+    if (error) {
+      console.error('Fehler beim Melden:', error);
+      setReportStatus('idle');
+      return;
+    }
+    setReportStatus('sent');
+    setTimeout(() => {
+      setShowReportModal(false);
+      setReportStatus('idle');
+      setReportReason(null);
+      setReportNote('');
+    }, 1200);
   }
 
   return (
@@ -224,8 +252,70 @@ export default function EventDetailScreen() {
           >
             <Text style={styles.secondaryButtonText}>📅 In Kalender speichern</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity style={styles.reportButton} onPress={() => setShowReportModal(true)}>
+            <Text style={styles.reportButtonText}>🚩 Fehler melden</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={showReportModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Was stimmt nicht?</Text>
+
+            {reportStatus === 'sent' ? (
+              <Text style={styles.reportSentText}>✓ Danke, wird geprüft!</Text>
+            ) : (
+              <>
+                <View style={styles.reasonWrap}>
+                  {REPORT_REASONS.map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      style={[styles.reasonChip, reportReason === r && styles.reasonChipActive]}
+                      onPress={() => setReportReason(r)}
+                    >
+                      <Text style={[styles.reasonChipText, reportReason === r && styles.reasonChipTextActive]}>
+                        {r}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TextInput
+                  style={styles.reportInput}
+                  placeholder="Details (optional)"
+                  placeholderTextColor="#666"
+                  value={reportNote}
+                  onChangeText={setReportNote}
+                  multiline
+                />
+                <View style={styles.modalButtonRow}>
+                  <TouchableOpacity
+                    style={styles.modalSecondaryButton}
+                    onPress={() => setShowReportModal(false)}
+                  >
+                    <Text style={styles.modalSecondaryButtonText}>Abbrechen</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalCloseButton, !reportReason && styles.modalCloseButtonDisabled]}
+                    disabled={!reportReason || reportStatus === 'sending'}
+                    onPress={submitReport}
+                  >
+                    <Text style={styles.modalCloseButtonText}>
+                      {reportStatus === 'sending' ? '...' : 'Melden'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -266,4 +356,63 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   secondaryButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  reportButton: {
+    alignItems: 'center',
+    marginTop: 18,
+    paddingVertical: 8,
+  },
+  reportButtonText: { color: '#666', fontWeight: '600', fontSize: 13 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#0a0a0a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+    paddingBottom: 24,
+  },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 14 },
+  reasonWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  reasonChip: {
+    backgroundColor: '#141414',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  reasonChipActive: { backgroundColor: '#0af' },
+  reasonChipText: { color: '#999', fontSize: 13, fontWeight: '600' },
+  reasonChipTextActive: { color: '#000' },
+  reportInput: {
+    backgroundColor: '#141414',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: '#fff',
+    fontSize: 16,
+    minHeight: 70,
+    textAlignVertical: 'top',
+    marginBottom: 14,
+  },
+  reportSentText: { color: '#7cd992', fontSize: 16, fontWeight: '600', textAlign: 'center', paddingVertical: 20 },
+  modalButtonRow: { flexDirection: 'row', gap: 10 },
+  modalSecondaryButton: {
+    flex: 1,
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalSecondaryButtonText: { color: '#999', fontWeight: '600' },
+  modalCloseButton: {
+    flex: 1,
+    backgroundColor: '#0af',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalCloseButtonDisabled: { backgroundColor: '#0af6' },
+  modalCloseButtonText: { color: '#000', fontWeight: '700' },
 });
