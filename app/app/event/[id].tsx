@@ -84,6 +84,13 @@ export default function EventDetailScreen() {
 
   const hasCoords = event.latitude !== null && event.longitude !== null;
 
+  function openInGoogleMaps() {
+    if (!hasCoords) return;
+    const query = `${event!.latitude},${event!.longitude}(${encodeURIComponent(event!.location_name ?? '')})`;
+    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    Linking.openURL(url);
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {event.category && <Text style={styles.badge}>{event.category}</Text>}
@@ -146,15 +153,7 @@ export default function EventDetailScreen() {
       )}
 
       {hasCoords && (
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => {
-            const query = `${event.latitude},${event.longitude}(${event.location_name ?? ''})`;
-            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-            )}`;
-            Linking.openURL(url);
-          }}
-        >
+        <TouchableOpacity style={styles.secondaryButton} onPress={openInGoogleMaps}>
           <Text style={styles.secondaryButtonText}>In Google Maps öffnen</Text>
         </TouchableOpacity>
       )}

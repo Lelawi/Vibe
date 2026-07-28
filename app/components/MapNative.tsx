@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator, Text, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import MapView, { Marker, Callout, Region } from 'react-native-maps';
+import MapView, { Marker, Callout, CalloutSubview, Region } from 'react-native-maps';
 import { supabase } from '../lib/supabase';
 
 type RawEvent = {
@@ -26,8 +26,8 @@ function venueTitle(names: string[]) {
 }
 
 function openInGoogleMaps(lat: number, lng: number, label: string) {
-  const query = `${lat},${lng}(${label})`;
-  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  const query = `${lat},${lng}(${encodeURIComponent(label)})`;
+  const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
   Linking.openURL(url);
 }
 
@@ -123,7 +123,7 @@ export default function MapNative() {
         >
           <Callout tooltip={false}>
             <View style={styles.callout}>
-              <Callout.Subview
+              <CalloutSubview
                 onPress={() =>
                   router.push({ pathname: '/', params: { locations: v.names.join(',') } })
                 }
@@ -134,14 +134,14 @@ export default function MapNative() {
                     {v.count} Event{v.count === 1 ? '' : 's'} · Liste öffnen
                   </Text>
                 </View>
-              </Callout.Subview>
-              <Callout.Subview
+              </CalloutSubview>
+              <CalloutSubview
                 onPress={() => openInGoogleMaps(v.latitude, v.longitude, v.names[0])}
               >
                 <View style={styles.calloutMapsButton}>
                   <Text style={styles.calloutMapsButtonText}>In Google Maps öffnen</Text>
                 </View>
-              </Callout.Subview>
+              </CalloutSubview>
             </View>
           </Callout>
         </Marker>
