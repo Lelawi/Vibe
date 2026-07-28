@@ -44,6 +44,21 @@ async function fetchBackstageEvents(): Promise<BackstageEvent[]> {
   return response.json();
 }
 
+// Räume, die wirklich zum Backstage-Gelände gehören (feste Adresse)
+const BACKSTAGE_OWN_VENUES = [
+  'backstage halle',
+  'backstage club',
+  'backstage werk',
+  'backstage werkstatt',
+  'backstage werkstatt-studio',
+  'backstage arena',
+  'backstage arena süd',
+  'backstage arena süd open air (überdacht)',
+  'backstage all area',
+  'backstage biergarten',
+  'backyard open air (überdacht)',
+];
+
 async function normalizeEvent(raw: BackstageEvent, supabase: ReturnType<typeof createClient>) {
   const startDateTime = new Date(raw.start_time);
   const startDate = startDateTime.toISOString().slice(0, 10);
@@ -53,10 +68,15 @@ async function normalizeEvent(raw: BackstageEvent, supabase: ReturnType<typeof c
     ? raw.genres.map((g) => g.name).join(', ')
     : null;
 
+  const locationName = raw.location_name ?? 'Backstage München';
+  const isOwnVenue = BACKSTAGE_OWN_VENUES.includes(locationName.toLowerCase());
+
+  // Nur bei eigenen Räumen die feste Adresse erzwingen - bei fremden Locations
+  // (z.B. Muffathalle, Zenith) den echten Namen selbst geokodieren lassen
   const coords = await getCoordinates(
     supabase,
-    raw.location_name ?? 'Backstage München',
-    BACKSTAGE_ADDRESS,
+    locationName,
+    isOwnVenue ? BACKSTAGE_ADDRESS : null,
     'München'
   );
 
@@ -68,8 +88,8 @@ async function normalizeEvent(raw: BackstageEvent, supabase: ReturnType<typeof c
     subcategory,
     start_date: startDate,
     start_time: startTime,
-    location_name: raw.location_name ?? 'Backstage München',
-    address: BACKSTAGE_ADDRESS,
+    location_name: locationName,
+    address: isOwnVenue ? BACKSTAGE_ADDRESS : null,
     city: 'München',
     organizer: 'Backstage München',
     source_url: `https://www.backstage.eu/event/${raw.event_id}`,

@@ -15,7 +15,7 @@ while [ $attempt -le $MAX_ATTEMPTS ] && [ $interrupted -eq 0 ]; do
     break
   fi
 
-  echo "⚠️  Abgebrochen (vermutlich ngrok-Fehler). Neuer Versuch in 3 Sekunden..."
-  sleep 3
+  echo "⚠️  Abgebrochen (vermutlich ngrok-Fehler). Neuer Versuch in 2 Sekunden..."
+  sleep 2
   attempt=$((attempt + 1))
 done
