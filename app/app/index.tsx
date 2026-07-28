@@ -17,6 +17,22 @@ import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
 
+// Unsichtbar über den Datums-Chip gelegtes <input type="date"> (nur Web) —
+// reines CSS-Objekt für das native DOM-Element, keine RN-StyleSheet.
+const webDateInputStyle = {
+  position: 'absolute' as const,
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  width: '100%',
+  height: '100%',
+  opacity: 0,
+  cursor: 'pointer',
+  border: 'none',
+  padding: 0,
+};
+
 type Event = {
   id: string;
   title: string;
@@ -289,8 +305,8 @@ export default function EventListScreen() {
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container}>
+  const listHeader = (
+    <>
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.header}>Vibe</Text>
@@ -330,29 +346,58 @@ export default function EventListScreen() {
           </TouchableOpacity>
         ))}
 
-        <TouchableOpacity
-          style={[styles.filterChip, dateFilter === 'custom' && styles.filterChipActive]}
-          onPress={() => {
-            if (Platform.OS === 'web') {
-              const input = window.prompt('Datum eingeben (JJJJ-MM-TT):', customDate ?? '');
-              if (input && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
-                setCustomDate(input);
-                setDateFilter('custom');
-              }
-            } else {
-              setShowPicker(true);
-            }
-          }}
-        >
-          <Text
+        {Platform.OS === 'web' ? (
+          // window.prompt()/alert()/confirm() sind deaktiviert, sobald die
+          // PWA "Zum Home-Bildschirm hinzugefügt" im Standalone-Modus läuft
+          // (bekannte iOS-Einschränkung) — deshalb hier ein echtes, unsichtbar
+          // über den Chip gelegtes <input type="date">, das öffnet den
+          // nativen Browser-Datepicker zuverlässig auch standalone.
+          <View
             style={[
-              styles.filterChipText,
-              dateFilter === 'custom' && styles.filterChipTextActive,
+              styles.filterChip,
+              dateFilter === 'custom' && styles.filterChipActive,
+              styles.dateInputWrap,
             ]}
           >
-            {customDateLabel()}
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.filterChipText,
+                dateFilter === 'custom' && styles.filterChipTextActive,
+              ]}
+            >
+              {customDateLabel()}
+            </Text>
+            <input
+              type="date"
+              value={customDate ?? ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value) {
+                  setCustomDate(value);
+                  setDateFilter('custom');
+                } else {
+                  setCustomDate(null);
+                  setDateFilter('all');
+                }
+              }}
+              style={webDateInputStyle}
+            />
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.filterChip, dateFilter === 'custom' && styles.filterChipActive]}
+            onPress={() => setShowPicker(true)}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                dateFilter === 'custom' && styles.filterChipTextActive,
+              ]}
+            >
+              {customDateLabel()}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {showPicker && Platform.OS !== 'web' && (
@@ -411,11 +456,17 @@ export default function EventListScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+    </>
+  );
 
+  return (
+    <SafeAreaView style={styles.container}>
       <FlatList
         data={eventGroups}
         keyExtractor={(group) => group[0].id}
         contentContainerStyle={styles.list}
+        ListHeaderComponent={listHeader}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={<Text style={styles.empty}>Keine Events gefunden.</Text>}
         renderItem={({ item: group }) => {
           const item = group[0];
@@ -454,7 +505,14 @@ export default function EventListScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Kategorien wählen</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Kategorien wählen</Text>
+              {selectedCategories.length > 0 && (
+                <TouchableOpacity onPress={() => setSelectedCategories([])}>
+                  <Text style={styles.modalResetLink}>Zurücksetzen</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <FlatList
               data={categories}
               keyExtractor={(item) => item}
@@ -477,12 +535,6 @@ export default function EventListScreen() {
             />
             <View style={styles.modalButtonRow}>
               <TouchableOpacity
-                style={styles.modalSecondaryButton}
-                onPress={() => setSelectedCategories([])}
-              >
-                <Text style={styles.modalSecondaryButtonText}>Zurücksetzen</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={() => setShowCategoryModal(false)}
               >
@@ -501,7 +553,14 @@ export default function EventListScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Genres wählen</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Genres wählen</Text>
+              {selectedGenres.length > 0 && (
+                <TouchableOpacity onPress={() => setSelectedGenres([])}>
+                  <Text style={styles.modalResetLink}>Zurücksetzen</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <FlatList
               data={genres}
               keyExtractor={(item) => item}
@@ -524,12 +583,6 @@ export default function EventListScreen() {
             />
             <View style={styles.modalButtonRow}>
               <TouchableOpacity
-                style={styles.modalSecondaryButton}
-                onPress={() => setSelectedGenres([])}
-              >
-                <Text style={styles.modalSecondaryButtonText}>Zurücksetzen</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={() => setShowGenreModal(false)}
               >
@@ -549,7 +602,14 @@ export default function EventListScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Orte wählen</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Orte wählen</Text>
+              {selectedLocations.length > 0 && (
+                <TouchableOpacity onPress={() => setSelectedLocations([])}>
+                  <Text style={styles.modalResetLink}>Zurücksetzen</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <TextInput
               style={styles.search}
               placeholder="Ort suchen..."
@@ -579,12 +639,6 @@ export default function EventListScreen() {
               }}
             />
             <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={styles.modalSecondaryButton}
-                onPress={() => setSelectedLocations([])}
-              >
-                <Text style={styles.modalSecondaryButtonText}>Zurücksetzen</Text>
-              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={() => {
@@ -678,7 +732,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     color: '#fff',
-    fontSize: 14,
+    // Mind. 16px, sonst zoomt iOS Safari beim Fokussieren automatisch rein
+    // und das Layout muss danach manuell zurückgezoomt werden.
+    fontSize: 16,
   },
   filterWrap: {
     flexDirection: 'row',
@@ -693,6 +749,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginRight: 8,
     marginBottom: 8,
+  },
+  dateInputWrap: {
+    position: 'relative',
+    overflow: 'hidden',
   },
   filterChipActive: { backgroundColor: '#0af' },
   filterChipText: { color: '#999', fontSize: 13, fontWeight: '600' },
@@ -742,11 +802,22 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     maxHeight: '75%',
   },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
   modalTitle: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
-    paddingHorizontal: 16,
+    flexShrink: 1,
+  },
+  modalResetLink: {
+    color: '#0af',
+    fontSize: 13,
+    fontWeight: '600',
   },
   modalSubtitle: {
     color: '#888',
@@ -774,14 +845,6 @@ const styles = StyleSheet.create({
     gap: 10,
     margin: 16,
   },
-  modalSecondaryButton: {
-    flex: 1,
-    backgroundColor: '#141414',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  modalSecondaryButtonText: { color: '#999', fontWeight: '600' },
   modalCloseButton: {
     flex: 1,
     backgroundColor: '#0af',
