@@ -144,6 +144,20 @@ export default function EventDetailScreen() {
           <Text style={styles.buttonText}>Zur Originalseite</Text>
         </TouchableOpacity>
       )}
+
+      {hasCoords && (
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => {
+            const url = `https://www.google.com/maps/search/?api=1&query=${event.latitude},${event.longitude}&query_place_id=${encodeURIComponent(
+              event.location_name ?? ''
+            )}`;
+            Linking.openURL(url);
+          }}
+        >
+          <Text style={styles.secondaryButtonText}>In Google Maps öffnen</Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -173,4 +187,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   buttonText: { color: '#000', fontWeight: '700', fontSize: 15 },
+  secondaryButton: {
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  secondaryButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
 });

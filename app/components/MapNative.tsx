@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  ActivityIndicator,
+  Text,
+  TouchableOpacity,
+  Linking,
+} from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import { supabase } from '../lib/supabase';
 
 type RawEvent = {
@@ -23,6 +30,13 @@ function venueTitle(names: string[]) {
   if (names.length === 1) return names[0];
   if (names.length <= 3) return names.join(' / ');
   return `${names[0]} + ${names.length - 1} weitere`;
+}
+
+function openInGoogleMaps(lat: number, lng: number, label: string) {
+  const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}&query_place_id=${encodeURIComponent(
+    label
+  )}`;
+  Linking.openURL(url);
 }
 
 export default function MapNative() {
@@ -114,15 +128,26 @@ export default function MapNative() {
             if (ref) markerRefs.current.set(v.key, ref);
           }}
           coordinate={{ latitude: v.latitude, longitude: v.longitude }}
-          title={venueTitle(v.names)}
-          description={`${v.count} Event${v.count === 1 ? '' : 's'}`}
-          onCalloutPress={() =>
-            router.push({
-              pathname: '/',
-              params: { locations: v.names.join(',') },
-            })
-          }
-        />
+        >
+          <Callout
+            onPress={() =>
+              router.push({ pathname: '/', params: { locations: v.names.join(',') } })
+            }
+          >
+            <View style={styles.callout}>
+              <Text style={styles.calloutTitle}>{venueTitle(v.names)}</Text>
+              <Text style={styles.calloutSubtitle}>
+                {v.count} Event{v.count === 1 ? '' : 's'} · Liste öffnen
+              </Text>
+              <TouchableOpacity
+                style={styles.calloutMapsButton}
+                onPress={() => openInGoogleMaps(v.latitude, v.longitude, v.names[0])}
+              >
+                <Text style={styles.calloutMapsButtonText}>In Google Maps öffnen</Text>
+              </TouchableOpacity>
+            </View>
+          </Callout>
+        </Marker>
       ))}
     </MapView>
   );
@@ -131,4 +156,14 @@ export default function MapNative() {
 const styles = StyleSheet.create({
   map: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  callout: { minWidth: 180, padding: 4 },
+  calloutTitle: { fontWeight: '700', fontSize: 14, marginBottom: 2 },
+  calloutSubtitle: { fontSize: 12, color: '#666', marginBottom: 8 },
+  calloutMapsButton: {
+    backgroundColor: '#0af',
+    borderRadius: 8,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  calloutMapsButtonText: { color: '#000', fontWeight: '700', fontSize: 12 },
 });
