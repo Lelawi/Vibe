@@ -149,8 +149,8 @@ export default function EventDetailScreen() {
         <TouchableOpacity
           style={styles.secondaryButton}
           onPress={() => {
-            const url = `https://www.google.com/maps/search/?api=1&query=${event.latitude},${event.longitude}&query_place_id=${encodeURIComponent(
-              event.location_name ?? ''
+            const query = `${event.latitude},${event.longitude}(${event.location_name ?? ''})`;
+            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
             )}`;
             Linking.openURL(url);
           }}

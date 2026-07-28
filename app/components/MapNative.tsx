@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  StyleSheet,
-  View,
-  ActivityIndicator,
-  Text,
-  TouchableOpacity,
-  Linking,
-} from 'react-native';
+import { StyleSheet, View, ActivityIndicator, Text, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import { supabase } from '../lib/supabase';
@@ -33,9 +26,8 @@ function venueTitle(names: string[]) {
 }
 
 function openInGoogleMaps(lat: number, lng: number, label: string) {
-  const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}&query_place_id=${encodeURIComponent(
-    label
-  )}`;
+  const query = `${lat},${lng}(${label})`;
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   Linking.openURL(url);
 }
 
@@ -129,22 +121,27 @@ export default function MapNative() {
           }}
           coordinate={{ latitude: v.latitude, longitude: v.longitude }}
         >
-          <Callout
-            onPress={() =>
-              router.push({ pathname: '/', params: { locations: v.names.join(',') } })
-            }
-          >
+          <Callout tooltip={false}>
             <View style={styles.callout}>
-              <Text style={styles.calloutTitle}>{venueTitle(v.names)}</Text>
-              <Text style={styles.calloutSubtitle}>
-                {v.count} Event{v.count === 1 ? '' : 's'} · Liste öffnen
-              </Text>
-              <TouchableOpacity
-                style={styles.calloutMapsButton}
+              <Callout.Subview
+                onPress={() =>
+                  router.push({ pathname: '/', params: { locations: v.names.join(',') } })
+                }
+              >
+                <View style={styles.calloutTextArea}>
+                  <Text style={styles.calloutTitle}>{venueTitle(v.names)}</Text>
+                  <Text style={styles.calloutSubtitle}>
+                    {v.count} Event{v.count === 1 ? '' : 's'} · Liste öffnen
+                  </Text>
+                </View>
+              </Callout.Subview>
+              <Callout.Subview
                 onPress={() => openInGoogleMaps(v.latitude, v.longitude, v.names[0])}
               >
-                <Text style={styles.calloutMapsButtonText}>In Google Maps öffnen</Text>
-              </TouchableOpacity>
+                <View style={styles.calloutMapsButton}>
+                  <Text style={styles.calloutMapsButtonText}>In Google Maps öffnen</Text>
+                </View>
+              </Callout.Subview>
             </View>
           </Callout>
         </Marker>
@@ -157,8 +154,9 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
   callout: { minWidth: 180, padding: 4 },
+  calloutTextArea: { marginBottom: 8 },
   calloutTitle: { fontWeight: '700', fontSize: 14, marginBottom: 2 },
-  calloutSubtitle: { fontSize: 12, color: '#666', marginBottom: 8 },
+  calloutSubtitle: { fontSize: 12, color: '#666' },
   calloutMapsButton: {
     backgroundColor: '#0af',
     borderRadius: 8,
