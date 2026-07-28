@@ -27,11 +27,12 @@
     "sueddeutsche": "tsx sources/sueddeutsche/index.ts",
     "kulturserver": "tsx sources/kulturserver/index.ts",
     "xing-events": "tsx sources/xing_events/index.ts",
+    "import-export": "tsx sources/import_export/index.ts",
     "tickettailor": "tsx sources/tickettailor/index.ts",
     "billetto": "tsx sources/billetto/index.ts",
     "tito": "tsx sources/tito/index.ts",
     "tickets-de": "tsx sources/tickets_de/index.ts",
-    "collect-all": "npm run backstage && npm run muenchenticket && npm run lostweekend && npm run muenchenevent && npm run eventbrite && npm run meetup && npm run residentadvisor && npm run muenchen-de && npm run eventfrog && npm run ticketmaster && npm run tickettailor && npm run billetto && npm run ticketmaster && npm run facebook-events && npm run tz-az && npm run sueddeutsche && npm run kulturserver && npm run xing-events && npm run tito && npm run tickets-de",
+    "collect-all": "npm run backstage && npm run muenchenticket && npm run lostweekend && npm run muenchenevent && npm run eventbrite && npm run meetup && npm run residentadvisor && npm run muenchen-de && npm run eventfrog && npm run ticketmaster && npm run tickettailor && npm run billetto && npm run ticketmaster && npm run facebook-events && npm run tz-az && npm run sueddeutsche && npm run kulturserver && npm run xing-events && npm run import-export && npm run tito && npm run tickets-de",
     "collect-all:runner": "tsx collect-all.ts"
   },
   "dependencies": {
