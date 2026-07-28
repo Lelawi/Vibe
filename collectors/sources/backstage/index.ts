@@ -1,8 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-
-const OUR_SUPABASE_URL = process.env.SUPABASE_URL!;
-const OUR_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const BACKSTAGE_API_URL =
   'https://vhhdjliwckyzbqtjrjpp.supabase.co/rest/v1/rpc/get_upcoming_events';
@@ -99,8 +97,11 @@ async function normalizeEvent(raw: BackstageEvent, supabase: ReturnType<typeof c
   };
 }
 
-async function main() {
+export async function run() {
   console.log('Backstage Collector gestartet...');
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey) { console.log('[backstage] missing supabase envs — skipping'); return; }
 
   const rawEvents = await fetchBackstageEvents();
   console.log(`${rawEvents.length} Events von Backstage erhalten`);
@@ -110,7 +111,7 @@ async function main() {
     (e) => !e.cancelled && e.start_time.slice(0, 10) >= today
   );
 
-  const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   // Nacheinander statt parallel, damit die Geokodierungs-Rate-Limits eingehalten werden
   const normalizedEvents = [];
@@ -124,10 +125,12 @@ async function main() {
 
   if (error) {
     console.error('Fehler beim Speichern:', error);
-    process.exit(1);
+    return;
   }
 
   console.log(`${normalizedEvents.length} Events gespeichert/aktualisiert.`);
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+
+export default run;

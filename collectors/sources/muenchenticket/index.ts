@@ -1,7 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-
-const OUR_SUPABASE_URL = process.env.SUPABASE_URL!;
-const OUR_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { fileURLToPath } from 'url';
 
 const ALGOLIA_APP_ID = 'UB6RVTVAFZ';
 const ALGOLIA_API_KEY = '46f011a35c180f5a07a2210276ca04b7';
@@ -93,8 +91,11 @@ function normalizeEvent(hit: AlgoliaHit) {
   };
 }
 
-async function main() {
+export async function run() {
   console.log('München-Ticket-Collector gestartet...');
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey) { console.log('[muenchenticket] missing supabase envs — skipping'); return; }
 
   const hits = await fetchMuenchenTicketEvents();
   console.log(`${hits.length} Treffer von München Ticket erhalten`);
@@ -115,17 +116,19 @@ async function main() {
   const deduplicatedEvents = Array.from(deduplicatedMap.values());
   console.log(`${deduplicatedEvents.length} nach Entfernen von Duplikaten`);
 
-  const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);
+  const supabase = createClient(supabaseUrl, supabaseKey);
   const { error } = await supabase
     .from('events')
     .upsert(deduplicatedEvents, { onConflict: 'source_id' });
 
   if (error) {
     console.error('Fehler beim Speichern:', error);
-    process.exit(1);
+    return;
   }
 
   console.log(`${deduplicatedEvents.length} Events gespeichert/aktualisiert.`);
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+
+export default run;

@@ -1,9 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import * as cheerio from 'cheerio';
+import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-
-const OUR_SUPABASE_URL = process.env.SUPABASE_URL!;
-const OUR_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const EVENTS_PAGE_URL = 'https://www.muenchenevent.de/me/veranstaltungen';
 const BASE_URL = 'https://www.muenchenevent.de';
@@ -98,14 +96,17 @@ async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createC
   };
 }
 
-async function main() {
+export async function run() {
   console.log('MünchenEvent-Collector gestartet...');
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey) { console.log('[muenchenevent] missing supabase envs — skipping'); return; }
 
   const rawEvents = await fetchMuenchenEventEvents();
   console.log(`${rawEvents.length} Events auf der Seite gefunden`);
 
   const today = new Date().toISOString().slice(0, 10);
-  const supabase = createClient(OUR_SUPABASE_URL, OUR_SERVICE_ROLE_KEY);
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   const normalizedEvents = [];
   for (const event of rawEvents) {
@@ -125,10 +126,12 @@ async function main() {
 
   if (error) {
     console.error('Fehler beim Speichern:', error);
-    process.exit(1);
+    return;
   }
 
   console.log(`${deduplicatedEvents.length} Events gespeichert/aktualisiert.`);
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+
+export default run;
