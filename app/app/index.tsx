@@ -121,6 +121,62 @@ function toggleInSet(current: string[], value: string): string[] {
     : [...current, value];
 }
 
+function canonicalizeVenue(name?: string | null) {
+  if (!name) return 'Unbekannt';
+  const keyRaw = name.trim().toLowerCase();
+  // OVERRIDES migrated to collectors/core/known_venues.ts —
+  // keep client-side heuristics only; authoritative mappings live server-side.
+  // normalize whitespace and separators
+  let s = name.replace(/\(.*?\)/g, '').replace(/[\-–—]/g, ' ').toLowerCase().trim();
+
+  // split on common separators (comma, slash)
+  const parts = s.split(/[,/\\]/).map((p) => p.trim()).filter(Boolean);
+
+  const genericTokens = [
+    'süd','nord','ost','west','arena','club','halle','werkstatt','werk','studio','biergarten',
+    'open air','open-air','openair','all area','festsaal','night','saal','unterer schlosshof','jella',
+    'bereich','saal','lounge'
+  ];
+  const stopwords = ['der','die','das','von','am','in','münchen','muenchen','residenz'];
+  // clean all parts and pick the best candidate
+  function cleanPart(p: string) {
+    let x = p;
+    genericTokens.forEach((g) => {
+      const re = new RegExp('\\b' + g.replace(/[-\s]/g, '\\s?') + '\\b', 'gi');
+      x = x.replace(re, ' ');
+    });
+    stopwords.forEach((w) => {
+      const re = new RegExp('\\b' + w + '\\b', 'gi');
+      x = x.replace(re, ' ');
+    });
+    x = x.replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+    return x;
+  }
+
+  const cleanedParts = parts.map((p) => cleanPart(p)).filter(Boolean);
+
+  // high-priority tokens to prefer when choosing between parts
+  const highPriority = ['brunnenhof','backstage','bayerischer hof','muffathalle','muffat','zenith','schloss blutenburg','pasinger fabrik','milla','ampere','olympiapark','residenz','hotel'];
+
+  let chosen = '';
+  for (const hp of highPriority) {
+    const found = cleanedParts.find((cp) => cp.includes(hp));
+    if (found) { chosen = found; break; }
+  }
+
+  if (!chosen) {
+    // fall back to the longest cleaned part
+    chosen = cleanedParts.sort((a, b) => b.length - a.length)[0] || parts[0] || s;
+  }
+
+  // Title-case the result
+  return chosen
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 export default function EventListScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ locations?: string }>();  
@@ -180,8 +236,14 @@ export default function EventListScreen() {
   }, [events]);
 
   const locations = useMemo(() => {
-    const unique = new Set(events.map((e) => e.location_name).filter(Boolean));
-    return Array.from(unique).sort() as string[];
+    const map = new Map<string, Set<string>>();
+    events.forEach((e) => {
+      const orig = e.location_name ?? 'Unbekannt';
+      const key = canonicalizeVenue(orig);
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key)!.add(orig);
+    });
+    return Array.from(map.keys()).sort() as string[];
   }, [events]);
 
   const filteredLocationOptions = useMemo(() => {
@@ -213,9 +275,10 @@ export default function EventListScreen() {
       const matchesGenre =
         selectedGenres.length === 0 ||
         selectedGenres.includes(eventGenre);
+      const eventCanonical = canonicalizeVenue(e.location_name);
       const matchesLocation =
         selectedLocations.length === 0 ||
-        (e.location_name !== null && selectedLocations.includes(e.location_name));
+        selectedLocations.includes(eventCanonical);
       const matchesDate =
         e.start_date >= from && (to === null || e.start_date <= to);
       return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate;

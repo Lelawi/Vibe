@@ -3,7 +3,6 @@
 export const KNOWN_VENUES: Record<string, string> = {
   'muffathalle': 'Muffathalle München',
   'muffatwerk': 'Muffathalle München',
-  'zenith': 'Zenith München',
   'zenith münchen': 'Zenith München',
   'backstage halle': 'Backstage München',
   'backstage club': 'Backstage München',
@@ -21,9 +20,8 @@ export const KNOWN_VENUES: Record<string, string> = {
   'gasteig hp8': 'Gasteig HP8 / Schlachthof',
   'kultfabrik': 'Kultfabrik/Optimolwerke',
   'optimolwerke': 'Kultfabrik/Optimolwerke',
-  'werk': 'Kultfabrik/Optimolwerke',
   'backstage arena': 'Backstage München',
-  'milla': 'Milla Club',
+  'milla club': 'Milla Club',
   'technikum': 'Technikum München',
   'tonhalle': 'TonHalle München',
   'glockenbachwerkstatt': 'Glockenbachwerkstatt',
@@ -39,12 +37,58 @@ export const KNOWN_VENUES: Record<string, string> = {
   'backstage werke': 'Backstage München',
   'kongress am park': 'Kongress am Park',
   'kulturbahnhof': 'Kulturbahnhof',
+  'backstage arena süd': 'Backstage München',
+  'backstage arena süd open air': 'Backstage München',
+  'backstage biergarten': 'Backstage München',
+  'backyard open air': 'Backstage München',
+  'zenithhalle': 'Zenith München',
+  'zenith munich': 'Zenith München',
+  'muffat werk': 'Muffathalle München',
+  'milla münchen': 'Milla Club',
+  'p1 club': 'P1',
+  'olympiapark münchen': 'Olympiapark München',
+  'olympia park': 'Olympiapark München',
+  'brunnenhof': 'Brunnenhof',
+  'deutsches theater silbersaal': 'Deutsches Theater München',
+  'deutsches theater theatersaal': 'Deutsches Theater München',
+  // Migrated from app OVERRIDES
+  'hotel bayerischer hof, festsaal': 'Hotel Bayerischer Hof',
+  'hotel bayerischer hof, night': 'Hotel Bayerischer Hof',
+  'residenz, brunnenhof': 'Brunnenhof',
+  'residenz, brunnenhof/herkulessaal': 'Brunnenhof',
+  'brunnenhof der residenz': 'Brunnenhof',
+  'backstage all area': 'Backstage München',
+  'schloss blutenburg, jella': 'Schloss Blutenburg',
+  'schloss blutenburg, unterer schlosshof': 'Schloss Blutenburg',
+  'schloss blutenburg': 'Schloss Blutenburg',
 };
 
 export function getCanonicalVenue(name?: string | null): string | null {
   if (!name) return null;
   const key = name.trim().toLowerCase();
-  return KNOWN_VENUES[key] ?? null;
+  // Exact match first
+  if (KNOWN_VENUES[key]) return KNOWN_VENUES[key];
+
+  // Pattern-based matching for flexible variants
+  const PATTERN_VENUES: { pattern: RegExp; canonical: string }[] = [
+    { pattern: /\bbackstage\b|backyard/i, canonical: 'Backstage München' },
+    { pattern: /muffat/i, canonical: 'Muffathalle München' },
+    { pattern: /zenith/i, canonical: 'Zenith München' },
+    { pattern: /milla/i, canonical: 'Milla Club' },
+    { pattern: /\bp\s*1\b|\bp1\b/i, canonical: 'P1' },
+    { pattern: /olympia\s*park|olympiapark/i, canonical: 'Olympiapark München' },
+    { pattern: /brunnenhof/i, canonical: 'Brunnenhof' },
+    { pattern: /ampere/i, canonical: 'AMPERE München' },
+    { pattern: /gasteig/i, canonical: 'Gasteig München' },
+    { pattern: /kammerspiele/i, canonical: 'Münchner Kammerspiele' },
+    { pattern: /pasinger fabr/i, canonical: 'Pasinger Fabrik' },
+  ];
+
+  for (const p of PATTERN_VENUES) {
+    if (p.pattern.test(name)) return p.canonical;
+  }
+
+  return null;
 }
 
 // Optional: known addresses for venues to improve geocoding accuracy.

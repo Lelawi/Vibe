@@ -1,0 +1,67 @@
+{
+  "total": 59,
+  "shortKeys": [],
+  "genericKeys": [],
+  "substrConflicts": [
+    {
+      "key": "backstage",
+      "conflicts": [
+        "backstage halle",
+        "backstage club",
+        "backstage arena",
+        "backstage werke",
+        "backstage arena süd",
+        "backstage arena süd open air",
+        "backstage biergarten",
+        "backstage all area"
+      ]
+    },
+    {
+      "key": "gasteig",
+      "conflicts": [
+        "kulturzentrum gasteig",
+        "gasteig hp8"
+      ]
+    },
+    {
+      "key": "kammerspiele",
+      "conflicts": [
+        "münchner kammerspiele"
+      ]
+    },
+    {
+      "key": "backstage arena",
+      "conflicts": [
+        "backstage arena süd",
+        "backstage arena süd open air"
+      ]
+    },
+    {
+      "key": "backstage arena süd",
+      "conflicts": [
+        "backstage arena süd open air"
+      ]
+    },
+    {
+      "key": "brunnenhof",
+      "conflicts": [
+        "residenz, brunnenhof",
+        "residenz, brunnenhof/herkulessaal",
+        "brunnenhof der residenz"
+      ]
+    },
+    {
+      "key": "residenz, brunnenhof",
+      "conflicts": [
+        "residenz, brunnenhof/herkulessaal"
+      ]
+    },
+    {
+      "key": "schloss blutenburg",
+      "conflicts": [
+        "schloss blutenburg, jella",
+        "schloss blutenburg, unterer schlosshof"
+      ]
+    }
+  ]
+}
