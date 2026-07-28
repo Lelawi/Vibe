@@ -17,7 +17,11 @@ export default function Layout() {
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Vibe' }} />
-        <Stack.Screen name="event/[id]" options={{ title: 'Event' }} />
+        {/* Eigener "‹ Übersicht"-Button im Screen selbst übernimmt die
+            Rücknavigation (funktioniert auch bei direkt geöffneten Share-
+            Links ohne Navigations-Historie) — der native Header-Pfeil würde
+            bei normaler Navigation nur doppelt und verwirrend danebenstehen. */}
+        <Stack.Screen name="event/[id]" options={{ title: 'Event', headerShown: false }} />
         <Stack.Screen name="map" options={{ title: 'Karte' }} />
       </Stack>
     </>
