@@ -6,9 +6,19 @@ import { supabase } from '../lib/supabase';
 
 type RawEvent = {
   id: string;
+  title: string;
   location_name: string | null;
   latitude: number;
   longitude: number;
+  start_date: string;
+  start_time: string | null;
+};
+
+type VenueEvent = {
+  id: string;
+  title: string;
+  start_date: string;
+  start_time: string | null;
 };
 
 type VenueMarker = {
@@ -16,13 +26,21 @@ type VenueMarker = {
   names: string[];
   latitude: number;
   longitude: number;
-  count: number;
+  events: VenueEvent[];
 };
+
+const MAX_CALLOUT_EVENTS = 4;
 
 function venueTitle(names: string[]) {
   if (names.length === 1) return names[0];
   if (names.length <= 3) return names.join(' / ');
   return `${names[0]} + ${names.length - 1} weitere`;
+}
+
+function formatShort(dateStr: string, timeStr: string | null) {
+  const date = new Date(`${dateStr}T${timeStr ?? '00:00'}`);
+  const formatted = date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' });
+  return timeStr ? `${formatted} · ${timeStr.slice(0, 5)}` : formatted;
 }
 
 function openInGoogleMaps(lat: number, lng: number, label?: string) {
@@ -45,7 +63,7 @@ export default function MapNative() {
       const today = new Date().toISOString().slice(0, 10);
       const { data, error } = await supabase
         .from('events')
-        .select('id, location_name, latitude, longitude')
+        .select('id, title, location_name, latitude, longitude, start_date, start_time')
         .gte('start_date', today)
         .is('duplicate_of', null)
         .not('latitude', 'is', null)
@@ -65,8 +83,9 @@ export default function MapNative() {
       const key = `${e.latitude.toFixed(4)},${e.longitude.toFixed(4)}`;
       const existing = map.get(key);
       const name = e.location_name ?? 'Unbekannter Ort';
+      const eventEntry = { id: e.id, title: e.title, start_date: e.start_date, start_time: e.start_time };
       if (existing) {
-        existing.count += 1;
+        existing.events.push(eventEntry);
         if (!existing.names.includes(name)) existing.names.push(name);
       } else {
         map.set(key, {
@@ -74,7 +93,7 @@ export default function MapNative() {
           names: [name],
           latitude: e.latitude,
           longitude: e.longitude,
-          count: 1,
+          events: [eventEntry],
         });
       }
     }
@@ -125,18 +144,26 @@ export default function MapNative() {
         >
           <Callout tooltip={false}>
             <View style={styles.callout}>
-              <CalloutSubview
-                onPress={() =>
-                  router.push({ pathname: '/', params: { locations: v.names.join(',') } })
-                }
-              >
-                <View style={styles.calloutTextArea}>
-                  <Text style={styles.calloutTitle}>{venueTitle(v.names)}</Text>
+              <Text style={styles.calloutTitle}>{venueTitle(v.names)}</Text>
+              {v.events.slice(0, MAX_CALLOUT_EVENTS).map((ev) => (
+                <CalloutSubview key={ev.id} onPress={() => router.push(`/event/${ev.id}`)}>
+                  <View style={styles.calloutEventRow}>
+                    <Text style={styles.calloutEventTitle} numberOfLines={1}>{ev.title}</Text>
+                    <Text style={styles.calloutEventDate}>{formatShort(ev.start_date, ev.start_time)}</Text>
+                  </View>
+                </CalloutSubview>
+              ))}
+              {v.events.length > MAX_CALLOUT_EVENTS && (
+                <CalloutSubview
+                  onPress={() =>
+                    router.push({ pathname: '/', params: { locations: v.names.join(',') } })
+                  }
+                >
                   <Text style={styles.calloutSubtitle}>
-                    {v.count} Event{v.count === 1 ? '' : 's'} · Liste öffnen
+                    + {v.events.length - MAX_CALLOUT_EVENTS} weitere · Liste öffnen
                   </Text>
-                </View>
-              </CalloutSubview>
+                </CalloutSubview>
+              )}
               <CalloutSubview
                 onPress={() => openInGoogleMaps(v.latitude, v.longitude, venueTitle(v.names))}
               >
@@ -155,15 +182,18 @@ export default function MapNative() {
 const styles = StyleSheet.create({
   map: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
-  callout: { minWidth: 180, padding: 4 },
-  calloutTextArea: { marginBottom: 8 },
-  calloutTitle: { fontWeight: '700', fontSize: 14, marginBottom: 2 },
-  calloutSubtitle: { fontSize: 12, color: '#666' },
+  callout: { minWidth: 200, padding: 4 },
+  calloutTitle: { fontWeight: '700', fontSize: 14, marginBottom: 6 },
+  calloutEventRow: { marginBottom: 6 },
+  calloutEventTitle: { fontSize: 13, fontWeight: '600', color: '#111' },
+  calloutEventDate: { fontSize: 11, color: '#666', marginTop: 1 },
+  calloutSubtitle: { fontSize: 12, color: '#0af', fontWeight: '600', marginBottom: 8 },
   calloutMapsButton: {
     backgroundColor: '#0af',
     borderRadius: 8,
     paddingVertical: 6,
     alignItems: 'center',
+    marginTop: 4,
   },
   calloutMapsButtonText: { color: '#000', fontWeight: '700', fontSize: 12 },
 });

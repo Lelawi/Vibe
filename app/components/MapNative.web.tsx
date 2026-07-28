@@ -12,9 +12,12 @@ const LeafletMapView = lazy(() => import('./LeafletMapView.web'));
 
 type RawEvent = {
   id: string;
+  title: string;
   location_name: string | null;
   latitude: number;
   longitude: number;
+  start_date: string;
+  start_time: string | null;
 };
 
 const MUNICH_CENTER = { lat: 48.1371, lng: 11.5754 };
@@ -30,7 +33,7 @@ export default function MapNative() {
       const today = new Date().toISOString().slice(0, 10);
       const { data, error } = await supabase
         .from('events')
-        .select('id, location_name, latitude, longitude')
+        .select('id, title, location_name, latitude, longitude, start_date, start_time')
         .gte('start_date', today)
         .is('duplicate_of', null)
         .not('latitude', 'is', null)
@@ -50,11 +53,12 @@ export default function MapNative() {
       const key = `${e.latitude.toFixed(4)},${e.longitude.toFixed(4)}`;
       const existing = map.get(key);
       const name = e.location_name ?? 'Unbekannter Ort';
+      const eventEntry = { id: e.id, title: e.title, start_date: e.start_date, start_time: e.start_time };
       if (existing) {
-        existing.count += 1;
+        existing.events.push(eventEntry);
         if (!existing.names.includes(name)) existing.names.push(name);
       } else {
-        map.set(key, { key, names: [name], latitude: e.latitude, longitude: e.longitude, count: 1 });
+        map.set(key, { key, names: [name], latitude: e.latitude, longitude: e.longitude, events: [eventEntry] });
       }
     }
     return Array.from(map.values());
@@ -87,6 +91,7 @@ export default function MapNative() {
         centerLng={centerLng}
         zoom={hasTarget ? 16 : 13}
         targetKey={targetKey}
+        onOpenEvent={(id) => router.push(`/event/${id}`)}
         onOpenList={(names) => router.push({ pathname: '/', params: { locations: names.join(',') } })}
       />
     </Suspense>

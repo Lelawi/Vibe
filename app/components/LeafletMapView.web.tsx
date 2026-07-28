@@ -4,7 +4,7 @@
 // serverseitigen Prerender-Schritt (Expo Web-Export mit output: "static")
 // zum Absturz bringen, wenn es auf oberster Ebene importiert würde.
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { StyleSheet, View, Text, Pressable, ScrollView } from 'react-native';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 
@@ -18,18 +18,33 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
+export type VenueEvent = {
+  id: string;
+  title: string;
+  start_date: string;
+  start_time: string | null;
+};
+
 export type VenueMarker = {
   key: string;
   names: string[];
   latitude: number;
   longitude: number;
-  count: number;
+  events: VenueEvent[];
 };
+
+const MAX_POPUP_EVENTS = 5;
 
 function venueTitle(names: string[]) {
   if (names.length === 1) return names[0];
   if (names.length <= 3) return names.join(' / ');
   return `${names[0]} + ${names.length - 1} weitere`;
+}
+
+function formatShort(dateStr: string, timeStr: string | null) {
+  const date = new Date(`${dateStr}T${timeStr ?? '00:00'}`);
+  const formatted = date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' });
+  return timeStr ? `${formatted} · ${timeStr.slice(0, 5)}` : formatted;
 }
 
 function googleMapsUrl(lat: number, lng: number, label?: string) {
@@ -60,6 +75,7 @@ export default function LeafletMapView({
   centerLng,
   zoom,
   targetKey,
+  onOpenEvent,
   onOpenList,
 }: {
   venues: VenueMarker[];
@@ -67,6 +83,7 @@ export default function LeafletMapView({
   centerLng: number;
   zoom: number;
   targetKey: string | null;
+  onOpenEvent: (id: string) => void;
   onOpenList: (names: string[]) => void;
 }) {
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
@@ -82,32 +99,44 @@ export default function LeafletMapView({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {venues.map((v) => (
-        <Marker
-          key={v.key}
-          position={[v.latitude, v.longitude]}
-          ref={(ref) => {
-            if (ref) markerRefs.current.set(v.key, ref);
-          }}
-        >
-          <Popup>
-            <View style={styles.popup}>
-              <Pressable onPress={() => onOpenList(v.names)}>
+      {venues.map((v) => {
+        const shownEvents = v.events.slice(0, MAX_POPUP_EVENTS);
+        const remaining = v.events.length - shownEvents.length;
+        return (
+          <Marker
+            key={v.key}
+            position={[v.latitude, v.longitude]}
+            ref={(ref) => {
+              if (ref) markerRefs.current.set(v.key, ref);
+            }}
+          >
+            <Popup minWidth={220}>
+              <View style={styles.popup}>
                 <Text style={styles.popupTitle}>{venueTitle(v.names)}</Text>
-                <Text style={styles.popupSubtitle}>
-                  {v.count} Event{v.count === 1 ? '' : 's'} · Liste öffnen
-                </Text>
-              </Pressable>
-              <Pressable
-                style={styles.popupMapsButton}
-                onPress={() => window.open(googleMapsUrl(v.latitude, v.longitude, venueTitle(v.names)), '_blank')}
-              >
-                <Text style={styles.popupMapsButtonText}>In Google Maps öffnen</Text>
-              </Pressable>
-            </View>
-          </Popup>
-        </Marker>
-      ))}
+                <ScrollView style={styles.popupEventList}>
+                  {shownEvents.map((ev) => (
+                    <Pressable key={ev.id} style={styles.popupEventRow} onPress={() => onOpenEvent(ev.id)}>
+                      <Text style={styles.popupEventTitle} numberOfLines={1}>{ev.title}</Text>
+                      <Text style={styles.popupEventDate}>{formatShort(ev.start_date, ev.start_time)}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                {remaining > 0 && (
+                  <Pressable onPress={() => onOpenList(v.names)}>
+                    <Text style={styles.popupMoreLink}>+ {remaining} weitere · Liste öffnen</Text>
+                  </Pressable>
+                )}
+                <Pressable
+                  style={styles.popupMapsButton}
+                  onPress={() => window.open(googleMapsUrl(v.latitude, v.longitude, venueTitle(v.names)), '_blank')}
+                >
+                  <Text style={styles.popupMapsButtonText}>In Google Maps öffnen</Text>
+                </Pressable>
+              </View>
+            </Popup>
+          </Marker>
+        );
+      })}
       <AutoOpenPopup targetKey={targetKey} markerRefs={markerRefs} />
     </MapContainer>
   );
@@ -115,14 +144,23 @@ export default function LeafletMapView({
 
 const styles = StyleSheet.create({
   map: { flex: 1, width: '100%', height: '100%' },
-  popup: { minWidth: 180, padding: 4 },
-  popupTitle: { fontWeight: '700', fontSize: 14, marginBottom: 2, color: '#000' },
-  popupSubtitle: { fontSize: 12, color: '#666', marginBottom: 8 },
+  popup: { minWidth: 220, padding: 4 },
+  popupTitle: { fontWeight: '700', fontSize: 14, marginBottom: 6, color: '#000' },
+  popupEventList: { maxHeight: 180 },
+  popupEventRow: {
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  popupEventTitle: { fontSize: 13, fontWeight: '600', color: '#111' },
+  popupEventDate: { fontSize: 11, color: '#666', marginTop: 1 },
+  popupMoreLink: { fontSize: 12, color: '#0af', fontWeight: '600', marginTop: 6 },
   popupMapsButton: {
     backgroundColor: '#0af',
     borderRadius: 8,
     paddingVertical: 6,
     alignItems: 'center',
+    marginTop: 8,
   },
   popupMapsButtonText: { color: '#000', fontWeight: '700', fontSize: 12 },
 });
