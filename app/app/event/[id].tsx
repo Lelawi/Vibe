@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { addEventToCalendar } from '../../lib/calendar';
 
 type EventDetail = {
   id: string;
@@ -162,6 +163,24 @@ function openInGoogleMaps() {
           <Text style={styles.secondaryButtonText}>In Google Maps öffnen</Text>
         </TouchableOpacity>
       )}
+
+      <TouchableOpacity
+        style={styles.secondaryButton}
+        onPress={() =>
+          addEventToCalendar({
+            id: event.id,
+            title: event.title,
+            description: event.description,
+            start_date: event.start_date,
+            start_time: event.start_time,
+            location_name: event.location_name,
+            address: event.address,
+            source_url: event.source_url,
+          })
+        }
+      >
+        <Text style={styles.secondaryButtonText}>📅 In Kalender speichern</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
