@@ -33,6 +33,14 @@ jobs:
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      # GitHub Pages hat kein Server-seitiges Routing: dynamische Routen wie
+      # /event/<echte-id> existieren nur als literale "event/[id]"-Datei im
+      # statischen Export, jede echte ID landet sonst im generischen GH-Pages-
+      # 404. Fix (Standard-Trick für SPA-Router auf GH Pages): index.html als
+      # 404.html duplizieren, damit GH Pages bei jeder unbekannten Route den
+      # App-Bundle ausliefert und expo-router client-seitig anhand der
+      # echten URL die richtige Seite rendert.
+      - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
