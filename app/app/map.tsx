@@ -1,12 +1,8 @@
 import { Platform, StyleSheet, Text, SafeAreaView } from 'react-native';
-
-let MapNative: React.ComponentType | null = null;
-if (Platform.OS !== 'web') {
-  MapNative = require('../components/MapNative').default;
-}
+import MapNative from '../components/MapNative';
 
 export default function MapScreen() {
-  if (Platform.OS === 'web' || !MapNative) {
+  if (Platform.OS === 'web') {
     return (
       <SafeAreaView style={styles.container}>
         <Text style={styles.title}>Kartenansicht</Text>
