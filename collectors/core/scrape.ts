@@ -208,6 +208,7 @@ export function extractInMuenchenTeasers($: CheerioAPI, baseUrl: string): Parsed
     const dateText = el$.find('.date span, .date').first().text().trim();
     const locationName = el$.find('.location a').first().text().trim() || null;
     const imageSrc = el$.find('.image-wrapper img, img').first().attr('src') || null;
+    const description = el$.find('a.description').first().text().trim() || null;
 
     let url: string;
     try {
@@ -228,7 +229,7 @@ export function extractInMuenchenTeasers($: CheerioAPI, baseUrl: string): Parsed
     events.push({
       name,
       startDate: dateText || null,
-      description: null,
+      description,
       url,
       image,
       locationName,
