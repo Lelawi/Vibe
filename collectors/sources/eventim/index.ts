@@ -215,16 +215,11 @@ async function collectRange(
 }
 
 export async function collectUpcomingProducts(
-  postalCode: string,
   reference = new Date(),
   fetcher: Fetcher = defaultFetcher,
   sleep: (ms: number) => Promise<void> = wait,
   horizonDays = HORIZON_DAYS
 ): Promise<EventimProduct[]> {
-  if (!/^\d{5}$/.test(postalCode)) {
-    throw new Error('EVENTIM_POSTAL_CODE muss eine fünfstellige PLZ sein');
-  }
-
   const collected: EventimProduct[] = [];
   const start = berlinToday(reference);
   await collectRange(start, addDays(start, horizonDays - 1), fetcher, sleep, collected);
@@ -232,11 +227,17 @@ export async function collectUpcomingProducts(
   const unique = new Map<string, EventimProduct>();
   for (const product of collected) {
     const event = product.typeAttributes?.liveEntertainment;
+    // city_names=München filtert bereits serverseitig, location.city hier
+    // ist nur ein zusätzlicher Client-Check gegen Grenzfälle. Früher wurde
+    // stattdessen exakt auf eine einzelne Postleitzahl gematcht (>90% von
+    // München verwarf das stillschweigend, da eine Adresse nie zwei PLZs
+    // gleichzeitig hat) — city deckt die ganze Stadt ab und braucht keine
+    // Konfiguration.
     if (
       product.productId &&
       event?.startDate &&
       !Number.isNaN(Date.parse(event.startDate)) &&
-      event.location?.postalCode === postalCode &&
+      event.location?.city === 'München' &&
       !unique.has(product.productId)
     ) {
       unique.set(product.productId, product);
@@ -339,16 +340,15 @@ export async function run() {
   console.log('[eventim] starting');
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const postalCode = process.env.EVENTIM_POSTAL_CODE;
-  if (!supabaseUrl || !supabaseKey || !postalCode) {
-    console.log('[eventim] missing Supabase envs or EVENTIM_POSTAL_CODE — skipping');
+  if (!supabaseUrl || !supabaseKey) {
+    console.log('[eventim] missing Supabase envs — skipping');
     return;
   }
 
-  const products = await collectUpcomingProducts(postalCode);
+  const products = await collectUpcomingProducts();
   const events = products.map(normalizeEvent).filter((event) => event !== null);
   if (events.length === 0) {
-    console.log(`[eventim] no events found for postal code ${postalCode}`);
+    console.log('[eventim] no events found');
     return;
   }
 

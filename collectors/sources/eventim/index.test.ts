@@ -7,7 +7,7 @@ import {
   type EventimProduct,
 } from './index';
 
-const product = (productId: string, postalCode = '80639'): EventimProduct => ({
+const product = (productId: string, city = 'München'): EventimProduct => ({
   productId,
   productGroupId: `group-${productId}`,
   name: `Event ${productId}`,
@@ -26,8 +26,8 @@ const product = (productId: string, postalCode = '80639'): EventimProduct => ({
       endDate: `2026-08-0${productId}T22:00:00+02:00`,
       location: {
         name: 'Backstage München',
-        city: 'München',
-        postalCode,
+        city,
+        postalCode: '80331',
         geoLocation: { latitude: 48.145, longitude: 11.521 },
       },
     },
@@ -85,7 +85,7 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
     if (dateFrom === '2026-07-29' && dateTo === '2026-07-29' && hasTimeWindow) {
       const timeFrom = parsed.searchParams.get('time_from');
       if (timeFrom === '00:00') return okResponse({ totalResults: 1, products: [product('1')] });
-      if (timeFrom === '12:00') return okResponse({ totalResults: 1, products: [product('2', '80331')] });
+      if (timeFrom === '12:00') return okResponse({ totalResults: 1, products: [product('2', 'Augsburg')] });
       return okResponse({ totalResults: 0, products: [] });
     }
     // Tag 2-3 zusammen unter TOP -> keine weitere Aufteilung nötig, liefert
@@ -99,7 +99,6 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
 
   const sleeps: number[] = [];
   const result = await collectUpcomingProducts(
-    '80639',
     new Date('2026-07-29T12:00:00Z'),
     fetcher,
     async (ms) => { sleeps.push(ms); },

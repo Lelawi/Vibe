@@ -15,7 +15,6 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      EVENTIM_POSTAL_CODE: ${{ vars.EVENTIM_POSTAL_CODE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -22,5 +22,4 @@ npm run collect-all
 
 Environment variables
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — required to upsert events
-- `EVENTIM_POSTAL_CODE` — five-digit postal code used by the EVENTIM collector
 - Collector-specific keys like `TICKETMASTER_API_KEY`, `FACEBOOK_ACCESS_TOKEN` may be required
