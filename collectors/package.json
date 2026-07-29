@@ -29,6 +29,9 @@
     "muffathalle": "tsx sources/muffathalle/index.ts",
     "lustspielhaus": "tsx sources/lustspielhaus/index.ts",
     "fat-cat": "tsx sources/fat_cat/index.ts",
+    "deutsches-theater": "tsx sources/deutsches_theater/index.ts",
+    "gaertnerplatztheater": "tsx sources/gaertnerplatztheater/index.ts",
+    "komoedie-bayerischer-hof": "tsx sources/komoedie_bayerischer_hof/index.ts",
     "collect-all": "npm run collect-all:runner",
     "collect-all:runner": "tsx collect-all.ts"
   },

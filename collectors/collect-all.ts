@@ -27,6 +27,9 @@ import { run as runResidenztheater } from './sources/residenztheater/index.js';
 import { run as runMuffathalle } from './sources/muffathalle/index.js';
 import { run as runLustspielhaus } from './sources/lustspielhaus/index.js';
 import { run as runFatCat } from './sources/fat_cat/index.js';
+import { run as runDeutschesTheater } from './sources/deutsches_theater/index.js';
+import { run as runGaertnerplatztheater } from './sources/gaertnerplatztheater/index.js';
+import { run as runKomoedieBayerischerHof } from './sources/komoedie_bayerischer_hof/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -101,6 +104,9 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'muffathalle', run: runMuffathalle, host: 'in-muenchen.de' },
   { name: 'lustspielhaus', run: runLustspielhaus, host: 'in-muenchen.de' },
   { name: 'fat-cat', run: runFatCat, host: 'in-muenchen.de' },
+  { name: 'deutsches-theater', run: runDeutschesTheater, host: 'in-muenchen.de' },
+  { name: 'gaertnerplatztheater', run: runGaertnerplatztheater, host: 'in-muenchen.de' },
+  { name: 'komoedie-bayerischer-hof', run: runKomoedieBayerischerHof, host: 'in-muenchen.de' },
 ];
 
 async function runAll() {
