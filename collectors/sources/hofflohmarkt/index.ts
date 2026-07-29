@@ -15,6 +15,36 @@ import { getCoordinates } from '../../core/geocode';
 // richtet.
 const HOFFLOHMARKT_URL = 'https://www.hofflohmaerkte.de/pages/hofflohmarkte-munchen';
 
+// Die Seite zeigt für die nächsten Termine eine "Tourplan hier"-Kachelreihe
+// (.multicolumn-card) mit echtem Viertel-Foto — deckt aber nur eine Handvoll
+// der kommenden Termine ab, nicht alle. Für Termine ohne eigenes Foto auf ein
+// generisches, unspezifisches Atmosphäre-Foto derselben Seite zurückfallen
+// (kein Logo, echtes Marktfoto — per Direktabruf verifiziert, 2026-07),
+// statt image_url leer zu lassen: bessere Kartenoptik und qualifiziert die
+// Events für die "Empfohlen für dich"-Karussell-Zeile in der App, die Events
+// ohne Bild kategorisch ausschließt.
+const GENERIC_FALLBACK_IMAGE = 'https://www.hofflohmaerkte.de/cdn/shop/files/hofflohmaerkte-2026-01.jpg?width=1200';
+
+function normalizeDistrictKey(s: string): string {
+  return s.toLowerCase().replace(/[^a-zäöüß0-9]+/g, '');
+}
+
+function extractDistrictImages($: cheerio.CheerioAPI, baseUrl: string): Map<string, string> {
+  const map = new Map<string, string>();
+  $('.multicolumn-card').each((_, el) => {
+    const card = $(el);
+    const heading = card.find('h3, .multicolumn-card__heading, [class*=heading]').first().text().trim();
+    const src = card.find('img').first().attr('src');
+    if (!heading || !src) return;
+    try {
+      map.set(normalizeDistrictKey(heading), new URL(src, baseUrl).toString());
+    } catch {
+      // ignore malformed src
+    }
+  });
+  return map;
+}
+
 // Matched z.B. "Dachau Udldinger Weiher · So. 14.06.26 · 11 - 16 Uhr" oder
 // "Kleinhadern & Blumenau · Sa. 23.05.2026 · 10 - 16 Uhr" (Titel eines
 // Shopify-Produktvarianten-Eintrags, Jahr auf der Seite uneinheitlich 2- oder
@@ -44,6 +74,7 @@ export async function run() {
     if (!res.ok) { console.warn('[hofflohmarkt] fetch failed', res.status); return; }
     const html = await res.text();
     const $ = cheerio.load(html);
+    const districtImages = extractDistrictImages($, HOFFLOHMARKT_URL);
 
     const seen = new Set<string>();
 
@@ -100,7 +131,7 @@ export async function run() {
           city: 'München',
           organizer: 'hofflohmaerkte.de',
           source_url: HOFFLOHMARKT_URL,
-          image_url: null,
+          image_url: districtImages.get(normalizeDistrictKey(district)) ?? GENERIC_FALLBACK_IMAGE,
           // Wie bei Flohmärkten üblich zahlen nur die Höfe/Standbetreibenden
           // eine Teilnahmegebühr, der Eintritt für Besuchende ist frei.
           price_info: 'Kostenlos',

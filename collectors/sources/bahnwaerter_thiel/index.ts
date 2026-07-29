@@ -79,6 +79,13 @@ export async function run() {
         .trim();
       if (!title) return;
 
+      // Das Poster-Bild steckt nicht im Label selbst, sondern im nachfolgenden
+      // .collapsible-content (aufgeklappt per CSS über die versteckte
+      // Checkbox) — pro Event ein eigenes <img> im content-inner, direkt
+      // verifiziert per Direktabruf (2026-07).
+      const imageUrl =
+        label$.siblings('.collapsible-content').first().find('img').first().attr('src') || null;
+
       const sourceId = buildStableSourceId('bahnwaerter-thiel', title, start_date);
       collected.push({
         source_id: sourceId,
@@ -93,7 +100,7 @@ export async function run() {
         city: 'München',
         organizer: 'Bahnwärter Thiel',
         source_url: HOMEPAGE_URL,
-        image_url: null,
+        image_url: imageUrl,
         price_info: null,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
