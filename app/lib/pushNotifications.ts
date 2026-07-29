@@ -104,16 +104,39 @@ export async function disablePushNotifications(): Promise<void> {
   // — das kann aktuell nur der Sender mit dem Service-Role-Key, siehe oben).
 }
 
-// Voll-Ersatz statt Diff: Favoritenlisten sind klein, ein Delete+Insert pro
-// Änderung ist einfacher und robust genug für diese Größenordnung.
+// Echtes Diff statt Voll-Ersatz: push_favorites.notified_offsets_minutes
+// merkt sich pro Favorit, welche Erinnerungs-Vorlaufzeiten schon verschickt
+// wurden (siehe reminderSettings.ts). Ein Delete+Insert für die komplette
+// Liste hätte das bei JEDER Änderung — z.B. ein einzelnes neues Event
+// favorisieren — für ALLE bestehenden Favoriten mit zurückgesetzt und so
+// bereits verschickte Erinnerungen erneut fällig werden lassen. Nur wirklich
+// entfernte/neue Events anfassen, unveränderte Zeilen (und ihr
+// notified_offsets_minutes) bleiben unberührt.
 export async function syncFavoritesToServer(favoriteIds: string[]): Promise<void> {
   const subId = await getCachedSubscriptionId();
   if (!subId) return;
-  await supabase.from('push_favorites').delete().eq('subscription_id', subId);
-  if (favoriteIds.length > 0) {
+
+  const { data: existing } = await supabase
+    .from('push_favorites')
+    .select('event_id')
+    .eq('subscription_id', subId);
+  const existingIds = new Set((existing ?? []).map((row) => row.event_id as string));
+  const nextIds = new Set(favoriteIds);
+
+  const toRemove = [...existingIds].filter((id) => !nextIds.has(id));
+  const toAdd = [...nextIds].filter((id) => !existingIds.has(id));
+
+  if (toRemove.length > 0) {
     await supabase
       .from('push_favorites')
-      .insert(favoriteIds.map((event_id) => ({ subscription_id: subId, event_id })));
+      .delete()
+      .eq('subscription_id', subId)
+      .in('event_id', toRemove);
+  }
+  if (toAdd.length > 0) {
+    await supabase
+      .from('push_favorites')
+      .insert(toAdd.map((event_id) => ({ subscription_id: subId, event_id })));
   }
 }
 
