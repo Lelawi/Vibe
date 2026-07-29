@@ -602,11 +602,6 @@ export default function EventListScreen() {
           contentContainerStyle={styles.dateScrollContent}
           style={styles.dateScroll}
         >
-          {/* Alle Chips/Buttons in EINER scrollbaren Reihe statt Datum-Chips
-              (flex:1) neben mehreren fixbreiten Buttons als Geschwister —
-              auf schmalen Handy-Bildschirmen quetschte das die Datum-Chips
-              auf ~0 Breite und schob den letzten Button (Nähe) komplett aus
-              dem sichtbaren Bereich, da die äußere Row selbst nicht scrollte. */}
           {DATE_FILTERS.map((f) => (
             <TouchableOpacity
               key={f.key}
@@ -640,45 +635,52 @@ export default function EventListScreen() {
               {customDateLabel()}
             </Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterButton, contentFilterCount > 0 && styles.filterChipActive]}
-            onPress={() => setShowFilterModal(true)}
-          >
-            <Text style={[styles.filterButtonText, contentFilterCount > 0 && styles.filterChipTextActive]}>
-              ⚙️ Filter{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterButton, styles.nearbyButton, showFavoritesOnly && styles.filterChipActive]}
-            onPress={() => setShowFavoritesOnly((v) => !v)}
-          >
-            <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
-              {showFavoritesOnly ? '❤️' : '🤍'} Favoriten
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterButton, styles.nearbyButton, showFreeOnly && styles.filterChipActive]}
-            onPress={() => setShowFreeOnly((v) => !v)}
-          >
-            <Text style={[styles.filterButtonText, showFreeOnly && styles.filterChipTextActive]}>
-              🆓 Kostenlos
-            </Text>
-          </TouchableOpacity>
-
-          {Platform.OS === 'web' && (
-            <TouchableOpacity
-              style={[styles.filterButton, styles.nearbyButton, userLocation && styles.filterChipActive]}
-              onPress={toggleNearby}
-            >
-              <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
-                {locationStatus === 'loading' ? '📍 ...' : '📍 Nähe'}
-              </Text>
-            </TouchableOpacity>
-          )}
         </ScrollView>
+      </View>
+
+      {/* Eigene, umbrechende (statt scrollende) Reihe für die Aktions-Buttons:
+          Datum-Chips bleiben horizontal scrollbar (Heute/Morgen stehen eh
+          immer zuerst, sofort sichtbar), aber Filter/Favoriten/Kostenlos/Nähe
+          sollen nicht hinter einem Scroll versteckt sein — sie brechen
+          stattdessen in eine zweite Zeile um, wenn der Platz nicht reicht. */}
+      <View style={styles.actionButtonRow}>
+        <TouchableOpacity
+          style={[styles.filterButton, contentFilterCount > 0 && styles.filterChipActive]}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <Text style={[styles.filterButtonText, contentFilterCount > 0 && styles.filterChipTextActive]}>
+            ⚙️ Filter{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterButton, showFavoritesOnly && styles.filterChipActive]}
+          onPress={() => setShowFavoritesOnly((v) => !v)}
+        >
+          <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
+            {showFavoritesOnly ? '❤️' : '🤍'} Favoriten
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterButton, showFreeOnly && styles.filterChipActive]}
+          onPress={() => setShowFreeOnly((v) => !v)}
+        >
+          <Text style={[styles.filterButtonText, showFreeOnly && styles.filterChipTextActive]}>
+            🆓 Kostenlos
+          </Text>
+        </TouchableOpacity>
+
+        {Platform.OS === 'web' && (
+          <TouchableOpacity
+            style={[styles.filterButton, userLocation && styles.filterChipActive]}
+            onPress={toggleNearby}
+          >
+            <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
+              {locationStatus === 'loading' ? '📍 ...' : '📍 Nähe'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.resultCountRow}>
@@ -1154,15 +1156,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginRight: 8,
   },
+  actionButtonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 10,
+  },
   filterButton: {
     backgroundColor: '#141414',
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    marginRight: 16,
   },
   filterButtonText: { color: '#999', fontSize: 13, fontWeight: '600' },
-  nearbyButton: { marginRight: 16 },
   locationHint: {
     color: '#888',
     fontSize: 12,

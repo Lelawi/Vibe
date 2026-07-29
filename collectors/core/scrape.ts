@@ -249,7 +249,7 @@ export function extractInMuenchenTeasers($: CheerioAPI, baseUrl: string): Parsed
 // Kostenlos-Status zu erkennen, keinen Betrag. Braucht einen zusätzlichen
 // Seitenabruf pro Event, drosselt sich deshalb selbst (Aufrufer müssen NICHT
 // zusätzlich pausieren) — mehrere Collector nutzen denselben Host.
-const IN_MUENCHEN_DETAIL_DELAY_MS = 400;
+const IN_MUENCHEN_DETAIL_DELAY_MS = 800;
 
 export async function checkInMuenchenFreeEntry(eventUrl: string): Promise<string | null> {
   try {

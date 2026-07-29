@@ -50,27 +50,32 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 //   wird erst im Browser per JS eingesetzt, im rohen Server-HTML ist das
 //   Script-Tag leer. Gleiches Problem wie eventfrog, daher ebenfalls entfernt.
 //
-// Hinweis zu milla/p1/muenchen-de/glockenbachwerkstatt: Stand 2026-07 liefern
-// alle vier in der Produktion (GitHub Actions) 0 Events, obwohl direkte Abrufe
-// derselben URLs von einem normalen Nutzer-Netz aus einwandfreie, zum Code
-// passende Markup/Daten zurückgeben (echte Events, korrektes Datumsformat) —
-// der Code ist also nicht das Problem. Wahrscheinlichste Ursache: GitHub
-// Actions' Cloud-IP-Bereiche werden von diesen Seiten geblockt oder gedrosselt
-// (bei milla bereits einmal als 403 beobachtet, siehe Commit-Historie;
-// glockenbachwerkstatt.de war bei einem Testabruf zudem ungewöhnlich langsam
-// und lief in ein 30s-Timeout, bevor ein zweiter Versuch klappte). Lässt sich
-// ohne Zugriff auf die tatsächlichen GH-Actions-Logs nicht abschließend
-// bestätigen — nächster Schritt wäre, den Workflow-Log nach einem Lauf direkt
-// zu prüfen.
-const sources = [
+// Hinweis zu in-muenchen.de-basierten Quellen (p1, muenchen-de, feierwerk,
+// rote-sonne, technikum, gasteig-hp8, unter-deck, bahnwaerter-thiel,
+// blitz-club, tonhalle, volkstheater, residenztheater): Lauf vom 2026-07-29
+// (Commit 8743e52) lieferte nur von blitz-club (1) und residenztheater (1)
+// überhaupt Events, alle anderen 0 — trotz direkt verifizierter, echter
+// Event-Daten auf jeder einzelnen Seite. Der Code ist also nicht das
+// Problem. Wahrscheinlichste Ursache: in-muenchen.de blockt oder drosselt
+// GitHub Actions' Cloud-IP-Bereiche, verstärkt durch den Burst von 12
+// Quellen, die kurz hintereinander denselben Host treffen (milla zeigte
+// früher schon einmal einen klaren 403 aus GH Actions, siehe
+// Commit-Historie). Als Gegenmaßnahme bekommen alle Quellen mit
+// gemeinsamem host-Tag eine deutlich längere Pause (4s statt 750ms)
+// zueinander — ob das reicht, zeigt sich erst am nächsten echten Lauf.
+// host markiert Quellen, die denselben Ziel-Host treffen — genutzt, um
+// zwischen zwei Abrufen desselben Hosts eine deutlich längere Pause
+// einzulegen als sonst (siehe runAll()). 12 Quellen treffen alle
+// in-muenchen.de; hintereinander mit nur 750ms Pause sieht das exakt wie
+// eine Scraping-Burst-Sequenz aus, was die beobachtete Unzuverlässigkeit
+// in der Produktion (siehe Kommentar oben) erklären könnte.
+const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'backstage', run: runBackstage },
   { name: 'muenchenticket', run: runMuenchenticket },
   { name: 'lostweekend', run: runLostweekend },
   { name: 'muenchenevent', run: runMuenchenevent },
   { name: 'import-export', run: runImportExport },
   { name: 'milla', run: runMilla },
-  { name: 'p1', run: runP1 },
-  { name: 'muenchen-de', run: runMuenchenDe },
   { name: 'auer-dult', run: runAuerDult },
   { name: 'flohmarkt-olympiapark', run: runFlohmarktOlympiapark },
   { name: 'hofflohmarkt', run: runHofflohmarkt },
@@ -78,16 +83,18 @@ const sources = [
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.
-  { name: 'feierwerk', run: runFeierwerk },
-  { name: 'rote-sonne', run: runRoteSonne },
-  { name: 'technikum', run: runTechnikum },
-  { name: 'gasteig-hp8', run: runGasteigHp8 },
-  { name: 'unter-deck', run: runUnterDeck },
-  { name: 'bahnwaerter-thiel', run: runBahnwaerterThiel },
-  { name: 'blitz-club', run: runBlitzClub },
-  { name: 'tonhalle', run: runTonhalle },
-  { name: 'volkstheater', run: runVolkstheater },
-  { name: 'residenztheater', run: runResidenztheater },
+  { name: 'p1', run: runP1, host: 'in-muenchen.de' },
+  { name: 'muenchen-de', run: runMuenchenDe, host: 'in-muenchen.de' },
+  { name: 'feierwerk', run: runFeierwerk, host: 'in-muenchen.de' },
+  { name: 'rote-sonne', run: runRoteSonne, host: 'in-muenchen.de' },
+  { name: 'technikum', run: runTechnikum, host: 'in-muenchen.de' },
+  { name: 'gasteig-hp8', run: runGasteigHp8, host: 'in-muenchen.de' },
+  { name: 'unter-deck', run: runUnterDeck, host: 'in-muenchen.de' },
+  { name: 'bahnwaerter-thiel', run: runBahnwaerterThiel, host: 'in-muenchen.de' },
+  { name: 'blitz-club', run: runBlitzClub, host: 'in-muenchen.de' },
+  { name: 'tonhalle', run: runTonhalle, host: 'in-muenchen.de' },
+  { name: 'volkstheater', run: runVolkstheater, host: 'in-muenchen.de' },
+  { name: 'residenztheater', run: runResidenztheater, host: 'in-muenchen.de' },
 ];
 
 async function runAll() {
@@ -99,7 +106,8 @@ async function runAll() {
   config({ path: envPath });
   console.log('[collect-all] starting run for', sources.length, 'sources');
 
-  for (const source of sources) {
+  for (let i = 0; i < sources.length; i++) {
+    const source = sources[i];
     console.log(`[collect-all] running ${source.name}`);
     try {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -107,7 +115,9 @@ async function runAll() {
     } catch (err) {
       console.error('[collect-all] error running', source.name, err);
     }
-    await wait(750);
+    const next = sources[i + 1];
+    const sameHost = Boolean(source.host && next?.host === source.host);
+    await wait(sameHost ? 4000 : 750);
   }
 
   console.log('[collect-all] finished');
