@@ -986,8 +986,14 @@ export default function EventListScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {contentFilterCount > 0 && (
+      {(contentFilterCount > 0 || search.trim() !== '') && (
         <View style={styles.activePillsWrap}>
+          {search.trim() !== '' && (
+            <TouchableOpacity style={[styles.activePill, styles.activePillSearch]} onPress={() => setSearch('')}>
+              <Ionicons name="search-outline" size={12} color="#0af" />
+              <Text style={styles.activePillText} numberOfLines={1}>{search} ✕</Text>
+            </TouchableOpacity>
+          )}
           {selectedCategories.map((c) => (
             <TouchableOpacity
               key={`cat-${c}`}
@@ -1019,6 +1025,7 @@ export default function EventListScreen() {
           <TouchableOpacity
             style={styles.activePillResetAll}
             onPress={() => {
+              setSearch('');
               setSelectedCategories([]);
               setSelectedGenres([]);
               setSelectedLocations([]);
@@ -1542,6 +1549,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   activePillText: { color: '#0af', fontSize: 12, fontWeight: '600' },
+  activePillSearch: { maxWidth: 220 },
   activePillResetAll: {
     paddingHorizontal: 10,
     paddingVertical: 5,
