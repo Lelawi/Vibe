@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  collectNextWeekProducts,
-  nextCalendarWeekDates,
+  collectUpcomingProducts,
+  berlinToday,
   normalizeEvent,
   type EventimProduct,
 } from './index';
@@ -34,16 +34,18 @@ const product = (productId: string, postalCode = '80639'): EventimProduct => ({
   },
 });
 
-test('collects next week sequentially, splits busy days, filters, deduplicates and adapts', async () => {
-  assert.deepEqual(nextCalendarWeekDates(new Date('2026-07-29T12:00:00Z')), [
-    '2026-08-03',
-    '2026-08-04',
-    '2026-08-05',
-    '2026-08-06',
-    '2026-08-07',
-    '2026-08-08',
-    '2026-08-09',
-  ]);
+const okResponse = (body: unknown) => ({
+  ok: true,
+  status: 200,
+  headers: { get: () => null },
+  json: async () => body,
+});
+
+test('recursively splits busy date ranges, falls back to time windows, filters, deduplicates and adapts', async () => {
+  assert.equal(
+    berlinToday(new Date('2026-07-29T12:00:00Z')).toISOString().slice(0, 10),
+    '2026-07-29'
+  );
 
   const urls: URL[] = [];
   let activeRequests = 0;
@@ -67,37 +69,47 @@ test('collects next week sequentially, splits busy days, filters, deduplicates a
       };
     }
 
-    const split = parsed.searchParams.has('time_from');
-    const firstDay = parsed.searchParams.get('date_from') === '2026-08-03';
-    const products = firstDay
-      ? [product('1'), product('2', '80331')]
-      : [product('1')];
-    return {
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      json: async () => ({
-        totalResults: firstDay && !split ? 51 : products.length,
-        products,
-      }),
-    };
+    const dateFrom = parsed.searchParams.get('date_from');
+    const dateTo = parsed.searchParams.get('date_to');
+    const hasTimeWindow = parsed.searchParams.has('time_from');
+
+    // Gesamter Horizont (3 Tage, per horizonDays-Parameter im Test verkürzt) —
+    // "überfüllt", erzwingt eine Halbierung in Tag 1 / Tag 2-3.
+    if (dateFrom === '2026-07-29' && dateTo === '2026-07-31' && !hasTimeWindow) {
+      return okResponse({ totalResults: 100, products: [] });
+    }
+    // Tag 1 allein weiterhin "überfüllt" -> Tageszeit-Fenster-Fallback.
+    if (dateFrom === '2026-07-29' && dateTo === '2026-07-29' && !hasTimeWindow) {
+      return okResponse({ totalResults: 60, products: [] });
+    }
+    if (dateFrom === '2026-07-29' && dateTo === '2026-07-29' && hasTimeWindow) {
+      const timeFrom = parsed.searchParams.get('time_from');
+      if (timeFrom === '00:00') return okResponse({ totalResults: 1, products: [product('1')] });
+      if (timeFrom === '12:00') return okResponse({ totalResults: 1, products: [product('2', '80331')] });
+      return okResponse({ totalResults: 0, products: [] });
+    }
+    // Tag 2-3 zusammen unter TOP -> keine weitere Aufteilung nötig, liefert
+    // dieselbe productId wie oben erneut (testet Dedup über den ganzen Lauf).
+    if (dateFrom === '2026-07-30' && dateTo === '2026-07-31' && !hasTimeWindow) {
+      return okResponse({ totalResults: 1, products: [product('1')] });
+    }
+
+    throw new Error(`unexpected request: ${url}`);
   };
 
   const sleeps: number[] = [];
-  const result = await collectNextWeekProducts(
+  const result = await collectUpcomingProducts(
     '80639',
     new Date('2026-07-29T12:00:00Z'),
     fetcher,
-    async (ms) => { sleeps.push(ms); }
+    async (ms) => { sleeps.push(ms); },
+    3
   );
 
-  assert.equal(urls.length, 11);
+  assert.equal(urls.length, 7);
   assert.equal(maxActiveRequests, 1);
   assert.deepEqual(sleeps, [0]);
   assert.equal(urls.filter((url) => url.searchParams.has('time_from')).length, 3);
-  assert.ok(urls.every((url) =>
-    url.searchParams.get('date_from') === url.searchParams.get('date_to')
-  ));
   assert.deepEqual(result.map((item) => item.productId), ['1']);
 
   const normalized = normalizeEvent(result[0]);

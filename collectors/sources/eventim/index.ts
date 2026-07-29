@@ -10,6 +10,21 @@ const TIME_WINDOWS = [
   { from: '12:00', to: '17:59' },
   { from: '18:00', to: '23:59' },
 ];
+// Kein fixes "nächste Woche"-Fenster mehr: es gibt keinen Grund, feststehende
+// Termine erst kurz vorher abzugreifen, wenn Konzerte oft Monate im Voraus
+// ausverkauft sind. Statt eines festen Zeitraums wird rekursiv in immer
+// kleinere Zeitfenster gesplittet, aber nur dort, wo die API tatsächlich mehr
+// als TOP=50 Treffer für den Zeitraum liefert — dünn besetzte Monate kosten
+// dann nur einen einzigen Request, dicht besetzte Tage werden wie bisher per
+// Tageszeit-Fenster weiter aufgesplittet.
+//
+// HORIZON_DAYS=180 statt "unendlich": ein Testlauf gegen die Live-API zeigte
+// ~130 Requests allein für 90 Tage (Münchens Katalog ist sehr dicht, u.a.
+// täglich wiederkehrende Stadtführungen/Museumstickets) — 180 Tage decken
+// praktisch alle vorab planbaren/ausverkaufbaren Konzerte ab, ohne den
+// 2x-täglichen collect-all-Lauf mit hunderten Requests zu belasten oder
+// unnötig das Risiko einer 429-Drosselung zu erhöhen.
+const HORIZON_DAYS = 180;
 
 interface EventimCategory {
   name?: string;
@@ -68,7 +83,20 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-export function nextCalendarWeekDates(reference = new Date()): string[] {
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function daysBetween(from: Date, to: Date): number {
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
+}
+
+// Heutiges Datum in Europe/Berlin als UTC-Mitternacht-Date, damit
+// Tagesarithmetik (addDays/daysBetween) nicht an DST-Verschiebungen
+// vorbeirechnet.
+export function berlinToday(reference = new Date()): Date {
   const parts = new Intl.DateTimeFormat('en', {
     timeZone: 'Europe/Berlin',
     year: 'numeric',
@@ -77,15 +105,7 @@ export function nextCalendarWeekDates(reference = new Date()): string[] {
   }).formatToParts(reference);
   const value = (type: Intl.DateTimeFormatPartTypes) =>
     Number(parts.find((part) => part.type === type)?.value);
-  const localDate = new Date(Date.UTC(value('year'), value('month') - 1, value('day')));
-  const weekday = localDate.getUTCDay() || 7;
-  localDate.setUTCDate(localDate.getUTCDate() + (8 - weekday));
-
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(localDate);
-    date.setUTCDate(date.getUTCDate() + index);
-    return isoDate(date);
-  });
+  return new Date(Date.UTC(value('year'), value('month') - 1, value('day')));
 }
 
 function retryDelayMs(header: string | null, attempt: number): number {
@@ -98,15 +118,15 @@ function retryDelayMs(header: string | null, attempt: number): number {
   return 1000 * 2 ** attempt;
 }
 
-function buildUrl(date: string, timeWindow?: { from: string; to: string }): string {
+function buildUrl(dateFrom: string, dateTo: string, timeWindow?: { from: string; to: string }): string {
   const query = new URLSearchParams({
     webId: 'web__eventim-de',
     language: 'de',
     page: '1',
     retail_partner: 'EVE',
     city_names: 'München',
-    date_from: date,
-    date_to: date,
+    date_from: dateFrom,
+    date_to: dateTo,
     sort: 'DateAsc',
     top: String(TOP),
   });
@@ -117,13 +137,14 @@ function buildUrl(date: string, timeWindow?: { from: string; to: string }): stri
   return `${API_URL}?${query}`;
 }
 
-async function fetchPage(
-  date: string,
+async function fetchRange(
+  dateFrom: string,
+  dateTo: string,
   timeWindow: { from: string; to: string } | undefined,
   fetcher: Fetcher,
   sleep: (ms: number) => Promise<void>
 ): Promise<EventimResponse> {
-  const url = buildUrl(date, timeWindow);
+  const url = buildUrl(dateFrom, dateTo, timeWindow);
 
   for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
     const response = await fetcher(url, {
@@ -154,35 +175,59 @@ async function fetchPage(
   throw new Error('EVENTIM API konnte nicht abgerufen werden');
 }
 
-export async function collectNextWeekProducts(
+// Rekursiv halbiert, bis ein Zeitraum <= TOP Treffer hat oder nur noch einen
+// einzelnen Tag umfasst — an einem einzelnen (weiterhin zu vollen) Tag wird
+// wie bisher per Tageszeit-Fenster nachsortiert.
+async function collectRange(
+  from: Date,
+  to: Date,
+  fetcher: Fetcher,
+  sleep: (ms: number) => Promise<void>,
+  collected: EventimProduct[]
+): Promise<void> {
+  const fromStr = isoDate(from);
+  const toStr = isoDate(to);
+  const { products, totalResults } = await fetchRange(fromStr, toStr, undefined, fetcher, sleep);
+  console.log(`[eventim] ${fromStr}..${toStr}: totalResults=${totalResults}, products=${products.length}`);
+
+  if (totalResults <= TOP) {
+    collected.push(...products);
+    return;
+  }
+
+  const spanDays = daysBetween(from, to);
+  if (spanDays > 1) {
+    const firstHalfDays = Math.floor(spanDays / 2);
+    const mid = addDays(from, firstHalfDays - 1);
+    await collectRange(from, mid, fetcher, sleep, collected);
+    await collectRange(addDays(mid, 1), to, fetcher, sleep, collected);
+    return;
+  }
+
+  for (const timeWindow of TIME_WINDOWS) {
+    const partial = await fetchRange(fromStr, fromStr, timeWindow, fetcher, sleep);
+    console.log(
+      `[eventim] ${fromStr} ${timeWindow.from}-${timeWindow.to}: ` +
+      `totalResults=${partial.totalResults}, products=${partial.products.length}`
+    );
+    collected.push(...partial.products);
+  }
+}
+
+export async function collectUpcomingProducts(
   postalCode: string,
   reference = new Date(),
   fetcher: Fetcher = defaultFetcher,
-  sleep: (ms: number) => Promise<void> = wait
+  sleep: (ms: number) => Promise<void> = wait,
+  horizonDays = HORIZON_DAYS
 ): Promise<EventimProduct[]> {
   if (!/^\d{5}$/.test(postalCode)) {
     throw new Error('EVENTIM_POSTAL_CODE muss eine fünfstellige PLZ sein');
   }
 
   const collected: EventimProduct[] = [];
-  for (const date of nextCalendarWeekDates(reference)) {
-    const daily = await fetchPage(date, undefined, fetcher, sleep);
-    console.log(
-      `[eventim] ${date}: totalResults=${daily.totalResults}, products=${daily.products.length}`
-    );
-    collected.push(...daily.products);
-
-    if (daily.totalResults > TOP || daily.products.length > TOP) {
-      for (const timeWindow of TIME_WINDOWS) {
-        const partial = await fetchPage(date, timeWindow, fetcher, sleep);
-        console.log(
-          `[eventim] ${date} ${timeWindow.from}-${timeWindow.to}: ` +
-          `totalResults=${partial.totalResults}, products=${partial.products.length}`
-        );
-        collected.push(...partial.products);
-      }
-    }
-  }
+  const start = berlinToday(reference);
+  await collectRange(start, addDays(start, horizonDays - 1), fetcher, sleep, collected);
 
   const unique = new Map<string, EventimProduct>();
   for (const product of collected) {
@@ -300,7 +345,7 @@ export async function run() {
     return;
   }
 
-  const products = await collectNextWeekProducts(postalCode);
+  const products = await collectUpcomingProducts(postalCode);
   const events = products.map(normalizeEvent).filter((event) => event !== null);
   if (events.length === 0) {
     console.log(`[eventim] no events found for postal code ${postalCode}`);
