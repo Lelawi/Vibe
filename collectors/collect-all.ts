@@ -14,6 +14,16 @@ import { run as runAuerDult } from './sources/auer_dult/index.js';
 import { run as runFlohmarktOlympiapark } from './sources/flohmarkt_olympiapark/index.js';
 import { run as runHofflohmarkt } from './sources/hofflohmarkt/index.js';
 import { run as runGlockenbachwerkstatt } from './sources/glockenbachwerkstatt/index.js';
+import { run as runFeierwerk } from './sources/feierwerk/index.js';
+import { run as runRoteSonne } from './sources/rote_sonne/index.js';
+import { run as runTechnikum } from './sources/technikum/index.js';
+import { run as runGasteigHp8 } from './sources/gasteig_hp8/index.js';
+import { run as runUnterDeck } from './sources/unter_deck/index.js';
+import { run as runBahnwaerterThiel } from './sources/bahnwaerter_thiel/index.js';
+import { run as runBlitzClub } from './sources/blitz_club/index.js';
+import { run as runTonhalle } from './sources/tonhalle/index.js';
+import { run as runVolkstheater } from './sources/volkstheater/index.js';
+import { run as runResidenztheater } from './sources/residenztheater/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -65,6 +75,19 @@ const sources = [
   { name: 'flohmarkt-olympiapark', run: runFlohmarktOlympiapark },
   { name: 'hofflohmarkt', run: runHofflohmarkt },
   { name: 'glockenbachwerkstatt', run: runGlockenbachwerkstatt },
+  // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
+  // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
+  // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.
+  { name: 'feierwerk', run: runFeierwerk },
+  { name: 'rote-sonne', run: runRoteSonne },
+  { name: 'technikum', run: runTechnikum },
+  { name: 'gasteig-hp8', run: runGasteigHp8 },
+  { name: 'unter-deck', run: runUnterDeck },
+  { name: 'bahnwaerter-thiel', run: runBahnwaerterThiel },
+  { name: 'blitz-club', run: runBlitzClub },
+  { name: 'tonhalle', run: runTonhalle },
+  { name: 'volkstheater', run: runVolkstheater },
+  { name: 'residenztheater', run: runResidenztheater },
 ];
 
 async function runAll() {
