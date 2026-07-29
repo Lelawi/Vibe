@@ -35,7 +35,15 @@ function levenshtein(a: string, b: string): number {
   return prev[n];
 }
 
+// Für sehr kurze Suchwörter (<=2 Zeichen, z.B. "P1") ist eine Toleranz von 1
+// Edit praktisch bedeutungslos — fast jedes zufällige 1-3-Zeichen-Wort im
+// Haystack (Zahlen, Initialen, Markup-Reste) liegt dann "in der Nähe".
+// Konkret beobachtet: ein nicht entferntes "<p>"-Tag im Rohtext einer Quelle
+// spaltete sich beim Wort-Split in ein alleinstehendes "p" auf, das jede
+// Suche nach "P1" fälschlich traf. Für tokenLength<=2 daher exakte
+// Wortübereinstimmung verlangen statt Fuzzy-Toleranz.
 function maxDistanceFor(tokenLength: number): number {
+  if (tokenLength <= 2) return 0;
   if (tokenLength <= 4) return 1;
   if (tokenLength <= 8) return 2;
   return 3;

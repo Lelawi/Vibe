@@ -17,9 +17,32 @@ import { getCoordinates } from '../../core/geocode';
 const BASE_URL = 'https://www.eintrittfrei-muenchen.de/veranstaltungen/liste/';
 const MAX_PAGES = 8;
 
+// Die description im JSON-LD dieser Seite ist doppelt kodiert: die
+// eigentlichen HTML-Tags stehen dort selbst schon als Entities, z.B.
+// "&lt;p&gt;Text&lt;/p&gt;\n" statt "<p>Text</p>\n" (per Direktabruf
+// verifiziert). Ein reiner <[^>]+>-Tag-Strip griff darauf nie, weil im
+// Rohtext gar kein echtes "<" vorkam — die Entities mussten zuerst
+// dekodiert werden, damit die Tags überhaupt als solche erkennbar werden.
+const HTML_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  hellip: '…', ndash: '–', mdash: '—', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“',
+};
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&(\w+);/g, (match, name) => HTML_ENTITIES[name] ?? match);
+}
+
 function stripHtml(html: string | null): string | null {
   if (!html) return null;
-  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const decoded = decodeHtmlEntities(html);
+  const text = decoded
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   return text || null;
 }
 
