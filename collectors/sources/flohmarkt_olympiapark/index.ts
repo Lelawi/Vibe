@@ -1,3 +1,5 @@
+import fetch from 'node-fetch';
+import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
@@ -12,6 +14,24 @@ const ADDRESS = 'Spiridon-Louis-Ring 21, 80809 München';
 const SOURCE_URL = 'https://www.olympiapark.de/en/events/flea-market-in-the-olympic-park-n3370';
 const WEEKS_AHEAD = 8;
 const EXCLUDED_DATES_2026 = ['2026-05-30', '2026-06-27', '2026-07-18', '2026-08-15', '2026-08-22', '2026-10-03'];
+
+// Kein og:image auf der Seite, aber ein echtes Hero-Foto im
+// .banner-image-wrapper — per Direktabruf verifiziert (2026-07). Ein
+// einziger Zusatzabruf reicht, da alle generierten Termine dasselbe Foto
+// bekommen (kein Foto pro Einzeltermin verfügbar).
+async function fetchHeroImage(): Promise<string | null> {
+  try {
+    const res = await fetch(SOURCE_URL, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    return $('.banner-image-wrapper img').first().attr('src') || null;
+  } catch {
+    return null;
+  }
+}
 
 function nextOccurrences(): string[] {
   const dates: string[] = [];
@@ -36,6 +56,7 @@ export async function run() {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const coords = await getCoordinates(supabase, 'Flohmarkt Olympiapark', ADDRESS, 'München');
+  const imageUrl = await fetchHeroImage();
 
   const collected = nextOccurrences().map((start_date) => ({
     source_id: `flohmarkt-olympiapark-${start_date}`,
@@ -50,7 +71,7 @@ export async function run() {
     city: 'München',
     organizer: 'BRK Kreisverband München',
     source_url: SOURCE_URL,
-    image_url: null,
+    image_url: imageUrl,
     // Wie bei Flohmärkten üblich zahlen nur Standbetreiber eine Standgebühr,
     // der Eintritt für Besuchende ist frei.
     price_info: 'Kostenlos',

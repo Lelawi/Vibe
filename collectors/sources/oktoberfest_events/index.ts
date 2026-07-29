@@ -74,6 +74,16 @@ export async function run() {
         return;
       }
 
+      const imgSrc = el$.find('img').first().attr('src') || el$.find('img').first().attr('data-src');
+      let imageUrl: string | null = null;
+      if (imgSrc) {
+        try {
+          imageUrl = new URL(imgSrc, BASE_URL).toString();
+        } catch {
+          imageUrl = null;
+        }
+      }
+
       collected.push({
         source_id: `oktoberfest-events-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${year}`,
         title,
@@ -87,7 +97,7 @@ export async function run() {
         city: 'München',
         organizer: 'Landeshauptstadt München',
         source_url: sourceUrl,
-        image_url: null,
+        image_url: imageUrl,
         price_info: null,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,

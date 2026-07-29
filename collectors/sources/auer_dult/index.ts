@@ -42,6 +42,9 @@ export async function run() {
     const html = await res.text();
     const $ = cheerio.load(html);
     const text = $('body').text().replace(/\s+/g, ' ');
+    // Ein einziges generisches Foto für die Seite (nicht pro Dult), aber ein
+    // echtes Marktfoto statt gar keinem Bild — per Direktabruf verifiziert.
+    const imageUrl = $('meta[property="og:image"]').attr('content') || null;
 
     const coords = await getCoordinates(supabase, 'Auer Dult', AUER_DULT_ADDRESS, 'München');
 
@@ -100,7 +103,7 @@ export async function run() {
         city: 'München',
         organizer: 'Landeshauptstadt München',
         source_url: AUER_DULT_URL,
-        image_url: null,
+        image_url: imageUrl,
         // Marktzugang ist wie bei allen Münchner Dulten frei — bezahlt wird
         // nur pro Fahrgeschäft/Stand, nicht fürs Betreten.
         price_info: 'Kostenlos',
