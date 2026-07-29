@@ -21,6 +21,14 @@ import { computeSeriesKey } from '../lib/seriesKey';
 import { fuzzyMatch } from '../lib/fuzzySearch';
 import { addEventsToCalendar } from '../lib/calendar';
 import { useFavorites } from '../lib/favorites';
+import {
+  isPushSupported,
+  isPushEnabled,
+  enablePushNotifications,
+  disablePushNotifications,
+  syncFavoritesToServer,
+  syncFiltersToServer,
+} from '../lib/pushNotifications';
 
 type Event = {
   id: string;
@@ -273,6 +281,52 @@ export default function EventListScreen() {
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showFreeOnly, setShowFreeOnly] = useState(false);
   const [showMultiDayOnly, setShowMultiDayOnly] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isPushSupported()) return;
+    isPushEnabled().then(setPushEnabled);
+  }, []);
+
+  // Favoriten und inhaltliche Filter (Kategorie/Genre/Ort) laufend zu
+  // Supabase syncen, solange Push aktiv ist — der Sender (collectors/
+  // notifications) prüft periodisch dagegen, welche Erinnerungen/Matches
+  // fällig sind. Kein Sync, solange Push aus ist, um unnötige Requests zu
+  // vermeiden.
+  useEffect(() => {
+    if (!pushEnabled) return;
+    syncFavoritesToServer(favorites);
+  }, [pushEnabled, favorites]);
+
+  useEffect(() => {
+    if (!pushEnabled) return;
+    syncFiltersToServer({
+      categories: selectedCategories,
+      genres: selectedGenres,
+      locations: selectedLocations,
+    });
+  }, [pushEnabled, selectedCategories, selectedGenres, selectedLocations]);
+
+  async function togglePush() {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (pushEnabled) {
+        await disablePushNotifications();
+        setPushEnabled(false);
+      } else {
+        const result = await enablePushNotifications();
+        if (result.ok) {
+          setPushEnabled(true);
+        } else if (typeof window !== 'undefined') {
+          window.alert(result.error);
+        }
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   function toggleNearby() {
     if (userLocation) {
@@ -710,6 +764,19 @@ export default function EventListScreen() {
             )}
             <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
               {locationStatus === 'loading' ? 'Lädt Standort…' : '📍 Nähe'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {isPushSupported() && (
+          <TouchableOpacity
+            style={[styles.filterButton, pushEnabled && styles.filterChipActive]}
+            onPress={togglePush}
+            disabled={pushBusy}
+          >
+            {pushBusy && <ActivityIndicator size="small" color="#999" style={styles.nearbyButtonSpinner} />}
+            <Text style={[styles.filterButtonText, pushEnabled && styles.filterChipTextActive]}>
+              {pushEnabled ? '🔔 Benachrichtigungen an' : '🔕 Benachrichtigungen'}
             </Text>
           </TouchableOpacity>
         )}

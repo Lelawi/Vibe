@@ -22,6 +22,39 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Push-Payload kommt als JSON { title, body, url } vom Notifications-Sender
+// (collectors/notifications). url wird beim Klick geöffnet bzw. ein bereits
+// offener Tab dorthin fokussiert, statt immer einen neuen Tab aufzumachen.
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Vibe', body: 'Es gibt etwas Neues für dich.', url: '/' };
+  try {
+    if (event.data) payload = { ...payload, ...event.data.json() };
+  } catch (err) {
+    // kein valides JSON — Default-Payload beibehalten
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/icon.png',
+      badge: '/icon.png',
+      data: { url: payload.url },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (client.url.includes(targetUrl) && 'focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+    })
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   // Nur GET cachen — Supabase-Schreibzugriffe (Report-Insert etc.) sind POST

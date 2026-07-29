@@ -54,7 +54,7 @@ really is abused for that — it's just also a real Expo dev dependency with
 no way to tell the two apart automatically). The PWA/GitHub Pages
 distribution below fully replaces the need for tunneling.
 
-Env vars (`.env`, not committed): `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (see `app/lib/supabase.ts`). These are baked into the web build at build time, so they must also be set as repo secrets for `.github/workflows/deploy-web.yml`.
+Env vars (`.env`, not committed): `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (see `app/lib/supabase.ts`), `EXPO_PUBLIC_VAPID_PUBLIC_KEY` (see Push notifications below). These are baked into the web build at build time, so they must also be set as repo secrets for `.github/workflows/deploy-web.yml`.
 
 **Distribution:** the primary distribution channel is the web build (PWA,
 installable via "Add to Home Screen" in Safari/Chrome) deployed to GitHub
@@ -89,6 +89,10 @@ real public data source found, etc.).
 
 Env vars (`.env`, not committed): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 (service role, not anon — collectors write directly to the `events` table).
+`collect-all.ts` falls back to `../app/.env` if `collectors/.env` doesn't
+exist, so a single `.env` in `app/` covers both projects locally. Push
+notification sending additionally needs `VAPID_PUBLIC_KEY`,
+`VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — see Push notifications below.
 
 No lint or test scripts are configured for collectors.
 
@@ -126,8 +130,10 @@ script plus a step in `.github/workflows/collect-all.yml`.
   public `select` policy (see `supabase/migrations/0001_initial_schema.sql`);
   writes happen exclusively from collectors using the service role key.
 - Queries always filter `duplicate_of is null` and (for upcoming events)
-  `start_date >= today` — replicate both filters in any new query against
-  `events`.
+  `start_date >= today OR end_date >= today` — the `end_date` half keeps
+  multi-day events (exhibitions, Auer Dult) visible for their whole run
+  instead of dropping them the day after they start. Replicate both filters
+  in any new query against `events`.
 - The map screen (`map.tsx`) just renders `<MapNative />`; Expo's
   platform-extension file resolution automatically picks
   `components/MapNative.tsx` (native, `react-native-maps`) on iOS/Android or
@@ -139,3 +145,47 @@ script plus a step in `.github/workflows/collect-all.yml`.
 - Dark theme is hardcoded inline via `StyleSheet.create` (background `#000`,
   cards `#141414`, accent `#0af`) rather than a theme system — match this
   style when adding UI.
+
+## Push notifications
+
+Web Push (no Firebase/FCM account, just the standard browser Push API +
+self-generated VAPID keys). Only works on the PWA (web), not on native — no
+native push setup exists.
+
+- `supabase/migrations/0005_push_notifications.sql` — `push_subscriptions`
+  (one row per browser subscription, keyed by `endpoint`), `push_favorites`
+  (which events a subscription wants a reminder for, `notified_at` marks
+  ones already sent), `push_filters` (saved category/genre/location filters
+  per subscription for "new matching event" notifications). The app has no
+  login, so a device is identified purely by its push `endpoint`; RLS grants
+  `anon` insert-only on `push_subscriptions` and full read/write on
+  `push_favorites`/`push_filters` — `subscription_id` (a random UUID) is the
+  de facto access token, not real per-user auth. Don't add a `select` policy
+  to `push_subscriptions` for `anon` without thinking through why it was
+  deliberately left off.
+- `app/lib/pushNotifications.ts` — client side: subscribe via
+  `pushManager.subscribe()`, insert the subscription into Supabase, cache the
+  returned `id` in `AsyncStorage` (avoids needing an update/select policy —
+  see migration comments), and sync favorites/filters to the server whenever
+  they change while push is enabled.
+- `app/public/service-worker.js` — `push` event shows the notification,
+  `notificationclick` focuses/opens the app at the event's URL.
+- `collectors/notifications/index.ts` — the actual sender, run on a schedule
+  (`.github/workflows/send-notifications.yml`, every 15 min) via
+  `npm run send-notifications` in `collectors/`. Two jobs: favorite reminders
+  (events starting within the next 3h) and filter matches (events added
+  since a subscription's `last_checked_at` that match its saved
+  categories/locations). Genre matching is stored client-side
+  (`push_filters.genres`) but not yet matched server-side — genre grouping
+  (`normalizeGenreGroup`) is a client-only heuristic in `app/app/index.tsx`
+  that hasn't been ported. Location matching uses
+  `collectors/core/canonicalizeVenue.ts`, a deliberate 1:1 copy of
+  `app/lib/venue.ts`'s `canonicalizeVenue` — collectors can't import from
+  `app/` (see Architecture principle above), so keep both in sync by hand if
+  the heuristic changes.
+- VAPID key pair is self-generated (`npx web-push generate-vapid-keys` in
+  `collectors/`), not tied to any third-party account. Required as repo
+  secrets for both `deploy-web.yml` (`VAPID_PUBLIC_KEY` → baked in as
+  `EXPO_PUBLIC_VAPID_PUBLIC_KEY`) and `send-notifications.yml`
+  (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — a
+  `mailto:` contact address, required by the Web Push protocol).

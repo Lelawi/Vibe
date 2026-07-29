@@ -36,6 +36,7 @@
     "pasinger-fabrik": "tsx sources/pasinger_fabrik/index.ts",
     "werkhaus": "tsx sources/werkhaus/index.ts",
     "oktoberfest-events": "tsx sources/oktoberfest_events/index.ts",
+    "send-notifications": "tsx notifications/index.ts",
     "collect-all": "npm run collect-all:runner",
     "collect-all:runner": "tsx collect-all.ts"
   },
@@ -43,10 +44,12 @@
     "@supabase/supabase-js": "^2.45.0",
     "cheerio": "^1.0.0",
     "dotenv": "^17.4.2",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/web-push": "^3.6.4",
     "tsx": "^4.7.0",
     "typescript": "^5.5.0"
   }
