@@ -21,6 +21,7 @@ import { computeSeriesKey } from '../lib/seriesKey';
 import { fuzzyMatch } from '../lib/fuzzySearch';
 import { addEventsToCalendar } from '../lib/calendar';
 import { useFavorites } from '../lib/favorites';
+import { useFollowedOrganizers } from '../lib/followedOrganizers';
 import {
   isPushSupported,
   isPushEnabled,
@@ -49,6 +50,12 @@ type Event = {
   latitude: number | null;
   longitude: number | null;
 };
+
+// Zeilentyp für die Haupt-FlatList: entweder das "Empfohlen"-Karussell (ganz
+// oben, einmalig) oder eine normale Event-Serie. So bleibt das Karussell Teil
+// des normalen Scroll-Inhalts (scrollt mit weg) statt im gepinnten Header zu
+// hängen, wo dauerhaft Bildschirmfläche verloren ginge.
+type ListRow = { kind: 'featured'; events: Event[] } | { kind: 'group'; group: Event[] };
 
 // Haversine-Formel für die Distanz zweier Koordinaten in km.
 function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -278,6 +285,7 @@ export default function EventListScreen() {
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
+  const { followedOrganizers } = useFollowedOrganizers();
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showFreeOnly, setShowFreeOnly] = useState(false);
   const [showMultiDayOnly, setShowMultiDayOnly] = useState(false);
@@ -305,8 +313,9 @@ export default function EventListScreen() {
       categories: selectedCategories,
       genres: selectedGenres,
       locations: selectedLocations,
+      organizers: followedOrganizers,
     });
-  }, [pushEnabled, selectedCategories, selectedGenres, selectedLocations]);
+  }, [pushEnabled, selectedCategories, selectedGenres, selectedLocations, followedOrganizers]);
 
   async function togglePush() {
     if (pushBusy) return;
@@ -505,6 +514,18 @@ export default function EventListScreen() {
     }
     return groups;
   }, [filteredEvents, userLocation, nearbyRadiusKm]);
+
+  // "Empfohlen"-Leiste nach dem Vorbild von Apps wie Posh/DICE: statt einer
+  // reinen chronologischen Liste zuerst ein paar Bild-starke Highlights zum
+  // schnellen Durchstöbern zeigen ("Vibe" auf einen Blick statt Textzeile für
+  // Textzeile). Nimmt bewusst je Serie nur den nächsten Termin (group[0]) und
+  // verlangt ein Bild, sonst wäre die Leiste optisch nicht von der Liste
+  // unterscheidbar. Kein separates Ranking/ML nötig — respektiert einfach die
+  // aktuell aktiven Filter/Sortierung (Nähe etc.) und zeigt die ersten Treffer an.
+  const featuredEvents = useMemo(
+    () => eventGroups.map((g) => g[0]).filter((e) => e.image_url).slice(0, 10),
+    [eventGroups]
+  );
 
   function openCalendar() {
     const base = selectedDates[0] ? new Date(selectedDates[0]) : new Date();
@@ -960,11 +981,21 @@ export default function EventListScreen() {
     </View>
   );
 
+  const listData: ListRow[] = useMemo(() => {
+    const rows: ListRow[] = [];
+    // Karussell nur ab 2 Highlights zeigen — bei nur einem Treffer bringt
+    // eine eigene Extra-Zeile für dasselbe Event, das eh gleich darunter
+    // nochmal in der Liste steht, keinen Mehrwert.
+    if (featuredEvents.length > 1) rows.push({ kind: 'featured', events: featuredEvents });
+    eventGroups.forEach((group) => rows.push({ kind: 'group', group }));
+    return rows;
+  }, [featuredEvents, eventGroups]);
+
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
-        data={eventGroups}
-        keyExtractor={(group) => group[0].id}
+        data={listData}
+        keyExtractor={(row) => (row.kind === 'featured' ? 'featured' : row.group[0].id)}
         contentContainerStyle={styles.list}
         ListHeaderComponent={listHeader}
         // RN/RNW's eigener Sticky-Mechanismus statt manuellem CSS
@@ -977,7 +1008,39 @@ export default function EventListScreen() {
         stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={<Text style={styles.empty}>Keine Events gefunden.</Text>}
-        renderItem={({ item: group }) => {
+        renderItem={({ item: row }) => {
+          if (row.kind === 'featured') {
+            return (
+              <View style={styles.featuredSection}>
+                <Text style={styles.featuredSectionTitle}>✨ Empfohlen für dich</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.featuredScrollContent}
+                >
+                  {row.events.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.featuredCard}
+                      onPress={() => router.push(`/event/${item.id}`)}
+                    >
+                      <Image source={{ uri: item.image_url! }} style={styles.featuredCardImage} />
+                      <View style={styles.featuredCardBody}>
+                        <Text style={styles.featuredCardTitle} numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                        <Text style={styles.featuredCardMeta} numberOfLines={1}>
+                          {formatDate(item.start_date, item.start_time)}
+                          {item.location_name ? ` · ${item.location_name}` : ''}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            );
+          }
+          const group = row.group;
           const item = group[0];
           const hasMore = group.length > 1;
           return (
@@ -1429,6 +1492,22 @@ const styles = StyleSheet.create({
   filterTabTextActive: { color: '#000' },
   list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
+  featuredSection: { marginBottom: 18 },
+  featuredSectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 10 },
+  featuredScrollContent: { paddingRight: 4 },
+  featuredCard: {
+    width: 220,
+    marginRight: 12,
+    backgroundColor: '#141414',
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  featuredCardImage: { width: '100%', height: 130, backgroundColor: '#1a1a1a' },
+  featuredCardBody: { padding: 10 },
+  featuredCardTitle: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  featuredCardMeta: { color: '#999', fontSize: 12, marginTop: 4 },
   card: {
     flexDirection: 'row',
     backgroundColor: '#141414',

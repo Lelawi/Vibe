@@ -145,6 +145,12 @@ script plus a step in `.github/workflows/collect-all.yml`.
 - Dark theme is hardcoded inline via `StyleSheet.create` (background `#000`,
   cards `#141414`, accent `#0af`) rather than a theme system — match this
   style when adding UI.
+- The main list's `FlatList` renders a `ListRow` union (`{ kind: 'featured' }`
+  or `{ kind: 'group' }`), not `eventGroups` directly — a "✨ Empfohlen für
+  dich" image-forward carousel (inspired by Posh/DICE's discovery feeds) is
+  injected as the first row when there are ≥2 upcoming events with images.
+  It's a normal scrolling row, not part of the pinned header, so it scrolls
+  away like any other card instead of permanently eating screen space.
 
 ## Push notifications
 
@@ -175,7 +181,9 @@ native push setup exists.
   `npm run send-notifications` in `collectors/`. Two jobs: favorite reminders
   (events starting within the next 3h) and filter matches (events added
   since a subscription's `last_checked_at` that match its saved
-  categories/locations). Genre matching is stored client-side
+  categories/locations/organizers — "follow an organizer" like
+  Bandsintown/DICE, toggled from the organizer row on the event detail page,
+  stored client-side in `app/lib/followedOrganizers.ts`). Genre matching is stored client-side
   (`push_filters.genres`) but not yet matched server-side — genre grouping
   (`normalizeGenreGroup`) is a client-only heuristic in `app/app/index.tsx`
   that hasn't been ported. Location matching uses

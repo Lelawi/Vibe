@@ -114,10 +114,15 @@ export async function syncFiltersToServer(filters: {
   categories: string[];
   genres: string[];
   locations: string[];
+  organizers: string[];
 }): Promise<void> {
   const subId = await getCachedSubscriptionId();
   if (!subId) return;
-  const hasAnyFilter = filters.categories.length > 0 || filters.genres.length > 0 || filters.locations.length > 0;
+  const hasAnyFilter =
+    filters.categories.length > 0 ||
+    filters.genres.length > 0 ||
+    filters.locations.length > 0 ||
+    filters.organizers.length > 0;
   if (!hasAnyFilter) {
     await supabase.from('push_filters').delete().eq('subscription_id', subId);
     return;

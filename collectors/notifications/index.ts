@@ -89,7 +89,7 @@ async function sendFavoriteReminders(supabase: ReturnType<typeof createClient>) 
 async function sendFilterMatches(supabase: ReturnType<typeof createClient>) {
   const { data: filterRows, error } = await supabase
     .from('push_filters')
-    .select('subscription_id, categories, locations, last_checked_at, push_subscriptions(endpoint,p256dh,auth)');
+    .select('subscription_id, categories, locations, organizers, last_checked_at, push_subscriptions(endpoint,p256dh,auth)');
 
   if (error) { console.error('[notifications] filter query error', error); return; }
   if (!filterRows || filterRows.length === 0) { console.log('[notifications] no active filter subscriptions'); return; }
@@ -103,21 +103,25 @@ async function sendFilterMatches(supabase: ReturnType<typeof createClient>) {
     if (!sub) continue;
     const categories: string[] = filterRow.categories ?? [];
     const locations: string[] = filterRow.locations ?? [];
-    if (categories.length === 0 && locations.length === 0) continue;
+    // "Veranstalter folgen" (nach dem Vorbild von Bandsintown/DICE): Notiz
+    // wird als exakter Textabgleich gegen events.organizer geführt, so wie
+    // der Name in der App vom Event übernommen wurde — keine Heuristik nötig.
+    const organizers: string[] = filterRow.organizers ?? [];
+    if (categories.length === 0 && locations.length === 0 && organizers.length === 0) continue;
 
     // Bei genau einem Kriterium kann direkt in SQL vorgefiltert werden. Sind
-    // beide gesetzt (ODER-Semantik: Kategorie ODER Ort passt), muss breiter
+    // mehrere gesetzt (ODER-Semantik: irgendeins muss passen), muss breiter
     // geladen und in JS gefiltert werden — locations wird über
     // canonicalizeVenue() abgeglichen, einer clientseitigen Heuristik, die
     // sich nicht als SQL-Bedingung ausdrücken lässt.
     let query = supabase
       .from('events')
-      .select('id, title, category, location_name, start_date')
+      .select('id, title, category, location_name, organizer, start_date')
       .gt('created_at', filterRow.last_checked_at)
       .is('duplicate_of', null)
       .gte('start_date', today)
       .limit(30);
-    if (categories.length > 0 && locations.length === 0) {
+    if (categories.length > 0 && locations.length === 0 && organizers.length === 0) {
       query = query.in('category', categories);
     }
 
@@ -127,7 +131,8 @@ async function sendFilterMatches(supabase: ReturnType<typeof createClient>) {
     const matches = (newEvents ?? []).filter(
       (e: any) =>
         (categories.length > 0 && categories.includes(e.category)) ||
-        (locations.length > 0 && locations.includes(canonicalizeVenue(e.location_name)))
+        (locations.length > 0 && locations.includes(canonicalizeVenue(e.location_name))) ||
+        (organizers.length > 0 && e.organizer && organizers.includes(e.organizer))
     );
 
     if (matches.length > 0) {

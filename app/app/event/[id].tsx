@@ -18,6 +18,8 @@ import { supabase } from '../../lib/supabase';
 import { addEventToCalendar } from '../../lib/calendar';
 import { shareEvent } from '../../lib/share';
 import { useFavorites } from '../../lib/favorites';
+import { useFollowedOrganizers } from '../../lib/followedOrganizers';
+import { isPushSupported } from '../../lib/pushNotifications';
 
 const REPORT_REASONS = ['Ort/Adresse falsch', 'Datum/Uhrzeit falsch', 'Bereits vorbei', 'Doppelt vorhanden', 'Sonstiges'];
 
@@ -74,6 +76,7 @@ export default function EventDetailScreen() {
   const [reportNote, setReportNote] = useState('');
   const [reportStatus, setReportStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
   const { isFavorite, toggleFavorite } = useFavorites();
+  const { isFollowing, toggleFollow } = useFollowedOrganizers();
 
   useEffect(() => {
     async function loadEvent() {
@@ -253,7 +256,16 @@ export default function EventDetailScreen() {
           {event.organizer && (
             <View style={styles.infoBlock}>
               <Text style={styles.infoLabel}>Veranstalter</Text>
-              <Text style={styles.infoValue}>{event.organizer}</Text>
+              <View style={styles.organizerRow}>
+                <Text style={styles.infoValue}>{event.organizer}</Text>
+                {isPushSupported() && (
+                  <TouchableOpacity onPress={() => toggleFollow(event.organizer!)}>
+                    <Text style={styles.organizerFollowLink}>
+                      {isFollowing(event.organizer) ? '🔔 Gefolgt' : '🔕 Folgen'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           )}
 
@@ -411,6 +423,8 @@ const styles = StyleSheet.create({
   infoBlock: { marginBottom: 16 },
   infoLabel: { fontSize: 12, color: '#666', textTransform: 'uppercase', marginBottom: 4 },
   infoValue: { fontSize: 16, color: '#fff' },
+  organizerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  organizerFollowLink: { fontSize: 13, color: '#0af', fontWeight: '600' },
   linkValue: { color: '#0af', fontWeight: '600' },
   infoSubValue: { fontSize: 14, color: '#999', marginTop: 2 },
   button: {
