@@ -36,6 +36,7 @@ type Event = {
   sold_out: boolean | null;
   start_date: string;
   start_time: string | null;
+  end_date: string | null;
   location_name: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -68,6 +69,14 @@ function formatDate(dateStr: string, timeStr: string | null) {
   });
   if (!timeStr) return dateFormatted;
   return `${dateFormatted} · ${timeStr.slice(0, 5)}`;
+}
+
+// Für Mehrtages-Events (Ausstellungen, Dulten etc.) den Laufzeitraum als
+// "– bis DD.MM." anhängen, wenn end_date gesetzt ist und vom Starttag abweicht.
+function formatEndDateSuffix(startDate: string, endDate: string | null): string {
+  if (!endDate || endDate === startDate) return '';
+  const [, month, day] = endDate.split('-');
+  return ` – bis ${day}.${month}.`;
 }
 
 // "YYYY-MM-DD" -> "DD.MM." und "DD.MM.YYYY", damit die Suche auch das in
@@ -263,6 +272,7 @@ export default function EventListScreen() {
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showFreeOnly, setShowFreeOnly] = useState(false);
+  const [showMultiDayOnly, setShowMultiDayOnly] = useState(false);
 
   function toggleNearby() {
     if (userLocation) {
@@ -291,8 +301,10 @@ export default function EventListScreen() {
 
       const { data, error } = await supabase
         .from('events')
-        .select('id, title, category, subcategory, organizer, address, description, source_url, image_url, price_info, sold_out, start_date, start_time, location_name, latitude, longitude')
-        .gte('start_date', today)
+        .select('id, title, category, subcategory, organizer, address, description, source_url, image_url, price_info, sold_out, start_date, start_time, end_date, location_name, latitude, longitude')
+        // Mehrtägige Events (end_date gesetzt) sollen sichtbar bleiben,
+        // solange sie noch laufen — nicht nur bis zu ihrem Starttag.
+        .or(`start_date.gte.${today},end_date.gte.${today}`)
         .is('duplicate_of', null)
         .order('start_date', { ascending: true })
         .limit(500);
@@ -390,15 +402,21 @@ export default function EventListScreen() {
       const matchesLocation =
         selectedLocations.length === 0 ||
         selectedLocations.includes(eventCanonical);
+      // Mehrtägige Events (end_date gesetzt) sollen als "an diesem Tag
+      // stattfindend" zählen, solange der Filtertag irgendwo innerhalb ihres
+      // Laufzeitraums liegt — nicht nur am Starttag. Daher Bereichsüberlappung
+      // statt reinem Start-Datum-Vergleich.
+      const eventEnd = e.end_date ?? e.start_date;
       const matchesDate =
         dateFilter === 'custom'
-          ? selectedDates.includes(e.start_date)
-          : e.start_date >= from && (to === null || e.start_date <= to);
+          ? selectedDates.some((d) => d >= e.start_date && d <= eventEnd)
+          : e.start_date <= (to ?? from) && eventEnd >= from;
       const matchesFavorite = !showFavoritesOnly || favorites.includes(e.id);
       const matchesFree = !showFreeOnly || isFreeEvent(e.price_info);
-      return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate && matchesFavorite && matchesFree;
+      const matchesMultiDay = !showMultiDayOnly || (e.end_date !== null && e.end_date !== e.start_date);
+      return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate && matchesFavorite && matchesFree && matchesMultiDay;
     });
-  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites, showFreeOnly]);
+  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites, showFreeOnly, showMultiDayOnly]);
 
   // Bündelt wiederkehrende Events (gleicher Titel + gleicher Ort, z.B. eine
   // wöchentliche Partyreihe) zu einer Gruppe. In der Liste wird nur der
@@ -502,7 +520,8 @@ export default function EventListScreen() {
     contentFilterCount > 0 ||
     dateFilter !== 'all' ||
     showFavoritesOnly ||
-    showFreeOnly;
+    showFreeOnly ||
+    showMultiDayOnly;
 
   function resetAllFilters() {
     setSearch('');
@@ -513,6 +532,7 @@ export default function EventListScreen() {
     setSelectedDates([]);
     setShowFavoritesOnly(false);
     setShowFreeOnly(false);
+    setShowMultiDayOnly(false);
   }
 
   const activeFilterTabData =
@@ -667,6 +687,15 @@ export default function EventListScreen() {
         >
           <Text style={[styles.filterButtonText, showFreeOnly && styles.filterChipTextActive]}>
             🆓 Kostenlos
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterButton, showMultiDayOnly && styles.filterChipActive]}
+          onPress={() => setShowMultiDayOnly((v) => !v)}
+        >
+          <Text style={[styles.filterButtonText, showMultiDayOnly && styles.filterChipTextActive]}>
+            🗓️ Ausstellungen
           </Text>
         </TouchableOpacity>
 
@@ -915,6 +944,7 @@ export default function EventListScreen() {
                 <Text style={styles.meta}>
                   {hasMore ? 'Nächster Termin: ' : ''}
                   {formatDate(item.start_date, item.start_time)}
+                  {formatEndDateSuffix(item.start_date, item.end_date)}
                   {item.location_name ? ` · ${item.location_name}` : ''}
                   {userLocation && item.latitude != null && item.longitude != null
                     ? ` · ${formatDistance(distanceKm(userLocation.lat, userLocation.lng, item.latitude, item.longitude))}`

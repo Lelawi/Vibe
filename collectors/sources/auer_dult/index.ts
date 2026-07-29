@@ -3,15 +3,28 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { parseGermanDate } from '../../core/scrape';
 
 // Die Auer Dult findet 3x im Jahr auf dem Mariahilfplatz statt (Maidult,
-// Jakobidult, Kirchweihdult). Die offizielle Seite listet die Termine als
-// Fließtext statt strukturierter Daten, daher wird hier nach den bekannten
-// Namen gesucht und das erste Datum danach geparst.
+// Jakobidult, Kirchweihdult) und läuft jeweils über mehrere Tage. Die
+// offizielle Seite listet die Termine als Fließtext statt strukturierter
+// Daten, z.B. "Maidult: 25. April bis 3. Mai" (per Direktabruf verifiziert,
+// 2026-07) — Start- und Enddatum werden hier getrennt geregext, da beide
+// Monate unterschiedlich sein können.
 const AUER_DULT_URL = 'https://www.auerdult.de/dultinfo';
 const AUER_DULT_ADDRESS = 'Mariahilfplatz, 81541 München';
 const DULT_NAMES = ['Maidult', 'Jakobidult', 'Kirchweihdult'];
+const MONTH_NAMES = 'januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember';
+const GERMAN_MONTHS: Record<string, number> = {
+  januar: 1, februar: 2, märz: 3, april: 4, mai: 5, juni: 6, juli: 7,
+  august: 8, september: 9, oktober: 10, november: 11, dezember: 12,
+};
+
+function toDateStr(year: number, month: number, day: number): string {
+  // Date.UTC statt new Date(y,m,d) + toISOString, sonst verschiebt die
+  // lokale Zeitzone (CET/CEST) das Datum bei der UTC-Konvertierung u.U. um
+  // einen Tag.
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10);
+}
 
 export async function run() {
   console.log('[auer-dult] starting');
@@ -35,18 +48,42 @@ export async function run() {
     for (const dultName of DULT_NAMES) {
       const idx = text.indexOf(dultName);
       if (idx === -1) continue;
-      // Sucht im Text nach dem Dult-Namen den ersten Tag und den ersten
-      // Monatsnamen danach, z.B. "Kirchweihdult: 17. Oktober bis 25. Oktober"
-      // -> 17. Oktober. Die offizielle Seite nennt oft kein Jahr direkt dabei;
-      // parseGermanDate nimmt dann das aktuelle bzw. nächste passende Jahr an.
+      // Sucht im Text nach dem Dult-Namen "<Tag>. <Monat> bis <Tag>. <Monat>",
+      // z.B. "Maidult: 25. April bis 3. Mai" — Start- und Endmonat getrennt
+      // geregext, da sie unterschiedlich sein können. Die Seite nennt kein
+      // Jahr direkt dabei, das wird über die Rollover-Logik unten bestimmt.
       const window = text.slice(idx, idx + 200);
-      const dayMatch = window.match(/(\d{1,2})\./);
-      const monthMatch = window.match(/(januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)/i);
-      if (!dayMatch || !monthMatch) continue;
+      const startMatch = window.match(new RegExp(`:\\s*(\\d{1,2})\\.\\s*(${MONTH_NAMES})`, 'i'));
+      const endMatch = window.match(new RegExp(`bis\\s*(\\d{1,2})\\.\\s*(${MONTH_NAMES})`, 'i'));
+      if (!startMatch) continue;
 
-      const yearMatch = window.match(/(\d{4})/);
-      const start_date = parseGermanDate(`${dayMatch[1]}. ${monthMatch[1]} ${yearMatch?.[1] ?? ''}`);
-      if (!start_date) continue;
+      const startDay = parseInt(startMatch[1], 10);
+      const startMonth = GERMAN_MONTHS[startMatch[2].toLowerCase()];
+      const endDay = endMatch ? parseInt(endMatch[1], 10) : null;
+      const endMonth = endMatch ? GERMAN_MONTHS[endMatch[2].toLowerCase()] : null;
+
+      // Rollover anhand des ENDdatums prüfen, nicht des Startdatums — sonst
+      // würde eine Dult, die schon begonnen hat aber noch läuft (Start in der
+      // Vergangenheit, Ende in der Zukunft), fälschlich ins nächste Jahr
+      // verschoben statt als laufend erkannt zu werden.
+      const now = new Date();
+      const todayUtc = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+      let year = now.getFullYear();
+      const tentativeEndMonth = endMonth ?? startMonth;
+      const tentativeEndDay = endDay ?? startDay;
+      // Dult übers Jahresende (aktuell bei keiner der drei der Fall, aber
+      // sicherheitshalber): Endmonat "kleiner" als Startmonat -> ein Jahr weiter.
+      const tentativeEndYear = endMonth !== null && endMonth < startMonth ? year + 1 : year;
+      if (new Date(Date.UTC(tentativeEndYear, tentativeEndMonth - 1, tentativeEndDay)) < todayUtc) {
+        year += 1;
+      }
+      const start_date = toDateStr(year, startMonth, startDay);
+
+      let end_date: string | null = null;
+      if (endMonth !== null && endDay !== null) {
+        const endYear = endMonth < startMonth ? year + 1 : year;
+        end_date = toDateStr(endYear, endMonth, endDay);
+      }
 
       const sourceId = `auer-dult-${dultName.toLowerCase()}-${start_date.slice(0, 4)}`;
       collected.push({
@@ -56,6 +93,7 @@ export async function run() {
         category: 'Märkte',
         subcategory: 'Dult',
         start_date,
+        end_date,
         start_time: null,
         location_name: 'Auer Dult',
         address: AUER_DULT_ADDRESS,

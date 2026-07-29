@@ -29,6 +29,7 @@ type EventDetail = {
   subcategory: string | null;
   start_date: string;
   start_time: string | null;
+  end_date: string | null;
   location_name: string | null;
   address: string | null;
   organizer: string | null;
@@ -52,6 +53,15 @@ function formatDate(dateStr: string, timeStr: string | null) {
   return `${dateFormatted} · ${timeStr.slice(0, 5)} Uhr`;
 }
 
+function formatEndDate(dateStr: string) {
+  return new Date(`${dateStr}T00:00`).toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -70,7 +80,7 @@ export default function EventDetailScreen() {
       const { data, error } = await supabase
         .from('events')
         .select(
-          'id, title, description, category, subcategory, start_date, start_time, location_name, address, organizer, source_url, image_url, price_info, sold_out, latitude, longitude'
+          'id, title, description, category, subcategory, start_date, start_time, end_date, location_name, address, organizer, source_url, image_url, price_info, sold_out, latitude, longitude'
         )
         .eq('id', id)
         .single();
@@ -199,6 +209,9 @@ export default function EventDetailScreen() {
             <Text style={styles.infoValue}>
               {formatDate(event.start_date, event.start_time)}
             </Text>
+            {event.end_date && event.end_date !== event.start_date ? (
+              <Text style={styles.infoValue}>bis {formatEndDate(event.end_date)}</Text>
+            ) : null}
           </View>
 
           {(event.price_info || event.sold_out !== null) && (
