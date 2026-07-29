@@ -2,8 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import * as cheerio from 'cheerio';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { extractJsonLdEvents } from '../../core/scrape';
 
 const EVENTS_PAGE_URL = 'https://lostweekend.de/events/';
+const USER_AGENT = 'VibeApp-EventAggregator/1.0 (München Event-Aggregator, nicht-kommerziell)';
 
 interface RawEvent {
   eventId: string;
@@ -30,10 +32,44 @@ function convertTo24h(timeStr: string): string | null {
   return `${String(hour).padStart(2, '0')}:${minute}`;
 }
 
+// Preis steht nicht auf der Übersichtsseite (article.mec-event-article), nur
+// auf der Event-Detailseite als schema.org Event mit offers.price/priceCurrency
+// (per Direktabruf verifiziert, 2026-07) — braucht einen Zusatzabruf pro Event.
+function formatPriceInfo(raw: string | null): string | null {
+  if (!raw) return null;
+  const match = raw.match(/^(ab\s+)?([\d.,]+)\s*([A-Z]{3})$/i);
+  if (!match) return raw;
+  const [, prefix, amountStr, currency] = match;
+  const amount = Number(amountStr.replace(',', '.'));
+  if (Number.isNaN(amount)) return raw;
+  if (amount === 0) return 'Kostenlos';
+  try {
+    const formatted = new Intl.NumberFormat('de-DE', { style: 'currency', currency }).format(amount);
+    return prefix ? `ab ${formatted}` : formatted;
+  } catch {
+    return raw;
+  }
+}
+
+async function fetchLostWeekendPriceInfo(eventUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(eventUrl, { headers: { 'User-Agent': USER_AGENT } });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    const [event] = extractJsonLdEvents($);
+    return formatPriceInfo(event?.priceInfo ?? null);
+  } catch {
+    return null;
+  } finally {
+    await new Promise((r) => setTimeout(r, 400));
+  }
+}
+
 async function fetchLostWeekendEvents(): Promise<RawEvent[]> {
   const response = await fetch(EVENTS_PAGE_URL, {
     headers: {
-      'User-Agent': 'VibeApp-EventAggregator/1.0 (München Event-Aggregator, nicht-kommerziell)',
+      'User-Agent': USER_AGENT,
     },
   });
 
@@ -85,6 +121,7 @@ async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createC
   ).padStart(2, '0')}`;
 
   const coords = await getCoordinates(supabase, raw.locationName, raw.address, 'München');
+  const price_info = await fetchLostWeekendPriceInfo(raw.url);
 
   return {
     // eventId allein reicht nicht als Schlüssel: MEC (das Kalender-Plugin von
@@ -104,6 +141,7 @@ async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createC
     organizer: 'Lost Weekend',
     source_url: raw.url,
     image_url: raw.image,
+    price_info,
     latitude: coords?.latitude ?? null,
     longitude: coords?.longitude ?? null,
   };
@@ -121,14 +159,19 @@ export async function run() {
   const today = new Date().toISOString().slice(0, 10);
   const supabase = createClient(supabaseUrl, supabaseKey);
 
+  // Vor dem (jetzt teureren, da pro Event ein Preis-Zusatzabruf nötig ist)
+  // Normalisieren nach Zukunft filtern, um keine Requests für vergangene
+  // Events zu verschwenden.
+  const upcomingRawEvents = rawEvents.filter((event) => {
+    const startDate = `${event.year}-${String(event.month).padStart(2, '0')}-${String(event.day).padStart(2, '0')}`;
+    return startDate >= today;
+  });
+  console.log(`${upcomingRawEvents.length} davon in der Zukunft`);
+
   const normalizedEvents = [];
-  for (const event of rawEvents) {
-    const normalized = await normalizeEvent(event, supabase);
-    if (normalized.start_date >= today) {
-      normalizedEvents.push(normalized);
-    }
+  for (const event of upcomingRawEvents) {
+    normalizedEvents.push(await normalizeEvent(event, supabase));
   }
-  console.log(`${normalizedEvents.length} davon in der Zukunft`);
 
   const deduplicatedMap = new Map(normalizedEvents.map((e) => [e.source_id, e]));
   const deduplicatedEvents = Array.from(deduplicatedMap.values());

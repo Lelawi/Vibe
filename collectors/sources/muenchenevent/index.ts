@@ -5,6 +5,7 @@ import { getCoordinates } from '../../core/geocode';
 
 const EVENTS_PAGE_URL = 'https://www.muenchenevent.de/me/veranstaltungen';
 const BASE_URL = 'https://www.muenchenevent.de';
+const USER_AGENT = 'VibeApp-EventAggregator/1.0 (München Event-Aggregator, nicht-kommerziell)';
 
 interface RawEvent {
   eventId: string;
@@ -32,10 +33,31 @@ function isoToLocalDateTime(iso: string) {
   return { date: dateStr, time: timeStr };
 }
 
+// Preis steht nicht auf der Übersichtsseite, nur auf der (teils domainfremden,
+// z.B. muenchenmusik.de für Konzerte) Event-Detailseite als Freitext im
+// ".price-from"-Element (z.B. "Tickets ab 45,10 €") — kein JSON-LD-Preis
+// vorhanden (per Direktabruf verifiziert, 2026-07), braucht Zusatzabruf pro Event.
+async function fetchMuenchenEventPriceInfo(eventUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(eventUrl, { headers: { 'User-Agent': USER_AGENT } });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    const text = $('.price-from').first().text().replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+    const match = text.match(/(ab\s+)?[\d.,]+\s*€/i);
+    return match ? match[0].trim() : text;
+  } catch {
+    return null;
+  } finally {
+    await new Promise((r) => setTimeout(r, 400));
+  }
+}
+
 async function fetchMuenchenEventEvents(): Promise<RawEvent[]> {
   const response = await fetch(EVENTS_PAGE_URL, {
     headers: {
-      'User-Agent': 'VibeApp-EventAggregator/1.0 (München Event-Aggregator, nicht-kommerziell)',
+      'User-Agent': USER_AGENT,
     },
   });
 
@@ -86,6 +108,7 @@ async function fetchMuenchenEventEvents(): Promise<RawEvent[]> {
 async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createClient>) {
   const { date, time } = isoToLocalDateTime(raw.isoDateTime);
   const coords = await getCoordinates(supabase, raw.venue, null, 'München');
+  const price_info = await fetchMuenchenEventPriceInfo(raw.url);
 
   return {
     source_id: `muenchenevent-${raw.eventId}`,
@@ -101,6 +124,7 @@ async function normalizeEvent(raw: RawEvent, supabase: ReturnType<typeof createC
     organizer: 'MünchenEvent',
     source_url: raw.url,
     image_url: raw.image,
+    price_info,
     latitude: coords?.latitude ?? null,
     longitude: coords?.longitude ?? null,
   };
@@ -118,14 +142,16 @@ export async function run() {
   const today = new Date().toISOString().slice(0, 10);
   const supabase = createClient(supabaseUrl, supabaseKey);
 
+  // Vor dem (jetzt teureren, da pro Event ein Preis-Zusatzabruf nötig ist)
+  // Normalisieren nach Zukunft filtern, um keine Requests für vergangene
+  // Events zu verschwenden.
+  const upcomingRawEvents = rawEvents.filter((event) => isoToLocalDateTime(event.isoDateTime).date >= today);
+  console.log(`${upcomingRawEvents.length} davon in der Zukunft`);
+
   const normalizedEvents = [];
-  for (const event of rawEvents) {
-    const normalized = await normalizeEvent(event, supabase);
-    if (normalized.start_date >= today) {
-      normalizedEvents.push(normalized);
-    }
+  for (const event of upcomingRawEvents) {
+    normalizedEvents.push(await normalizeEvent(event, supabase));
   }
-  console.log(`${normalizedEvents.length} davon in der Zukunft`);
 
   const deduplicatedMap = new Map(normalizedEvents.map((e) => [e.source_id, e]));
   const deduplicatedEvents = Array.from(deduplicatedMap.values());
