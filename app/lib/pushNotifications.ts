@@ -64,14 +64,21 @@ export async function enablePushNotifications(): Promise<{ ok: true } | { ok: fa
       return { ok: false, error: 'Subscription unvollständig.' };
     }
 
-    const { data, error } = await supabase
+    // Id selbst generieren statt sie per .select() nach dem Insert
+    // zurückzuholen: Postgres wendet auf die RETURNING-Zeile einer
+    // .insert().select()-Anfrage auch SELECT-Policies an (nicht nur WITH
+    // CHECK für den Insert selbst, wie ursprünglich angenommen) — und
+    // push_subscriptions hat für anon absichtlich keine SELECT-Policy
+    // (siehe Migration 0005). Das führte dazu, dass der reine Insert zwar
+    // durchging, das RETURNING aber weiterhin an der RLS scheiterte. Mit
+    // selbst erzeugter id brauchen wir gar kein RETURNING mehr.
+    const id = crypto.randomUUID();
+    const { error } = await supabase
       .from('push_subscriptions')
-      .insert({ endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth })
-      .select('id')
-      .single();
-    if (error || !data) return { ok: false, error: error?.message ?? 'Speichern fehlgeschlagen.' };
+      .insert({ id, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth });
+    if (error) return { ok: false, error: error.message };
 
-    await AsyncStorage.setItem(SUBSCRIPTION_ID_KEY, data.id);
+    await AsyncStorage.setItem(SUBSCRIPTION_ID_KEY, id);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Unbekannter Fehler.' };
