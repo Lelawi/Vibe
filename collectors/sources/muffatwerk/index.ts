@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry } from '../../core/scrape';
+import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry, buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 
 // Muffatwerk ist derselbe Gebäudekomplex wie die bereits erfasste
 // Muffathalle, aber in-muenchen.de führt beide als eigene Locationseiten mit
@@ -55,7 +55,7 @@ export async function run() {
       if (!ev.name || !start_date || start_date < today) continue;
 
       const eventUrl = ev.url ?? MUFFATWERK_URL;
-      const sourceId = `muffatwerk-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;
+      const sourceId = buildStableSourceId('muffatwerk', String(eventUrl), start_date);
       const coords = await getCoordinates(supabase, 'Muffatwerk', MUFFATWERK_ADDRESS, 'München');
       const price_info = await checkInMuenchenFreeEntry(eventUrl);
 
@@ -84,7 +84,7 @@ export async function run() {
 
   if (collected.length === 0) { console.log('[muffatwerk] no events parsed'); return; }
   console.log('[muffatwerk] upserting', collected.length, 'events');
-  const { error } = await supabase.from('events').upsert(collected, { onConflict: 'source_id' });
+  const { error } = await supabase.from('events').upsert(dedupeBySourceId(collected), { onConflict: 'source_id' });
   if (error) console.error('[muffatwerk] upsert error', error);
 }
 

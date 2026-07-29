@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry } from '../../core/scrape';
+import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry, buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 
 // Das offizielle Stadtportal muenchen.de lädt seine Veranstaltungssuche per
 // JS/API nach (im Server-HTML steht praktisch nichts, verifiziert 2026-07).
@@ -54,7 +54,7 @@ export async function run() {
       if (!ev.name || !start_date || start_date < today) continue;
 
       const eventUrl = ev.url ?? MUENCHEN_DE_URL;
-      const sourceId = `muenchen-de-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;
+      const sourceId = buildStableSourceId('muenchen-de', String(eventUrl), start_date);
       const locationName = ev.locationName ?? 'München';
       const coords = await getCoordinates(supabase, locationName, ev.address, 'München');
       const price_info = await checkInMuenchenFreeEntry(eventUrl);
@@ -84,7 +84,7 @@ export async function run() {
 
   if (collected.length === 0) { console.log('[muenchen-de] no events parsed'); return; }
   console.log('[muenchen-de] upserting', collected.length, 'events');
-  const { error } = await supabase.from('events').upsert(collected, { onConflict: 'source_id' });
+  const { error } = await supabase.from('events').upsert(dedupeBySourceId(collected), { onConflict: 'source_id' });
   if (error) console.error('[muenchen-de] upsert error', error);
 }
 

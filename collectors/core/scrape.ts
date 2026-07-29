@@ -3,6 +3,7 @@
 // öffentliche Veranstaltungsseiten scrapen.
 import type { CheerioAPI } from 'cheerio';
 import fetch from 'node-fetch';
+import { createHash } from 'crypto';
 
 export interface ParsedEvent {
   name: string | null;
@@ -347,4 +348,35 @@ export function parseGermanDate(text: string, reference = new Date()): string | 
   }
 
   return null;
+}
+
+// Erzeugt eine stabile, kollisionsarme source_id aus einer Event-URL.
+// Frühere Fassung nutzte `Buffer.from(url).toString('base64').slice(0, 20)`
+// — base64 kodiert 3 Bytes zu 4 Zeichen, ein 20-Zeichen-Schnitt hängt also
+// nur von den ERSTEN 15 Bytes der URL ab. Da alle in-muenchen.de-URLs mit
+// demselben "https://www.in-muenchen.de/..."-Präfix beginnen, lieferte das
+// für JEDES Event derselben Quelle exakt dieselbe source_id — der gesamte
+// Upsert-Batch schlug dadurch mit "ON CONFLICT DO UPDATE command cannot
+// affect row a second time" fehl, sobald eine Quelle mehr als ein Event
+// fand (verifiziert 2026-07 in einem echten Collector-Lauf: praktisch alle
+// in-muenchen.de-Quellen mit >1 Event betroffen, dadurch 0 gespeicherte
+// Events trotz erfolgreichem Scraping). md5 über die volle URL vermeidet
+// das Präfix-Kollisionsproblem; zusätzlich date anhängen, falls dieselbe
+// URL für mehrere Termine einer wiederkehrenden Reihe steht.
+export function buildStableSourceId(prefix: string, url: string, date: string): string {
+  const hash = createHash('md5').update(url).digest('hex').slice(0, 16);
+  return `${prefix}-${hash}-${date}`;
+}
+
+// Entfernt Duplikate anhand von source_id, bevor sie an Supabase upsert
+// übergeben werden — Postgres kann eine ON-CONFLICT-DO-UPDATE-Regel
+// innerhalb ein und desselben Batches nicht zweimal auf dieselbe Zeile
+// anwenden und bricht sonst den kompletten Batch ab (siehe
+// buildStableSourceId-Kommentar). Reine Absicherung zusätzlich zur
+// eigentlichen Ursachenbehebung, für den Fall dass eine Quelle aus anderem
+// Grund doch zwei Events mit identischer source_id liefert.
+export function dedupeBySourceId<T extends { source_id: string }>(events: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const e of events) map.set(e.source_id, e);
+  return Array.from(map.values());
 }

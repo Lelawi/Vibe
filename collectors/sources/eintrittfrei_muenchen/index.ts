@@ -2,7 +2,7 @@ import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
-import { extractJsonLdEvents } from '../../core/scrape';
+import { extractJsonLdEvents, buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 import { getCoordinates } from '../../core/geocode';
 
 // eintrittfrei-muenchen.de listet ausschließlich kostenlose Veranstaltungen
@@ -73,7 +73,7 @@ export async function run() {
           longitude = coords?.longitude ?? null;
         }
 
-        const sourceId = `eintrittfrei-muenchen-${Buffer.from(ev.url).toString('base64').slice(0, 24)}`;
+        const sourceId = buildStableSourceId('eintrittfrei-muenchen', ev.url, start_date);
         collected.push({
           source_id: sourceId,
           title: ev.name,
@@ -103,7 +103,7 @@ export async function run() {
 
   if (collected.length === 0) { console.log('[eintrittfrei-muenchen] no events parsed'); return; }
   console.log('[eintrittfrei-muenchen] upserting', collected.length, 'events');
-  const { error } = await supabase.from('events').upsert(collected, { onConflict: 'source_id' });
+  const { error } = await supabase.from('events').upsert(dedupeBySourceId(collected), { onConflict: 'source_id' });
   if (error) console.error('[eintrittfrei-muenchen] upsert error', error);
 }
 

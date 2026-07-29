@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 
 // milla-club.de rendert die Kategorie-Archivseite ungewöhnlich (ein voller
 // Blogpost pro "Seite", Datum als Freitext irgendwo im Artikeltext, z.B.
@@ -85,7 +86,7 @@ export async function run() {
       const image_url = await fetchMillaImage(link);
 
       collected.push({
-        source_id: `milla-${Buffer.from(link).toString('base64').slice(0, 20)}`,
+        source_id: buildStableSourceId('milla', link, start_date),
         title,
         description: null,
         category: 'Clubs',
@@ -110,7 +111,7 @@ export async function run() {
 
   if (collected.length === 0) { console.log('[milla] no events parsed'); return; }
   console.log('[milla] upserting', collected.length, 'events');
-  const { error } = await supabase.from('events').upsert(collected, { onConflict: 'source_id' });
+  const { error } = await supabase.from('events').upsert(dedupeBySourceId(collected), { onConflict: 'source_id' });
   if (error) console.error('[milla] upsert error', error);
 }
 
