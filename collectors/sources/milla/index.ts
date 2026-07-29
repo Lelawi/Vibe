@@ -18,6 +18,24 @@ const BROWSER_HEADERS = {
   'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
 };
 
+// Der RSS-Feed selbst enthält kein Bild, die einzelne Event-Seite aber ein
+// og:image (per Direktabruf verifiziert) — bei nur ~10 Events pro Lauf ist
+// ein Zusatzabruf pro Event hier unproblematisch (anders als bei den
+// in-muenchen.de-Quellen mit 50-100+ Events).
+async function fetchMillaImage(eventUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(eventUrl, { headers: BROWSER_HEADERS });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const match = html.match(/<meta property="og:image" content="([^"]+)"/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  } finally {
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
 export async function run() {
   console.log('[milla] starting');
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -37,19 +55,24 @@ export async function run() {
 
     const coords = await getCoordinates(supabase, 'Milla Club', MILLA_ADDRESS, 'München');
 
+    // Erst synchron aus dem Feed extrahieren (cheerios .each() kann nicht auf
+    // async Bild-Abrufe warten), Bild danach pro Event einzeln nachladen.
+    const rawItems: { title: string; link: string; content: string }[] = [];
     $('item').each((_, el) => {
       const item$ = $(el);
       const title = item$.find('title').first().text().trim();
       const link = item$.find('link').first().text().trim();
       const content = item$.find('content\\:encoded').first().text() || item$.find('description').first().text();
-      if (!title || !link || !content) return;
+      if (title && link && content) rawItems.push({ title, link, content });
+    });
 
+    for (const { title, link, content } of rawItems) {
       const dateMatch = content.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-      if (!dateMatch) return; // Post ohne erkennbares Konzertdatum im Text — ignorieren
+      if (!dateMatch) continue; // Post ohne erkennbares Konzertdatum im Text — ignorieren
 
       const [, day, month, year] = dateMatch;
       const start_date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      if (start_date < today) return;
+      if (start_date < today) continue;
 
       const timeMatch = content.match(/Beginn\s*(\d{1,2})[:.](\d{2})/i) ?? content.match(/Einlass\s*(\d{1,2})[:.](\d{2})/i);
       const start_time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
@@ -59,6 +82,7 @@ export async function run() {
       const plainText = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
       const priceMatch = plainText.match(/(VVK|AK|Eintritt)[^~]{0,80}/i);
       const price_info = priceMatch ? priceMatch[0].trim() : null;
+      const image_url = await fetchMillaImage(link);
 
       collected.push({
         source_id: `milla-${Buffer.from(link).toString('base64').slice(0, 20)}`,
@@ -73,13 +97,13 @@ export async function run() {
         city: 'München',
         organizer: 'Milla Club',
         source_url: link,
-        image_url: null,
+        image_url,
         price_info,
         sold_out: null,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
       });
-    });
+    }
   } catch (err) {
     console.warn('[milla] error', err);
   }

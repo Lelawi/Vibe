@@ -673,11 +673,15 @@ export default function EventListScreen() {
 
         {Platform.OS === 'web' && (
           <TouchableOpacity
-            style={[styles.filterButton, userLocation && styles.filterChipActive]}
+            style={[styles.filterButton, styles.nearbyButtonRow, userLocation && styles.filterChipActive]}
             onPress={toggleNearby}
+            disabled={locationStatus === 'loading'}
           >
+            {locationStatus === 'loading' && (
+              <ActivityIndicator size="small" color="#999" style={styles.nearbyButtonSpinner} />
+            )}
             <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
-              {locationStatus === 'loading' ? '📍 ...' : '📍 Nähe'}
+              {locationStatus === 'loading' ? 'Lädt Standort…' : '📍 Nähe'}
             </Text>
           </TouchableOpacity>
         )}
@@ -1170,6 +1174,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   filterButtonText: { color: '#999', fontSize: 13, fontWeight: '600' },
+  nearbyButtonRow: { flexDirection: 'row', alignItems: 'center' },
+  nearbyButtonSpinner: { marginRight: 6 },
   locationHint: {
     color: '#888',
     fontSize: 12,

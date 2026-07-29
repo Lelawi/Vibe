@@ -101,6 +101,9 @@ export async function run() {
           organizer: 'hofflohmaerkte.de',
           source_url: HOFFLOHMARKT_URL,
           image_url: null,
+          // Wie bei Flohmärkten üblich zahlen nur die Höfe/Standbetreibenden
+          // eine Teilnahmegebühr, der Eintritt für Besuchende ist frei.
+          price_info: 'Kostenlos',
           latitude: coords?.latitude ?? null,
           longitude: coords?.longitude ?? null,
         });

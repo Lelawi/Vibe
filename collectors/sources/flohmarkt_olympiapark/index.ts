@@ -51,6 +51,9 @@ export async function run() {
     organizer: 'BRK Kreisverband München',
     source_url: SOURCE_URL,
     image_url: null,
+    // Wie bei Flohmärkten üblich zahlen nur Standbetreiber eine Standgebühr,
+    // der Eintritt für Besuchende ist frei.
+    price_info: 'Kostenlos',
     latitude: coords?.latitude ?? null,
     longitude: coords?.longitude ?? null,
   }));

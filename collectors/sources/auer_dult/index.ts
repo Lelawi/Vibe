@@ -63,6 +63,9 @@ export async function run() {
         organizer: 'Landeshauptstadt München',
         source_url: AUER_DULT_URL,
         image_url: null,
+        // Marktzugang ist wie bei allen Münchner Dulten frei — bezahlt wird
+        // nur pro Fahrgeschäft/Stand, nicht fürs Betreten.
+        price_info: 'Kostenlos',
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
       });
