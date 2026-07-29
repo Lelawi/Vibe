@@ -537,6 +537,21 @@ export default function EventListScreen() {
     [eventGroups]
   );
 
+  // Muss vor dem frühen "if (loading) return"-Block unten stehen — Hooks
+  // dürfen laut React-Regeln nie bedingt übersprungen werden. Stand hier
+  // vorher NACH dem Loading-Guard, was bei jedem Laden ("Rendered more
+  // hooks than during the previous render") zum Absturz der ganzen Seite
+  // (schwarzer Bildschirm) führte, sobald loading von true auf false wechselte.
+  const listData: ListRow[] = useMemo(() => {
+    const rows: ListRow[] = [];
+    // Karussell nur ab 2 Highlights zeigen — bei nur einem Treffer bringt
+    // eine eigene Extra-Zeile für dasselbe Event, das eh gleich darunter
+    // nochmal in der Liste steht, keinen Mehrwert.
+    if (featuredEvents.length > 1) rows.push({ kind: 'featured', events: featuredEvents });
+    eventGroups.forEach((group) => rows.push({ kind: 'group', group }));
+    return rows;
+  }, [featuredEvents, eventGroups]);
+
   function openCalendar() {
     const base = selectedDates[0] ? new Date(selectedDates[0]) : new Date();
     setCalendarMonth({ year: base.getFullYear(), month: base.getMonth() });
@@ -990,16 +1005,6 @@ export default function EventListScreen() {
       </View>
     </View>
   );
-
-  const listData: ListRow[] = useMemo(() => {
-    const rows: ListRow[] = [];
-    // Karussell nur ab 2 Highlights zeigen — bei nur einem Treffer bringt
-    // eine eigene Extra-Zeile für dasselbe Event, das eh gleich darunter
-    // nochmal in der Liste steht, keinen Mehrwert.
-    if (featuredEvents.length > 1) rows.push({ kind: 'featured', events: featuredEvents });
-    eventGroups.forEach((group) => rows.push({ kind: 'group', group }));
-    return rows;
-  }, [featuredEvents, eventGroups]);
 
   return (
     <SafeAreaView style={styles.container}>
