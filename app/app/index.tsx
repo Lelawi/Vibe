@@ -552,7 +552,7 @@ export default function EventListScreen() {
         })();
 
   const listHeader = (
-    <>
+    <View style={styles.listHeaderWrap}>
       <LinearGradient
         colors={['#2a0a4a', '#12082e', '#000000']}
         start={{ x: 0, y: 0 }}
@@ -578,7 +578,7 @@ export default function EventListScreen() {
         </View>
       )}
 
-      <View style={[styles.stickyControls, Platform.OS === 'web' && styles.stickyControlsWeb]}>
+      <View style={styles.stickyControls}>
       <View style={styles.searchWrap}>
         <TextInput
           style={[styles.search, styles.searchInput]}
@@ -861,7 +861,7 @@ export default function EventListScreen() {
         </View>
       )}
       </View>
-    </>
+    </View>
   );
 
   return (
@@ -871,6 +871,14 @@ export default function EventListScreen() {
         keyExtractor={(group) => group[0].id}
         contentContainerStyle={styles.list}
         ListHeaderComponent={listHeader}
+        // RN/RNW's eigener Sticky-Mechanismus statt manuellem CSS
+        // position:"sticky" auf einem verschachtelten View — letzteres griff
+        // innerhalb von FlatLists Web-DOM-Struktur nicht zuverlässig (Buttons
+        // blieben beim Herunterscrollen unerreichbar). Pinnt den kompletten
+        // Header (Banner + Suche + Filter) statt nur der Filterzeile — der
+        // Titel-Banner scrollt dadurch nicht mehr weg, dafür sind Filter/
+        // Suche garantiert erreichbar, auf jeder Scrollposition.
+        stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={<Text style={styles.empty}>Keine Events gefunden.</Text>}
         renderItem={({ item: group }) => {
@@ -1104,20 +1112,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   offlineBannerText: { color: '#f2c94c', fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  // Deckt den gesamten gepinnten Header opak ab (siehe stickyHeaderIndices
+  // an der FlatList) — sonst würden hochscrollende Event-Karten durch
+  // transparente Lücken zwischen den Header-Zeilen hindurchschimmern.
+  listHeaderWrap: { backgroundColor: '#000' },
   stickyControls: { paddingTop: 12 },
-  // position:"sticky" reicht auf Web als reines CSS aus (React Native Web
-  // gibt das 1:1 durch) — bleibt beim Scrollen der Liste am oberen Rand
-  // hängen, ohne wie ein position:"fixed"-Sibling mit der iOS-Tastatur zu
-  // kollidieren (siehe Kommentar zum ListHeaderComponent weiter oben), weil
-  // es Teil des normalen Scroll-Flows der Liste bleibt statt eigenständig
-  // positioniert zu sein. Nativ absichtlich nicht aktiviert (dort weniger
-  // zuverlässig unterstützt und PWA/Web ist der primäre Vertriebsweg).
-  stickyControlsWeb: {
-    position: 'sticky' as any,
-    top: 0,
-    zIndex: 20,
-    backgroundColor: '#000',
-  },
   mapButton: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
