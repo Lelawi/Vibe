@@ -256,7 +256,7 @@ function toggleInSet(current: string[], value: string): string[] {
 
 export default function EventListScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ locations?: string }>();  
+  const params = useLocalSearchParams<{ locations?: string; search?: string }>();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(
@@ -388,6 +388,16 @@ export default function EventListScreen() {
     setSelectedLocations(params.locations.split(','));
   }
 }, [params.locations]);
+
+  // Von der Event-Detailseite aus verlinkt ("Weitere Events von X", nach dem
+  // Vorbild von Posh's "Hosted by · More events") — befüllt einfach das
+  // bestehende Suchfeld statt eines eigenen Organizer-Filters, da der
+  // Haystack organizer schon durchsucht (siehe fuzzyMatch weiter unten).
+  useEffect(() => {
+    if (params.search) {
+      setSearch(params.search);
+    }
+  }, [params.search]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -1024,15 +1034,23 @@ export default function EventListScreen() {
                       style={styles.featuredCard}
                       onPress={() => router.push(`/event/${item.id}`)}
                     >
-                      <Image source={{ uri: item.image_url! }} style={styles.featuredCardImage} />
+                      <View style={styles.featuredImageWrap}>
+                        <Image source={{ uri: item.image_url! }} style={styles.featuredCardImage} />
+                        <View style={styles.featuredDatePill}>
+                          <Text style={styles.featuredDatePillText} numberOfLines={1}>
+                            {formatDate(item.start_date, item.start_time)}
+                          </Text>
+                        </View>
+                      </View>
                       <View style={styles.featuredCardBody}>
                         <Text style={styles.featuredCardTitle} numberOfLines={2}>
                           {item.title}
                         </Text>
-                        <Text style={styles.featuredCardMeta} numberOfLines={1}>
-                          {formatDate(item.start_date, item.start_time)}
-                          {item.location_name ? ` · ${item.location_name}` : ''}
-                        </Text>
+                        {item.location_name && (
+                          <Text style={styles.featuredCardMeta} numberOfLines={1}>
+                            {item.location_name}
+                          </Text>
+                        )}
                       </View>
                     </TouchableOpacity>
                   ))}
@@ -1504,7 +1522,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
   },
+  featuredImageWrap: { position: 'relative' },
   featuredCardImage: { width: '100%', height: 130, backgroundColor: '#1a1a1a' },
+  featuredDatePill: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    maxWidth: '90%',
+  },
+  featuredDatePillText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   featuredCardBody: { padding: 10 },
   featuredCardTitle: { color: '#fff', fontSize: 14, fontWeight: '600' },
   featuredCardMeta: { color: '#999', fontSize: 12, marginTop: 4 },

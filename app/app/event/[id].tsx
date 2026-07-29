@@ -133,6 +133,16 @@ export default function EventDetailScreen() {
 
   const hasCoords = event.latitude !== null && event.longitude !== null;
   const hasImage = Boolean(event.image_url) && !imageFailed;
+  // Primäre Aktion wird als persistente Leiste am unteren Bildschirmrand
+  // hervorgehoben (nach dem Vorbild von Posh's "Buy tickets"-Leiste) statt
+  // als einer von fünf gleich aussehenden Buttons im Scroll-Inhalt unterzugehen.
+  // Ohne Quell-URL übernimmt "In Google Maps öffnen" diese Rolle, sonst bleibt
+  // es unten als normaler Sekundär-Button stehen.
+  const primaryAction = event.source_url
+    ? { label: 'Zur Ticketseite', onPress: () => Linking.openURL(event.source_url!) }
+    : hasCoords
+    ? { label: 'In Google Maps öffnen', onPress: () => openInGoogleMaps() }
+    : null;
 
   function openInGoogleMaps() {
     if (!hasCoords) return;
@@ -266,6 +276,11 @@ export default function EventDetailScreen() {
                   </TouchableOpacity>
                 )}
               </View>
+              <TouchableOpacity
+                onPress={() => router.push({ pathname: '/', params: { search: event.organizer! } })}
+              >
+                <Text style={styles.organizerMoreLink}>Weitere Events von {event.organizer} →</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -282,16 +297,10 @@ export default function EventDetailScreen() {
             </Text>
           </TouchableOpacity>
 
-          {event.source_url && (
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => Linking.openURL(event.source_url!)}
-            >
-              <Text style={styles.buttonText}>Zur Originalseite</Text>
-            </TouchableOpacity>
-          )}
-
-          {hasCoords && (
+          {/* "In Google Maps öffnen" nur als Sekundär-Button, wenn die
+              Ticketseite bereits die primäre Aktion in der unteren Leiste
+              ist — sonst würde Maps doppelt auftauchen. */}
+          {hasCoords && primaryAction?.label !== 'In Google Maps öffnen' && (
             <TouchableOpacity style={styles.secondaryButton} onPress={openInGoogleMaps}>
               <Text style={styles.secondaryButtonText}>In Google Maps öffnen</Text>
             </TouchableOpacity>
@@ -320,6 +329,17 @@ export default function EventDetailScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {primaryAction && (
+        <View style={styles.primaryActionBar}>
+          <TouchableOpacity style={styles.primaryActionButton} onPress={primaryAction.onPress}>
+            <Text style={styles.primaryActionButtonText}>
+              {primaryAction.label}
+              {primaryAction.label === 'Zur Ticketseite' && event.price_info ? ` · ${event.price_info}` : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <Modal
         visible={showReportModal}
@@ -388,7 +408,7 @@ export default function EventDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  scrollContent: { paddingBottom: 32 },
+  scrollContent: { paddingBottom: 100 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
   errorText: { color: '#888', fontSize: 15 },
   backBar: {
@@ -419,12 +439,13 @@ const styles = StyleSheet.create({
   },
   favoriteBtn: { paddingVertical: 2, paddingHorizontal: 4 },
   favoriteBtnText: { fontSize: 13, fontWeight: '600', color: '#fff' },
-  title: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 20 },
+  title: { fontSize: 29, fontWeight: '800', color: '#fff', marginBottom: 20, lineHeight: 34 },
   infoBlock: { marginBottom: 16 },
   infoLabel: { fontSize: 12, color: '#666', textTransform: 'uppercase', marginBottom: 4 },
   infoValue: { fontSize: 16, color: '#fff' },
   organizerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   organizerFollowLink: { fontSize: 13, color: '#0af', fontWeight: '600' },
+  organizerMoreLink: { fontSize: 13, color: '#0af', fontWeight: '600', marginTop: 6 },
   linkValue: { color: '#0af', fontWeight: '600' },
   infoSubValue: { fontSize: 14, color: '#999', marginTop: 2 },
   button: {
@@ -443,6 +464,28 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   secondaryButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  primaryActionBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 16,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  primaryActionButton: {
+    backgroundColor: '#0af',
+    borderRadius: 30,
+    paddingVertical: 16,
+    alignItems: 'center',
+    shadowColor: '#0af',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  primaryActionButtonText: { color: '#000', fontWeight: '800', fontSize: 16 },
   reportButton: {
     alignItems: 'center',
     marginTop: 18,
