@@ -585,6 +585,11 @@ export default function EventListScreen() {
           contentContainerStyle={styles.dateScrollContent}
           style={styles.dateScroll}
         >
+          {/* Alle Chips/Buttons in EINER scrollbaren Reihe statt Datum-Chips
+              (flex:1) neben mehreren fixbreiten Buttons als Geschwister —
+              auf schmalen Handy-Bildschirmen quetschte das die Datum-Chips
+              auf ~0 Breite und schob den letzten Button (Nähe) komplett aus
+              dem sichtbaren Bereich, da die äußere Row selbst nicht scrollte. */}
           {DATE_FILTERS.map((f) => (
             <TouchableOpacity
               key={f.key}
@@ -618,45 +623,45 @@ export default function EventListScreen() {
               {customDateLabel()}
             </Text>
           </TouchableOpacity>
-        </ScrollView>
 
-        <TouchableOpacity
-          style={[styles.filterButton, contentFilterCount > 0 && styles.filterChipActive]}
-          onPress={() => setShowFilterModal(true)}
-        >
-          <Text style={[styles.filterButtonText, contentFilterCount > 0 && styles.filterChipTextActive]}>
-            ⚙️ Filter{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterButton, styles.nearbyButton, showFavoritesOnly && styles.filterChipActive]}
-          onPress={() => setShowFavoritesOnly((v) => !v)}
-        >
-          <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
-            {showFavoritesOnly ? '❤️' : '🤍'} Favoriten
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterButton, styles.nearbyButton, showFreeOnly && styles.filterChipActive]}
-          onPress={() => setShowFreeOnly((v) => !v)}
-        >
-          <Text style={[styles.filterButtonText, showFreeOnly && styles.filterChipTextActive]}>
-            🆓 Kostenlos
-          </Text>
-        </TouchableOpacity>
-
-        {Platform.OS === 'web' && (
           <TouchableOpacity
-            style={[styles.filterButton, styles.nearbyButton, userLocation && styles.filterChipActive]}
-            onPress={toggleNearby}
+            style={[styles.filterButton, contentFilterCount > 0 && styles.filterChipActive]}
+            onPress={() => setShowFilterModal(true)}
           >
-            <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
-              {locationStatus === 'loading' ? '📍 ...' : '📍 Nähe'}
+            <Text style={[styles.filterButtonText, contentFilterCount > 0 && styles.filterChipTextActive]}>
+              ⚙️ Filter{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
             </Text>
           </TouchableOpacity>
-        )}
+
+          <TouchableOpacity
+            style={[styles.filterButton, styles.nearbyButton, showFavoritesOnly && styles.filterChipActive]}
+            onPress={() => setShowFavoritesOnly((v) => !v)}
+          >
+            <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
+              {showFavoritesOnly ? '❤️' : '🤍'} Favoriten
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, styles.nearbyButton, showFreeOnly && styles.filterChipActive]}
+            onPress={() => setShowFreeOnly((v) => !v)}
+          >
+            <Text style={[styles.filterButtonText, showFreeOnly && styles.filterChipTextActive]}>
+              🆓 Kostenlos
+            </Text>
+          </TouchableOpacity>
+
+          {Platform.OS === 'web' && (
+            <TouchableOpacity
+              style={[styles.filterButton, styles.nearbyButton, userLocation && styles.filterChipActive]}
+              onPress={toggleNearby}
+            >
+              <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
+                {locationStatus === 'loading' ? '📍 ...' : '📍 Nähe'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
       </View>
 
       <Text style={styles.resultCount}>
@@ -1084,7 +1089,7 @@ const styles = StyleSheet.create({
   mapButtonText: { color: '#fff', fontWeight: '600', fontSize: 13 },
   search: {
     backgroundColor: '#141414',
-    borderRadius: 10,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     color: '#fff',
@@ -1284,10 +1289,17 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     backgroundColor: '#141414',
-    borderRadius: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
     padding: 14,
     marginBottom: 10,
     position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 3,
   },
   favoriteBtn: {
     position: 'absolute',
@@ -1298,9 +1310,9 @@ const styles = StyleSheet.create({
   },
   favoriteBtnText: { fontSize: 16 },
   cardThumb: {
-    width: 64,
-    height: 64,
-    borderRadius: 10,
+    width: 72,
+    height: 72,
+    borderRadius: 12,
     marginRight: 12,
     backgroundColor: '#1a1a1a',
   },
@@ -1314,9 +1326,14 @@ const styles = StyleSheet.create({
   badge: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#0af',
+    color: '#5fd4ff',
     textTransform: 'uppercase',
-    marginRight: 8,
+    backgroundColor: 'rgba(0,170,255,0.14)',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    marginRight: 6,
+    overflow: 'hidden',
   },
   seriesBadge: {
     fontSize: 11,
@@ -1327,10 +1344,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  title: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 4 },
-  meta: { fontSize: 13, color: '#888' },
+  title: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 4, letterSpacing: 0.1 },
+  meta: { fontSize: 13, color: '#999' },
   subMeta: { fontSize: 12, color: '#666', marginTop: 2 },
-  priceMeta: { fontSize: 12, color: '#7cd992', marginTop: 4, fontWeight: '600' },
+  priceMeta: {
+    fontSize: 12,
+    color: '#7cd992',
+    marginTop: 6,
+    fontWeight: '700',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(124,217,146,0.12)',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
   soldOutBadge: {
     fontSize: 11,
     fontWeight: '700',

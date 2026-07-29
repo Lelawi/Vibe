@@ -377,9 +377,15 @@ const styles = StyleSheet.create({
   badge: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#0af',
+    color: '#5fd4ff',
     textTransform: 'uppercase',
+    backgroundColor: 'rgba(0,170,255,0.14)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     marginBottom: 8,
+    alignSelf: 'flex-start',
+    overflow: 'hidden',
   },
   titleRow: {
     flexDirection: 'row',
