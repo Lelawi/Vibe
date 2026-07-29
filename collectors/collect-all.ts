@@ -33,6 +33,7 @@ import { run as runKomoedieBayerischerHof } from './sources/komoedie_bayerischer
 import { run as runMuffatwerk } from './sources/muffatwerk/index.js';
 import { run as runPasingerFabrik } from './sources/pasinger_fabrik/index.js';
 import { run as runWerkhaus } from './sources/werkhaus/index.js';
+import { run as runOktoberfestEvents } from './sources/oktoberfest_events/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -89,6 +90,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'flohmarkt-olympiapark', run: runFlohmarktOlympiapark },
   { name: 'hofflohmarkt', run: runHofflohmarkt },
   { name: 'glockenbachwerkstatt', run: runGlockenbachwerkstatt },
+  { name: 'oktoberfest-events', run: runOktoberfestEvents },
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.

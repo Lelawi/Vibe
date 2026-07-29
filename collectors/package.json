@@ -35,6 +35,7 @@
     "muffatwerk": "tsx sources/muffatwerk/index.ts",
     "pasinger-fabrik": "tsx sources/pasinger_fabrik/index.ts",
     "werkhaus": "tsx sources/werkhaus/index.ts",
+    "oktoberfest-events": "tsx sources/oktoberfest_events/index.ts",
     "collect-all": "npm run collect-all:runner",
     "collect-all:runner": "tsx collect-all.ts"
   },
