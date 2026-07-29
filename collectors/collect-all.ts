@@ -30,6 +30,9 @@ import { run as runFatCat } from './sources/fat_cat/index.js';
 import { run as runDeutschesTheater } from './sources/deutsches_theater/index.js';
 import { run as runGaertnerplatztheater } from './sources/gaertnerplatztheater/index.js';
 import { run as runKomoedieBayerischerHof } from './sources/komoedie_bayerischer_hof/index.js';
+import { run as runMuffatwerk } from './sources/muffatwerk/index.js';
+import { run as runPasingerFabrik } from './sources/pasinger_fabrik/index.js';
+import { run as runWerkhaus } from './sources/werkhaus/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -107,6 +110,9 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'deutsches-theater', run: runDeutschesTheater, host: 'in-muenchen.de' },
   { name: 'gaertnerplatztheater', run: runGaertnerplatztheater, host: 'in-muenchen.de' },
   { name: 'komoedie-bayerischer-hof', run: runKomoedieBayerischerHof, host: 'in-muenchen.de' },
+  { name: 'muffatwerk', run: runMuffatwerk, host: 'in-muenchen.de' },
+  { name: 'pasinger-fabrik', run: runPasingerFabrik, host: 'in-muenchen.de' },
+  { name: 'werkhaus', run: runWerkhaus, host: 'in-muenchen.de' },
 ];
 
 async function runAll() {
