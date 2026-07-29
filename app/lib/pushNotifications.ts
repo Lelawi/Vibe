@@ -117,6 +117,14 @@ export async function syncFavoritesToServer(favoriteIds: string[]): Promise<void
   }
 }
 
+export async function syncReminderSettingsToServer(offsetsMinutes: number[]): Promise<void> {
+  const subId = await getCachedSubscriptionId();
+  if (!subId) return;
+  await supabase
+    .from('push_reminder_settings')
+    .upsert({ subscription_id: subId, offsets_minutes: offsetsMinutes }, { onConflict: 'subscription_id' });
+}
+
 export async function syncFiltersToServer(filters: {
   categories: string[];
   genres: string[];

@@ -23,6 +23,7 @@ import { fuzzyMatch } from '../lib/fuzzySearch';
 import { addEventsToCalendar } from '../lib/calendar';
 import { useFavorites } from '../lib/favorites';
 import { useFollowedOrganizers } from '../lib/followedOrganizers';
+import { useReminderSettings, REMINDER_OFFSET_OPTIONS } from '../lib/reminderSettings';
 import {
   isPushSupported,
   isPushEnabled,
@@ -30,6 +31,7 @@ import {
   disablePushNotifications,
   syncFavoritesToServer,
   syncFiltersToServer,
+  syncReminderSettingsToServer,
 } from '../lib/pushNotifications';
 
 type Event = {
@@ -290,11 +292,13 @@ export default function EventListScreen() {
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const { followedOrganizers } = useFollowedOrganizers();
+  const { offsetsMinutes: reminderOffsets, toggleOffset: toggleReminderOffset } = useReminderSettings();
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showFreeOnly, setShowFreeOnly] = useState(false);
   const [showMultiDayOnly, setShowMultiDayOnly] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
+  const [showReminderModal, setShowReminderModal] = useState(false);
 
   useEffect(() => {
     if (!isPushSupported()) return;
@@ -320,6 +324,11 @@ export default function EventListScreen() {
       organizers: followedOrganizers,
     });
   }, [pushEnabled, selectedCategories, selectedGenres, selectedLocations, followedOrganizers]);
+
+  useEffect(() => {
+    if (!pushEnabled) return;
+    syncReminderSettingsToServer(reminderOffsets);
+  }, [pushEnabled, reminderOffsets]);
 
   async function togglePush() {
     if (pushBusy) return;
@@ -869,6 +878,18 @@ export default function EventListScreen() {
             </Text>
           </TouchableOpacity>
         )}
+
+        {isPushSupported() && pushEnabled && (
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setShowReminderModal(true)}
+          >
+            <Ionicons name="time-outline" size={16} color="#999" />
+            <Text style={styles.filterButtonText}>
+              Erinnerung{reminderOffsets.length > 0 ? ` (${reminderOffsets.length})` : ''}
+            </Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
       <View style={styles.resultCountRow}>
@@ -1265,6 +1286,51 @@ export default function EventListScreen() {
                   setShowFilterModal(false);
                   setLocationSearch('');
                 }}
+              >
+                <Text style={styles.modalCloseButtonText}>Fertig</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Vorlaufzeiten für Favoriten-Erinnerungen — global fürs Gerät, gilt
+          für jedes favorisierte Event gleichermaßen (siehe reminderSettings.ts). */}
+      <Modal
+        visible={showReminderModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowReminderModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowReminderModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Erinnerung bei Favoriten</Text>
+            <Text style={styles.modalSubtitle}>
+              Wann sollen wir dich an ein favorisiertes Event erinnern?
+            </Text>
+            {REMINDER_OFFSET_OPTIONS.map((option) => {
+              const isActive = reminderOffsets.includes(option.minutes);
+              return (
+                <TouchableOpacity
+                  key={option.minutes}
+                  style={[styles.modalRow, isActive && styles.modalRowActive]}
+                  onPress={() => toggleReminderOffset(option.minutes)}
+                >
+                  <Text style={[styles.modalRowText, isActive && styles.modalRowTextActive]}>
+                    {isActive ? '✓ ' : ''}
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowReminderModal(false)}
               >
                 <Text style={styles.modalCloseButtonText}>Fertig</Text>
               </TouchableOpacity>
