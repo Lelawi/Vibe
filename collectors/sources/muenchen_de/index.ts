@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate } from '../../core/scrape';
+import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry } from '../../core/scrape';
 
 // Das offizielle Stadtportal muenchen.de lädt seine Veranstaltungssuche per
 // JS/API nach (im Server-HTML steht praktisch nichts, verifiziert 2026-07).
@@ -57,6 +57,7 @@ export async function run() {
       const sourceId = `muenchen-de-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;
       const locationName = ev.locationName ?? 'München';
       const coords = await getCoordinates(supabase, locationName, ev.address, 'München');
+      const price_info = await checkInMuenchenFreeEntry(eventUrl);
 
       collected.push({
         source_id: sourceId,
@@ -72,6 +73,7 @@ export async function run() {
         organizer: ev.organizer,
         source_url: eventUrl,
         image_url: ev.image,
+        price_info,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
       });

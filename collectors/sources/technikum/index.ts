@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate } from '../../core/scrape';
+import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry } from '../../core/scrape';
 
 // Technikum München (Club im Werksviertel) hat keine eigene scrapbare
 // Programmseite; die in-muenchen.de-Locationseite listet dieselben Termine
@@ -56,6 +56,7 @@ export async function run() {
       const eventUrl = ev.url ?? TECHNIKUM_URL;
       const sourceId = `technikum-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;
       const coords = await getCoordinates(supabase, 'Technikum München', null, 'München');
+      const price_info = await checkInMuenchenFreeEntry(eventUrl);
 
       collected.push({
         source_id: sourceId,
@@ -71,6 +72,7 @@ export async function run() {
         organizer: ev.organizer ?? 'Technikum München',
         source_url: eventUrl,
         image_url: ev.image,
+        price_info,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
       });

@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate } from '../../core/scrape';
+import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry } from '../../core/scrape';
 
 // rote-sonne.com selbst ist keine scrapbare Programmseite; die in-muenchen.de-
 // Locationseite listet dieselben Termine serverseitig gerendert (26 Events
@@ -56,6 +56,7 @@ export async function run() {
       const eventUrl = ev.url ?? ROTE_SONNE_URL;
       const sourceId = `rote-sonne-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;
       const coords = await getCoordinates(supabase, 'Rote Sonne', ROTE_SONNE_ADDRESS, 'München');
+      const price_info = await checkInMuenchenFreeEntry(eventUrl);
 
       collected.push({
         source_id: sourceId,
@@ -71,6 +72,7 @@ export async function run() {
         organizer: ev.organizer ?? 'Rote Sonne',
         source_url: eventUrl,
         image_url: ev.image,
+        price_info,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
       });

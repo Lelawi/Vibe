@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate } from '../../core/scrape';
+import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry } from '../../core/scrape';
 
 // P1 selbst betreibt keine öffentliche Event-Seite (nur Corporate-Events-Seite
 // ohne Programm), und die muenchen.de-Venue-Seite zeigt "0 Veranstaltungen"
@@ -57,6 +57,7 @@ export async function run() {
       const eventUrl = ev.url ?? P1_URL;
       const sourceId = `p1-${Buffer.from(String(eventUrl)).toString('base64').slice(0, 20)}`;
       const coords = await getCoordinates(supabase, 'P1', P1_ADDRESS, 'München');
+      const price_info = await checkInMuenchenFreeEntry(eventUrl);
 
       collected.push({
         source_id: sourceId,
@@ -72,6 +73,7 @@ export async function run() {
         organizer: ev.organizer ?? 'P1',
         source_url: eventUrl,
         image_url: ev.image,
+        price_info,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
       });

@@ -2,6 +2,7 @@
 // genutzt von den Collectoren, die keine dedizierte API haben und daher
 // öffentliche Veranstaltungsseiten scrapen.
 import type { CheerioAPI } from 'cheerio';
+import fetch from 'node-fetch';
 
 export interface ParsedEvent {
   name: string | null;
@@ -239,6 +240,31 @@ export function extractInMuenchenTeasers($: CheerioAPI, baseUrl: string): Parsed
   });
 
   return events;
+}
+
+// in-muenchen.de zeigt auf der Event-Detailseite (nicht auf der hier
+// gescrapten Venue-Übersicht) "Eintritt frei" für kostenlose Events an —
+// echte Ticketpreise zeigt die Seite dagegen nie an (nur ein Link zum
+// externen Ticketanbieter wie eventim.de), es gibt also nur einen
+// Kostenlos-Status zu erkennen, keinen Betrag. Braucht einen zusätzlichen
+// Seitenabruf pro Event, drosselt sich deshalb selbst (Aufrufer müssen NICHT
+// zusätzlich pausieren) — mehrere Collector nutzen denselben Host.
+const IN_MUENCHEN_DETAIL_DELAY_MS = 400;
+
+export async function checkInMuenchenFreeEntry(eventUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(eventUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
+    const html = res.ok ? await res.text() : '';
+    return /eintritt\s*frei/i.test(html) ? 'Kostenlos' : null;
+  } catch {
+    return null;
+  } finally {
+    await new Promise((r) => setTimeout(r, IN_MUENCHEN_DETAIL_DELAY_MS));
+  }
 }
 
 const EN_MONTHS: Record<string, number> = {
