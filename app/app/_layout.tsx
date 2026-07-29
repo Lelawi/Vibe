@@ -28,7 +28,10 @@ export default function Layout() {
           contentStyle: { backgroundColor: '#000' },
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'Vibe' }} />
+        {/* Eigenes Gradient-Banner im Screen übernimmt den Titel — der native
+            Header hätte hier sonst ein zweites, redundantes "Vibe" direkt
+            über dem eigenen Banner gezeigt. */}
+        <Stack.Screen name="index" options={{ title: 'Vibe', headerShown: false }} />
         {/* Eigener "‹ Übersicht"-Button im Screen selbst übernimmt die
             Rücknavigation (funktioniert auch bei direkt geöffneten Share-
             Links ohne Navigations-Historie) — der native Header-Pfeil würde

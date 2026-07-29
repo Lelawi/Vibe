@@ -498,6 +498,23 @@ export default function EventListScreen() {
   }
 
   const contentFilterCount = selectedCategories.length + selectedGenres.length + selectedLocations.length;
+  const hasAnyActiveFilter =
+    search.trim() !== '' ||
+    contentFilterCount > 0 ||
+    dateFilter !== 'all' ||
+    showFavoritesOnly ||
+    showFreeOnly;
+
+  function resetAllFilters() {
+    setSearch('');
+    setSelectedCategories([]);
+    setSelectedGenres([]);
+    setSelectedLocations([]);
+    setDateFilter('all');
+    setSelectedDates([]);
+    setShowFavoritesOnly(false);
+    setShowFreeOnly(false);
+  }
 
   const activeFilterTabData =
     filterTab === 'category' ? categories : filterTab === 'genre' ? genres : filteredLocationOptions;
@@ -664,9 +681,16 @@ export default function EventListScreen() {
         </ScrollView>
       </View>
 
-      <Text style={styles.resultCount}>
-        {eventGroups.length} {eventGroups.length === 1 ? 'Event' : 'Events'} gefunden
-      </Text>
+      <View style={styles.resultCountRow}>
+        <Text style={styles.resultCount}>
+          {eventGroups.length} {eventGroups.length === 1 ? 'Event' : 'Events'} gefunden
+        </Text>
+        {hasAnyActiveFilter && (
+          <TouchableOpacity onPress={resetAllFilters}>
+            <Text style={styles.resultCountResetLink}>Alle Filter zurücksetzen</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {locationStatus === 'denied' && (
         <Text style={styles.locationHint}>
@@ -1145,11 +1169,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
   },
-  resultCount: {
-    color: '#666',
-    fontSize: 12,
+  resultCountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     marginBottom: 8,
+  },
+  resultCount: { color: '#666', fontSize: 12 },
+  resultCountResetLink: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   radiusRow: {
     flexDirection: 'row',
