@@ -103,11 +103,23 @@ function formatEndDateSuffix(startDate: string, endDate: string | null): string 
 // "YYYY-MM-DD" -> "DD.MM." und "DD.MM.YYYY", damit die Suche auch das in
 // Deutschland übliche numerische Format findet (formatDate() liefert nur
 // den ausgeschriebenen Wochentag/Monat, z.B. "Di., 25. Aug.", worin "25.08"
-// nicht als Teilstring vorkommt).
+// nicht als Teilstring vorkommt). Zusätzlich die ungepolsterten Varianten
+// ("5.8." statt nur "05.08.") — beim Tippen lässt man führende Nullen bei
+// Tag/Monat oft weg, und fuzzyMatch() behandelt "5.8" als ein Token (der
+// Punkt trennt nicht wie ein Leerzeichen), das ohne diese Variante nie einen
+// exakten Teilstring-Treffer in "05.08." findet.
 function toGermanNumericDates(dateStr: string): string {
   const [year, month, day] = dateStr.split('-');
   if (!year || !month || !day) return '';
-  return `${day}.${month}. ${day}.${month}.${year}`;
+  const unpaddedDay = String(Number(day));
+  const unpaddedMonth = String(Number(month));
+  const variants = new Set([
+    `${day}.${month}.`,
+    `${day}.${month}.${year}`,
+    `${unpaddedDay}.${unpaddedMonth}.`,
+    `${unpaddedDay}.${unpaddedMonth}.${year}`,
+  ]);
+  return [...variants].join(' ');
 }
 
 function toLocalDateStr(date: Date) {
