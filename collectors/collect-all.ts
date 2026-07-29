@@ -34,6 +34,7 @@ import { run as runMuffatwerk } from './sources/muffatwerk/index.js';
 import { run as runPasingerFabrik } from './sources/pasinger_fabrik/index.js';
 import { run as runWerkhaus } from './sources/werkhaus/index.js';
 import { run as runOktoberfestEvents } from './sources/oktoberfest_events/index.js';
+import { run as runEintrittfreiMuenchen } from './sources/eintrittfrei_muenchen/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -59,6 +60,13 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 //   eine Alpine.js-Vorlage (x-text="event.schema") — der eigentliche JSON-Inhalt
 //   wird erst im Browser per JS eingesetzt, im rohen Server-HTML ist das
 //   Script-Tag leer. Gleiches Problem wie eventfrog, daher ebenfalls entfernt.
+// - messe-muenchen: die Firmen-Startseite (/veranstaltungskalender/) ist nur
+//   eine Übersichtsseite ohne Termine; der echte Kalender
+//   (/de/veranstaltungen/?event-calendar_y=2026) lädt seine Messeliste über
+//   <script type="module">-Web-Components (components.messe-muenchen.de,
+//   Stencil/Angular) nach — im Server-HTML steht kein einziger Messename
+//   oder Termin. Gleiches Muster wie eventfrog/billetto/ampere/lmu, kein
+//   Konfigurationsfehler (verifiziert 2026-07).
 //
 // Hinweis zu in-muenchen.de-basierten Quellen (p1, muenchen-de, feierwerk,
 // rote-sonne, technikum, gasteig-hp8, unter-deck, bahnwaerter-thiel,
@@ -79,6 +87,19 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // in-muenchen.de; hintereinander mit nur 750ms Pause sieht das exakt wie
 // eine Scraping-Burst-Sequenz aus, was die beobachtete Unzuverlässigkeit
 // in der Produktion (siehe Kommentar oben) erklären könnte.
+// UPDATE 2026-07-29: auch nach der 4s-Pause liefern die in-muenchen.de-
+// Quellen in Produktion weiterhin fast nur 0 Events (Live-Datenstand
+// geprüft: nur blitz-club und residenztheater mit je 1 Event, alle
+// anderen — inkl. muenchen-de — komplett leer), während ein direkter
+// Abruf derselben Seiten von einem normalen (nicht-GH-Actions-)Rechner aus
+// weiterhin anstandslos funktioniert (200, echte Events im HTML). Das
+// bestätigt die Verdachtsdiagnose: es ist ein IP-Reputationsblock gegen
+// GitHub-Actions-Cloud-IPs, kein Code- oder Timing-Problem, das durch mehr
+// Pause allein lösbar wäre. Echte Optionen wären ein Self-Hosted Runner
+// (eigener, nicht geblockter Rechner/NAS führt den Workflow aus) oder ein
+// bezahlter Residential-Proxy-Dienst — beides eine bewusste Entscheidung,
+// die der Projektinhaber treffen muss, nicht etwas, das sich im Code allein
+// beheben lässt.
 const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'backstage', run: runBackstage },
   { name: 'muenchenticket', run: runMuenchenticket },
@@ -91,6 +112,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'hofflohmarkt', run: runHofflohmarkt },
   { name: 'glockenbachwerkstatt', run: runGlockenbachwerkstatt },
   { name: 'oktoberfest-events', run: runOktoberfestEvents },
+  { name: 'eintrittfrei-muenchen', run: runEintrittfreiMuenchen },
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.

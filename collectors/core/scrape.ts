@@ -7,6 +7,7 @@ import fetch from 'node-fetch';
 export interface ParsedEvent {
   name: string | null;
   startDate: string | null;
+  endDate: string | null;
   description: string | null;
   url: string | null;
   image: string | null;
@@ -15,6 +16,8 @@ export interface ParsedEvent {
   organizer: string | null;
   priceInfo: string | null;
   soldOut: boolean | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 function addressToString(a: any): string | null {
@@ -52,14 +55,22 @@ function nodeToEvent(node: any): ParsedEvent | null {
   const location = node.location ?? null;
   let locationName: string | null = null;
   let address: string | null = null;
+  let latitude: number | null = null;
+  let longitude: number | null = null;
   if (location) {
     locationName = typeof location === 'string' ? location : location.name ?? null;
     address = addressToString(location.address);
+    const geo = location.geo;
+    if (geo && typeof geo.latitude === 'number' && typeof geo.longitude === 'number') {
+      latitude = geo.latitude;
+      longitude = geo.longitude;
+    }
   }
   const { priceInfo, soldOut } = offersToPriceInfo(node.offers);
   return {
     name: node.name ?? null,
     startDate: node.startDate ?? null,
+    endDate: node.endDate ?? null,
     description: node.description ?? null,
     url: node.url ?? node['@id'] ?? null,
     image: Array.isArray(node.image) ? node.image[0] : (node.image?.url ?? node.image ?? null),
@@ -68,6 +79,8 @@ function nodeToEvent(node: any): ParsedEvent | null {
     organizer: node.organizer?.name ?? null,
     priceInfo,
     soldOut,
+    latitude,
+    longitude,
   };
 }
 
@@ -173,6 +186,7 @@ export function extractDatedLinks($: CheerioAPI, baseUrl: string, cityHint = 'MÃ
     events.push({
       name: (name || rest || scanText).slice(0, 200) || null,
       startDate: dateToken,
+      endDate: null,
       description: null,
       url,
       image: null,
@@ -181,6 +195,8 @@ export function extractDatedLinks($: CheerioAPI, baseUrl: string, cityHint = 'MÃ
       organizer: null,
       priceInfo: null,
       soldOut: null,
+      latitude: null,
+      longitude: null,
     });
   });
 
@@ -229,6 +245,7 @@ export function extractInMuenchenTeasers($: CheerioAPI, baseUrl: string): Parsed
     events.push({
       name,
       startDate: dateText || null,
+      endDate: null,
       description,
       url,
       image,
@@ -237,6 +254,8 @@ export function extractInMuenchenTeasers($: CheerioAPI, baseUrl: string): Parsed
       organizer: null,
       priceInfo: null,
       soldOut: null,
+      latitude: null,
+      longitude: null,
     });
   });
 
