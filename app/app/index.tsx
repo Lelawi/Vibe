@@ -186,13 +186,12 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'weekend', label: 'Wochenende' },
 ];
 
-const RADIUS_OPTIONS: { value: number | null; label: string }[] = [
-  { value: 1, label: '1 km' },
-  { value: 5, label: '5 km' },
-  { value: 10, label: '10 km' },
-  { value: 25, label: '25 km' },
-  { value: null, label: 'Alle' },
-];
+// Reines CSS-Objekt für das native <input type="range">-DOM-Element (kein
+// RN-Style) — accentColor auf den App-Akzent statt des Browser-Blaus.
+const radiusSliderStyle = {
+  width: '100%' as const,
+  accentColor: '#0af',
+};
 
 const GENRE_GROUPS: { label: string; patterns: RegExp[] }[] = [
   { label: 'Pop & Rock', patterns: [/pop/i, /rock/i, /alternative/i, /indie/i, /singer/i, /schlager/i] },
@@ -706,23 +705,34 @@ export default function EventListScreen() {
 
       {userLocation && (
         <View style={styles.radiusRow}>
-          <Text style={styles.radiusLabel}>Umkreis:</Text>
-          {RADIUS_OPTIONS.map((opt) => (
-            <TouchableOpacity
-              key={opt.label}
-              style={[styles.radiusChip, nearbyRadiusKm === opt.value && styles.radiusChipActive]}
-              onPress={() => setNearbyRadiusKm(opt.value)}
+          <Text style={styles.radiusLabel}>
+            Umkreis: {nearbyRadiusKm === null ? 'Alle' : `${nearbyRadiusKm} km`}
+          </Text>
+          <View style={styles.radiusSliderWrap}>
+            {/* Web-only wie das ganze Nähe-Feature (Platform.OS==='web' schon
+                eine Ebene höher am Nähe-Button selbst) — reines HTML-Element
+                statt @react-native-community/slider, da dessen Web-Support
+                über react-native-web unzuverlässig ist. */}
+            <input
+              type="range"
+              min={1}
+              max={25}
+              step={1}
+              value={nearbyRadiusKm ?? 25}
+              onChange={(e) => setNearbyRadiusKm(Number(e.target.value))}
+              style={radiusSliderStyle}
+            />
+          </View>
+          <TouchableOpacity onPress={() => setNearbyRadiusKm(null)}>
+            <Text
+              style={[
+                styles.radiusAllLink,
+                nearbyRadiusKm === null && styles.radiusAllLinkActive,
+              ]}
             >
-              <Text
-                style={[
-                  styles.radiusChipText,
-                  nearbyRadiusKm === opt.value && styles.radiusChipTextActive,
-                ]}
-              >
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+              Alle
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -1201,20 +1211,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     marginBottom: 8,
-    flexWrap: 'wrap',
-    gap: 6,
+    gap: 10,
   },
-  radiusLabel: { color: '#888', fontSize: 12, marginRight: 4 },
-  radiusChip: {
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  radiusChipActive: { backgroundColor: '#0af', borderColor: '#0af' },
-  radiusChipText: { color: '#999', fontSize: 12, fontWeight: '600' },
-  radiusChipTextActive: { color: '#000' },
+  radiusLabel: { color: '#888', fontSize: 12, minWidth: 84 },
+  radiusSliderWrap: { flex: 1 },
+  radiusAllLink: { color: '#666', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
+  radiusAllLinkActive: { color: '#0af' },
   calendarBackdrop: {
     flex: 1,
     backgroundColor: '#000a',
