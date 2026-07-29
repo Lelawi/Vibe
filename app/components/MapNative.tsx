@@ -134,7 +134,7 @@ export default function MapNative() {
   }
 
   return (
-    <MapView style={styles.map} initialRegion={initialRegion}>
+    <MapView style={styles.map} initialRegion={initialRegion} showsUserLocation showsMyLocationButton>
       {venues.map((v) => (
         <Marker
           key={v.key}

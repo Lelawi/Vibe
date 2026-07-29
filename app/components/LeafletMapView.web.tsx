@@ -6,7 +6,7 @@
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, Pressable, ScrollView } from 'react-native';
 import L from 'leaflet';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
 
 // Leaflets Standard-Marker-Icons verweisen auf relative Bildpfade, die unter
 // Metro/Webpack-Bundlern nicht auflösen — stattdessen auf die CDN-Bilder
@@ -75,6 +75,7 @@ export default function LeafletMapView({
   centerLng,
   zoom,
   targetKey,
+  userLocation,
   onOpenEvent,
   onOpenList,
 }: {
@@ -83,6 +84,7 @@ export default function LeafletMapView({
   centerLng: number;
   zoom: number;
   targetKey: string | null;
+  userLocation?: { lat: number; lng: number } | null;
   onOpenEvent: (id: string) => void;
   onOpenList: (names: string[]) => void;
 }) {
@@ -93,7 +95,6 @@ export default function LeafletMapView({
       center={[centerLat, centerLng]}
       zoom={zoom}
       style={styles.map}
-      // @ts-expect-error react-leaflet types don't include children prop signature here
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
@@ -137,6 +138,20 @@ export default function LeafletMapView({
           </Marker>
         );
       })}
+      {userLocation && (
+        <>
+          <Circle
+            center={[userLocation.lat, userLocation.lng]}
+            radius={80}
+            pathOptions={{ color: '#0af', fillColor: '#0af', fillOpacity: 0.15, weight: 0 }}
+          />
+          <CircleMarker
+            center={[userLocation.lat, userLocation.lng]}
+            radius={7}
+            pathOptions={{ color: '#fff', weight: 2, fillColor: '#0af', fillOpacity: 1 }}
+          />
+        </>
+      )}
       <AutoOpenPopup targetKey={targetKey} markerRefs={markerRefs} />
     </MapContainer>
   );

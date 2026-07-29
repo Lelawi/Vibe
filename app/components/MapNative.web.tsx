@@ -28,6 +28,19 @@ export default function MapNative() {
   const params = useLocalSearchParams<{ lat?: string; lng?: string }>();
   const [events, setEvents] = useState<RawEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    // Best-effort, kein Fehler-UI bei Ablehnung — der "Wo bin ich"-Punkt ist
+    // eine Zusatzinfo auf der Karte, kein Blocker wie die "Nähe"-Sortierung
+    // auf der Listenseite.
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  }, []);
 
   useEffect(() => {
     async function loadEvents() {
@@ -92,6 +105,7 @@ export default function MapNative() {
         centerLng={centerLng}
         zoom={hasTarget ? 16 : 13}
         targetKey={targetKey}
+        userLocation={userLocation}
         onOpenEvent={(id) => router.push(`/event/${id}`)}
         onOpenList={(names) => {
           // Die Ortsfilter auf der Startseite matchen gegen canonicalizeVenue(location_name),
