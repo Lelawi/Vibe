@@ -471,7 +471,12 @@ const styles = StyleSheet.create({
   },
   favoriteBtnText: { fontSize: 13, fontWeight: '600', color: '#fff' },
   title: { fontSize: 29, fontWeight: '800', color: '#fff', marginBottom: 20, lineHeight: 34 },
-  infoBlock: { marginBottom: 16 },
+  infoBlock: {
+    paddingBottom: 16,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
   infoLabel: { fontSize: 12, color: '#666', textTransform: 'uppercase', marginBottom: 4 },
   infoValue: { fontSize: 16, color: '#fff' },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
