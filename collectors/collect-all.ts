@@ -68,9 +68,15 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 //   oder Termin. Gleiches Muster wie eventfrog/billetto/ampere/lmu, kein
 //   Konfigurationsfehler (verifiziert 2026-07).
 //
+// bahnwaerter-thiel scrapt seit 2026-07 nicht mehr in-muenchen.de, sondern
+// die eigene Homepage (bahnwaerterthiel.de) direkt — die dortige
+// in-muenchen.de-Locationseite lieferte nur 0-1 Events, während die eigene
+// Seite 33 echte, datierte Events auf einer einzigen Anfrage liefert (kein
+// gemeinsamer Host, also auch keine Drossel-Pause nötig).
+//
 // Hinweis zu in-muenchen.de-basierten Quellen (p1, muenchen-de, feierwerk,
-// rote-sonne, technikum, gasteig-hp8, unter-deck, bahnwaerter-thiel,
-// blitz-club, tonhalle, volkstheater, residenztheater): Lauf vom 2026-07-29
+// rote-sonne, technikum, gasteig-hp8, unter-deck, blitz-club, tonhalle,
+// volkstheater, residenztheater): Lauf vom 2026-07-29
 // (Commit 8743e52) lieferte nur von blitz-club (1) und residenztheater (1)
 // überhaupt Events, alle anderen 0 — trotz direkt verifizierter, echter
 // Event-Daten auf jeder einzelnen Seite. Der Code ist also nicht das
@@ -123,7 +129,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'technikum', run: runTechnikum, host: 'in-muenchen.de' },
   { name: 'gasteig-hp8', run: runGasteigHp8, host: 'in-muenchen.de' },
   { name: 'unter-deck', run: runUnterDeck, host: 'in-muenchen.de' },
-  { name: 'bahnwaerter-thiel', run: runBahnwaerterThiel, host: 'in-muenchen.de' },
+  { name: 'bahnwaerter-thiel', run: runBahnwaerterThiel },
   { name: 'blitz-club', run: runBlitzClub, host: 'in-muenchen.de' },
   { name: 'tonhalle', run: runTonhalle, host: 'in-muenchen.de' },
   { name: 'volkstheater', run: runVolkstheater, host: 'in-muenchen.de' },
