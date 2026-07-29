@@ -41,10 +41,18 @@ npm run web         # expo start --web
 npm run android      # expo start --android
 npm run ios          # expo start --ios
 npm run build:web    # expo export --platform web -> app/dist, static PWA build for hosting
-./start-tunnel.sh    # expo start --tunnel, auto-retries on ngrok failures
 ```
 
 No lint or test scripts are configured for the app.
+
+**Do not add `expo start --tunnel` or the `@expo/ngrok` dependency back.**
+This was tried early on to test on a phone over the internet, but (a) the
+corporate network blocks ngrok's tunnel at the OS level regardless of
+network, so it never worked, and (b) `ngrok.exe` got flagged by corporate
+CERT/EDR as a possible C2 tunneling tool (a legitimate detection — ngrok
+really is abused for that — it's just also a real Expo dev dependency with
+no way to tell the two apart automatically). The PWA/GitHub Pages
+distribution below fully replaces the need for tunneling.
 
 Env vars (`.env`, not committed): `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (see `app/lib/supabase.ts`). These are baked into the web build at build time, so they must also be set as repo secrets for `.github/workflows/deploy-web.yml`.
 
