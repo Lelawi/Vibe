@@ -24,6 +24,9 @@ import { run as runBlitzClub } from './sources/blitz_club/index.js';
 import { run as runTonhalle } from './sources/tonhalle/index.js';
 import { run as runVolkstheater } from './sources/volkstheater/index.js';
 import { run as runResidenztheater } from './sources/residenztheater/index.js';
+import { run as runMuffathalle } from './sources/muffathalle/index.js';
+import { run as runLustspielhaus } from './sources/lustspielhaus/index.js';
+import { run as runFatCat } from './sources/fat_cat/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -95,6 +98,9 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'tonhalle', run: runTonhalle, host: 'in-muenchen.de' },
   { name: 'volkstheater', run: runVolkstheater, host: 'in-muenchen.de' },
   { name: 'residenztheater', run: runResidenztheater, host: 'in-muenchen.de' },
+  { name: 'muffathalle', run: runMuffathalle, host: 'in-muenchen.de' },
+  { name: 'lustspielhaus', run: runLustspielhaus, host: 'in-muenchen.de' },
+  { name: 'fat-cat', run: runFatCat, host: 'in-muenchen.de' },
 ];
 
 async function runAll() {

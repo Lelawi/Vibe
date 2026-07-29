@@ -26,6 +26,9 @@
     "tonhalle": "tsx sources/tonhalle/index.ts",
     "volkstheater": "tsx sources/volkstheater/index.ts",
     "residenztheater": "tsx sources/residenztheater/index.ts",
+    "muffathalle": "tsx sources/muffathalle/index.ts",
+    "lustspielhaus": "tsx sources/lustspielhaus/index.ts",
+    "fat-cat": "tsx sources/fat_cat/index.ts",
     "collect-all": "npm run collect-all:runner",
     "collect-all:runner": "tsx collect-all.ts"
   },
