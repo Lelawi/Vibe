@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
@@ -603,19 +604,19 @@ export default function EventListScreen() {
   }
 
   function customDateLabel() {
-    if (selectedDates.length === 0) return '📅 Datum wählen';
+    if (selectedDates.length === 0) return 'Datum wählen';
     if (selectedDates.length === 1) {
       const [y, m, d] = selectedDates[0].split('-');
-      return `📅 ${d}.${m}.${y}`;
+      return `${d}.${m}.${y}`;
     }
     const sorted = [...selectedDates].sort();
     const isContiguous = arraysEqual(sorted, buildDateRangeArray(sorted[0], sorted[sorted.length - 1]));
     if (isContiguous) {
       const [, m1, d1] = sorted[0].split('-');
       const [, m2, d2] = sorted[sorted.length - 1].split('-');
-      return `📅 ${d1}.${m1}.–${d2}.${m2}.`;
+      return `${d1}.${m1}.–${d2}.${m2}.`;
     }
-    return `📅 ${selectedDates.length} Tage`;
+    return `${selectedDates.length} Tage`;
   }
 
   const contentFilterCount = selectedCategories.length + selectedGenres.length + selectedLocations.length;
@@ -689,15 +690,17 @@ export default function EventListScreen() {
             <Text style={styles.subheader}>Events in München</Text>
           </View>
           <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/map')}>
-            <Text style={styles.mapButtonText}>🗺️ Karte</Text>
+            <Ionicons name="map-outline" size={15} color="#fff" />
+            <Text style={styles.mapButtonText}>Karte</Text>
           </TouchableOpacity>
         </View>
       </LinearGradient>
 
       {isOffline && (
         <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={14} color="#f2c94c" />
           <Text style={styles.offlineBannerText}>
-            📴 Offline — zeige zuletzt geladene Events
+            Offline — zeige zuletzt geladene Events
           </Text>
         </View>
       )}
@@ -771,8 +774,9 @@ export default function EventListScreen() {
           style={[styles.filterButton, contentFilterCount > 0 && styles.filterChipActive]}
           onPress={() => setShowFilterModal(true)}
         >
+          <Ionicons name="options-outline" size={16} color={contentFilterCount > 0 ? '#000' : '#999'} />
           <Text style={[styles.filterButtonText, contentFilterCount > 0 && styles.filterChipTextActive]}>
-            ⚙️ Filter{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
+            Filter{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
           </Text>
         </TouchableOpacity>
 
@@ -780,8 +784,13 @@ export default function EventListScreen() {
           style={[styles.filterButton, showFavoritesOnly && styles.filterChipActive]}
           onPress={() => setShowFavoritesOnly((v) => !v)}
         >
+          <Ionicons
+            name={showFavoritesOnly ? 'heart' : 'heart-outline'}
+            size={16}
+            color={showFavoritesOnly ? '#000' : '#999'}
+          />
           <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
-            {showFavoritesOnly ? '❤️' : '🤍'} Favoriten
+            Favoriten
           </Text>
         </TouchableOpacity>
 
@@ -789,8 +798,9 @@ export default function EventListScreen() {
           style={[styles.filterButton, showFreeOnly && styles.filterChipActive]}
           onPress={() => setShowFreeOnly((v) => !v)}
         >
+          <Ionicons name="pricetag-outline" size={16} color={showFreeOnly ? '#000' : '#999'} />
           <Text style={[styles.filterButtonText, showFreeOnly && styles.filterChipTextActive]}>
-            🆓 Kostenlos
+            Kostenlos
           </Text>
         </TouchableOpacity>
 
@@ -798,8 +808,9 @@ export default function EventListScreen() {
           style={[styles.filterButton, showMultiDayOnly && styles.filterChipActive]}
           onPress={() => setShowMultiDayOnly((v) => !v)}
         >
+          <Ionicons name="layers-outline" size={16} color={showMultiDayOnly ? '#000' : '#999'} />
           <Text style={[styles.filterButtonText, showMultiDayOnly && styles.filterChipTextActive]}>
-            🗓️ Ausstellungen
+            Ausstellungen
           </Text>
         </TouchableOpacity>
 
@@ -809,11 +820,13 @@ export default function EventListScreen() {
             onPress={toggleNearby}
             disabled={locationStatus === 'loading'}
           >
-            {locationStatus === 'loading' && (
+            {locationStatus === 'loading' ? (
               <ActivityIndicator size="small" color="#999" style={styles.nearbyButtonSpinner} />
+            ) : (
+              <Ionicons name="location-outline" size={16} color={userLocation ? '#000' : '#999'} />
             )}
             <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
-              {locationStatus === 'loading' ? 'Lädt Standort…' : '📍 Nähe'}
+              {locationStatus === 'loading' ? 'Lädt Standort…' : 'Nähe'}
             </Text>
           </TouchableOpacity>
         )}
@@ -824,9 +837,17 @@ export default function EventListScreen() {
             onPress={togglePush}
             disabled={pushBusy}
           >
-            {pushBusy && <ActivityIndicator size="small" color="#999" style={styles.nearbyButtonSpinner} />}
+            {pushBusy ? (
+              <ActivityIndicator size="small" color="#999" style={styles.nearbyButtonSpinner} />
+            ) : (
+              <Ionicons
+                name={pushEnabled ? 'notifications' : 'notifications-off-outline'}
+                size={16}
+                color={pushEnabled ? '#000' : '#999'}
+              />
+            )}
             <Text style={[styles.filterButtonText, pushEnabled && styles.filterChipTextActive]}>
-              {pushEnabled ? '🔔 Benachrichtigungen an' : '🔕 Benachrichtigungen'}
+              {pushEnabled ? 'Benachrichtigungen an' : 'Benachrichtigungen'}
             </Text>
           </TouchableOpacity>
         )}
@@ -991,7 +1012,8 @@ export default function EventListScreen() {
               style={styles.activePill}
               onPress={() => setSelectedLocations((prev) => prev.filter((v) => v !== l))}
             >
-              <Text style={styles.activePillText}>📍 {l} ✕</Text>
+              <Ionicons name="location-outline" size={12} color="#0af" />
+              <Text style={styles.activePillText}>{l} ✕</Text>
             </TouchableOpacity>
           ))}
           <TouchableOpacity
@@ -1031,7 +1053,10 @@ export default function EventListScreen() {
           if (row.kind === 'featured') {
             return (
               <View style={styles.featuredSection}>
-                <Text style={styles.featuredSectionTitle}>✨ Empfohlen für dich</Text>
+                <View style={styles.featuredSectionTitleRow}>
+                  <Ionicons name="sparkles-outline" size={16} color="#fff" />
+                  <Text style={styles.featuredSectionTitle}>Empfohlen für dich</Text>
+                </View>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -1084,7 +1109,11 @@ export default function EventListScreen() {
                   toggleFavorite(item.id);
                 }}
               >
-                <Text style={styles.favoriteBtnText}>{isFavorite(item.id) ? '❤️' : '🤍'}</Text>
+                <Ionicons
+                  name={isFavorite(item.id) ? 'heart' : 'heart-outline'}
+                  size={18}
+                  color={isFavorite(item.id) ? '#ff4d6d' : '#fff'}
+                />
               </TouchableOpacity>
               {item.image_url ? (
                 <Image source={{ uri: item.image_url }} style={styles.cardThumb} />
@@ -1093,7 +1122,10 @@ export default function EventListScreen() {
                 <View style={styles.badgeRow}>
                   {item.category && <Text style={styles.badge}>{item.category}</Text>}
                   {hasMore && (
-                    <Text style={styles.seriesBadge}>🔁 {group.length} Termine</Text>
+                    <View style={styles.seriesBadgeRow}>
+                      <Ionicons name="repeat-outline" size={11} color="#999" />
+                      <Text style={styles.seriesBadge}>{group.length} Termine</Text>
+                    </View>
                   )}
                   {item.sold_out === true && <Text style={styles.soldOutBadge}>Ausverkauft</Text>}
                 </View>
@@ -1256,8 +1288,9 @@ export default function EventListScreen() {
                   )
                 }
               >
+                <Ionicons name="calendar-outline" size={15} color="#fff" />
                 <Text style={styles.modalSecondaryButtonText}>
-                  📅 Alle {selectedGroup.length} Termine in Kalender speichern
+                  Alle {selectedGroup.length} Termine in Kalender speichern
                 </Text>
               </TouchableOpacity>
             )}
@@ -1294,6 +1327,10 @@ const styles = StyleSheet.create({
   header: { fontSize: 30, fontWeight: '800', color: '#fff' },
   subheader: { fontSize: 14, color: '#cbb8f0' },
   offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     backgroundColor: '#3a2a00',
     paddingVertical: 8,
     paddingHorizontal: 16,
@@ -1305,6 +1342,9 @@ const styles = StyleSheet.create({
   listHeaderWrap: { backgroundColor: '#000' },
   stickyControls: { paddingTop: 12 },
   mapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
@@ -1364,6 +1404,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: '#141414',
     borderRadius: 20,
     paddingHorizontal: 14,
@@ -1488,6 +1531,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   activePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: '#0af2',
     borderWidth: 1,
     borderColor: '#0af',
@@ -1520,7 +1566,8 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   featuredSection: { marginBottom: 18 },
-  featuredSectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 10 },
+  featuredSectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  featuredSectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
   featuredScrollContent: { paddingRight: 4 },
   featuredCard: {
     width: 220,
@@ -1569,7 +1616,6 @@ const styles = StyleSheet.create({
     padding: 6,
     zIndex: 1,
   },
-  favoriteBtnText: { fontSize: 16 },
   cardThumb: {
     width: 72,
     height: 72,
@@ -1596,14 +1642,19 @@ const styles = StyleSheet.create({
     marginRight: 6,
     overflow: 'hidden',
   },
-  seriesBadge: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#999',
+  seriesBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     backgroundColor: '#1a1a1a',
     borderRadius: 8,
     paddingHorizontal: 6,
     paddingVertical: 2,
+  },
+  seriesBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#999',
   },
   title: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 4, letterSpacing: 0.1 },
   meta: { fontSize: 13, color: '#999' },
@@ -1693,10 +1744,13 @@ const styles = StyleSheet.create({
   },
   modalCloseButtonText: { color: '#000', fontWeight: '700' },
   modalSecondaryButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: '#141414',
     borderRadius: 12,
     paddingVertical: 12,
-    alignItems: 'center',
     marginTop: 10,
   },
   modalSecondaryButtonText: { color: '#fff', fontWeight: '600', fontSize: 13 },

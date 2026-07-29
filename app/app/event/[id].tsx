@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { addEventToCalendar } from '../../lib/calendar';
 import { shareEvent } from '../../lib/share';
@@ -212,7 +213,12 @@ export default function EventDetailScreen() {
               style={styles.favoriteBtn}
               onPress={() => toggleFavorite(event.id)}
             >
-              <Text style={styles.favoriteBtnText}>{isFavorite(event.id) ? '❤️ Favorit' : '🤍 Merken'}</Text>
+              <Ionicons
+                name={isFavorite(event.id) ? 'heart' : 'heart-outline'}
+                size={16}
+                color={isFavorite(event.id) ? '#ff4d6d' : '#fff'}
+              />
+              <Text style={styles.favoriteBtnText}>{isFavorite(event.id) ? 'Favorit' : 'Merken'}</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.title}>{event.title}</Text>
@@ -230,10 +236,15 @@ export default function EventDetailScreen() {
           {(event.price_info || event.sold_out !== null) && (
             <View style={styles.infoBlock}>
               <Text style={styles.infoLabel}>Preis</Text>
-              <Text style={styles.infoValue}>
-                {event.price_info ?? 'Keine Preisinfo verfügbar'}
-                {event.sold_out === true ? '  🔴 Ausverkauft' : ''}
-              </Text>
+              <View style={styles.priceRow}>
+                <Text style={styles.infoValue}>{event.price_info ?? 'Keine Preisinfo verfügbar'}</Text>
+                {event.sold_out === true && (
+                  <View style={styles.soldOutTag}>
+                    <Ionicons name="close-circle" size={13} color="#ff4d4d" />
+                    <Text style={styles.soldOutTagText}>Ausverkauft</Text>
+                  </View>
+                )}
+              </View>
             </View>
           )}
 
@@ -249,9 +260,10 @@ export default function EventDetailScreen() {
               }
             >
               <Text style={styles.infoLabel}>Wo</Text>
-              <Text style={[styles.infoValue, hasCoords && styles.linkValue]}>
-                {event.location_name} {hasCoords ? '📍' : ''}
-              </Text>
+              <View style={styles.locationValueRow}>
+                <Text style={[styles.infoValue, hasCoords && styles.linkValue]}>{event.location_name}</Text>
+                {hasCoords && <Ionicons name="location-outline" size={15} color="#0af" />}
+              </View>
               {event.address && <Text style={styles.infoSubValue}>{event.address}</Text>}
             </TouchableOpacity>
           )}
@@ -269,9 +281,14 @@ export default function EventDetailScreen() {
               <View style={styles.organizerRow}>
                 <Text style={styles.infoValue}>{event.organizer}</Text>
                 {isPushSupported() && (
-                  <TouchableOpacity onPress={() => toggleFollow(event.organizer!)}>
+                  <TouchableOpacity style={styles.organizerFollowBtn} onPress={() => toggleFollow(event.organizer!)}>
+                    <Ionicons
+                      name={isFollowing(event.organizer) ? 'notifications' : 'notifications-off-outline'}
+                      size={13}
+                      color="#0af"
+                    />
                     <Text style={styles.organizerFollowLink}>
-                      {isFollowing(event.organizer) ? '🔔 Gefolgt' : '🔕 Folgen'}
+                      {isFollowing(event.organizer) ? 'Gefolgt' : 'Folgen'}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -292,8 +309,13 @@ export default function EventDetailScreen() {
           )}
 
           <TouchableOpacity style={styles.secondaryButton} onPress={handleShare}>
+            <Ionicons
+              name={shareStatus === 'copied' ? 'checkmark' : 'share-social-outline'}
+              size={16}
+              color="#fff"
+            />
             <Text style={styles.secondaryButtonText}>
-              {shareStatus === 'copied' ? '✓ Link kopiert' : '📤 Teilen'}
+              {shareStatus === 'copied' ? 'Link kopiert' : 'Teilen'}
             </Text>
           </TouchableOpacity>
 
@@ -302,6 +324,7 @@ export default function EventDetailScreen() {
               ist — sonst würde Maps doppelt auftauchen. */}
           {hasCoords && primaryAction?.label !== 'In Google Maps öffnen' && (
             <TouchableOpacity style={styles.secondaryButton} onPress={openInGoogleMaps}>
+              <Ionicons name="map-outline" size={16} color="#fff" />
               <Text style={styles.secondaryButtonText}>In Google Maps öffnen</Text>
             </TouchableOpacity>
           )}
@@ -321,11 +344,13 @@ export default function EventDetailScreen() {
               })
             }
           >
-            <Text style={styles.secondaryButtonText}>📅 In Kalender speichern</Text>
+            <Ionicons name="calendar-outline" size={16} color="#fff" />
+            <Text style={styles.secondaryButtonText}>In Kalender speichern</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.reportButton} onPress={() => setShowReportModal(true)}>
-            <Text style={styles.reportButtonText}>🚩 Fehler melden</Text>
+            <Ionicons name="flag-outline" size={13} color="#666" />
+            <Text style={styles.reportButtonText}>Fehler melden</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -437,16 +462,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  favoriteBtn: { paddingVertical: 2, paddingHorizontal: 4 },
+  favoriteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
   favoriteBtnText: { fontSize: 13, fontWeight: '600', color: '#fff' },
   title: { fontSize: 29, fontWeight: '800', color: '#fff', marginBottom: 20, lineHeight: 34 },
   infoBlock: { marginBottom: 16 },
   infoLabel: { fontSize: 12, color: '#666', textTransform: 'uppercase', marginBottom: 4 },
   infoValue: { fontSize: 16, color: '#fff' },
+  priceRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  soldOutTag: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  soldOutTagText: { color: '#ff4d4d', fontSize: 13, fontWeight: '700' },
   organizerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  organizerFollowBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   organizerFollowLink: { fontSize: 13, color: '#0af', fontWeight: '600' },
   organizerMoreLink: { fontSize: 13, color: '#0af', fontWeight: '600', marginTop: 6 },
   linkValue: { color: '#0af', fontWeight: '600' },
+  locationValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   infoSubValue: { fontSize: 14, color: '#999', marginTop: 2 },
   button: {
     backgroundColor: '#0af',
@@ -457,10 +493,13 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: '#000', fontWeight: '700', fontSize: 15 },
   secondaryButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
     backgroundColor: '#141414',
     borderRadius: 12,
     paddingVertical: 14,
-    alignItems: 'center',
     marginTop: 10,
   },
   secondaryButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
@@ -487,7 +526,10 @@ const styles = StyleSheet.create({
   },
   primaryActionButtonText: { color: '#000', fontWeight: '800', fontSize: 16 },
   reportButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 6,
     marginTop: 18,
     paddingVertical: 8,
   },
