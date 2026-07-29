@@ -480,10 +480,14 @@ export default function EventListScreen() {
       // Laufzeitraums liegt — nicht nur am Starttag. Daher Bereichsüberlappung
       // statt reinem Start-Datum-Vergleich.
       const eventEnd = e.end_date ?? e.start_date;
+      // to === null bedeutet "kein Enddatum" (Filter "Alle"), nicht "Ende ist
+      // gleich from" — (to ?? from) hätte "Alle" fälschlich auf "nur heute
+      // schon laufende Events" eingeschränkt und künftige Events komplett
+      // ausgeblendet (Bug: "Alle" zeigte weniger Events als "Diese Woche").
       const matchesDate =
         dateFilter === 'custom'
           ? selectedDates.some((d) => d >= e.start_date && d <= eventEnd)
-          : e.start_date <= (to ?? from) && eventEnd >= from;
+          : (to === null || e.start_date <= to) && eventEnd >= from;
       const matchesFavorite = !showFavoritesOnly || favorites.includes(e.id);
       const matchesFree = !showFreeOnly || isFreeEvent(e.price_info);
       const matchesMultiDay = !showMultiDayOnly || (e.end_date !== null && e.end_date !== e.start_date);
