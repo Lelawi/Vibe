@@ -56,7 +56,10 @@ type Event = {
 // oben, einmalig) oder eine normale Event-Serie. So bleibt das Karussell Teil
 // des normalen Scroll-Inhalts (scrollt mit weg) statt im gepinnten Header zu
 // hängen, wo dauerhaft Bildschirmfläche verloren ginge.
-type ListRow = { kind: 'featured'; events: Event[] } | { kind: 'group'; group: Event[] };
+type ListRow =
+  | { kind: 'banner' }
+  | { kind: 'featured'; events: Event[] }
+  | { kind: 'group'; group: Event[] };
 
 // Haversine-Formel für die Distanz zweier Koordinaten in km.
 function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -548,7 +551,7 @@ export default function EventListScreen() {
   // hooks than during the previous render") zum Absturz der ganzen Seite
   // (schwarzer Bildschirm) führte, sobald loading von true auf false wechselte.
   const listData: ListRow[] = useMemo(() => {
-    const rows: ListRow[] = [];
+    const rows: ListRow[] = [{ kind: 'banner' }];
     // Karussell nur ab 2 Highlights zeigen — bei nur einem Treffer bringt
     // eine eigene Extra-Zeile für dasselbe Event, das eh gleich darunter
     // nochmal in der Liste steht, keinen Mehrwert.
@@ -676,8 +679,14 @@ export default function EventListScreen() {
           return buildDateRangeArray(from, to ?? from);
         })();
 
-  const listHeader = (
-    <View style={styles.listHeaderWrap}>
+  // Banner (Titel/Karte-Button) und Offline-Hinweis sind bewusst NICHT Teil
+  // des gepinnten Headers — sie scrollen als erste Zeile normal weg. Nur
+  // Suche/Datum/Aktions-Buttons bleiben angeheftet. Grund: mit inzwischen 6
+  // Aktions-Buttons plus Banner wurde der komplett gepinnte Header auf dem
+  // Handy so hoch, dass für die eigentliche Event-Liste darunter kaum noch
+  // Platz blieb.
+  const bannerSection = (
+    <View>
       <LinearGradient
         colors={['#2a0a4a', '#12082e', '#000000']}
         start={{ x: 0, y: 0 }}
@@ -704,7 +713,11 @@ export default function EventListScreen() {
           </Text>
         </View>
       )}
+    </View>
+  );
 
+  const listHeader = (
+    <View style={styles.listHeaderWrap}>
       <View style={styles.stickyControls}>
       <View style={styles.searchWrap}>
         <TextInput
@@ -764,12 +777,17 @@ export default function EventListScreen() {
         </ScrollView>
       </View>
 
-      {/* Eigene, umbrechende (statt scrollende) Reihe für die Aktions-Buttons:
-          Datum-Chips bleiben horizontal scrollbar (Heute/Morgen stehen eh
-          immer zuerst, sofort sichtbar), aber Filter/Favoriten/Kostenlos/Nähe
-          sollen nicht hinter einem Scroll versteckt sein — sie brechen
-          stattdessen in eine zweite Zeile um, wenn der Platz nicht reicht. */}
-      <View style={styles.actionButtonRow}>
+      {/* Horizontal scrollbar statt umbrechend: mit inzwischen 6 Buttons
+          (Filter/Favoriten/Kostenlos/Ausstellungen/Nähe/Benachrichtigungen)
+          fraß eine umbrechende Reihe auf dem Handy zu viel von der gepinnten
+          Kopfzeile — wächst mit jedem künftigen Button weiter in die Höhe.
+          Eine scrollbare Zeile bleibt dagegen dauerhaft auf einer Zeilenhöhe,
+          Filter/Favoriten stehen als erste Buttons sofort sichtbar. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.actionButtonRow}
+      >
         <TouchableOpacity
           style={[styles.filterButton, contentFilterCount > 0 && styles.filterChipActive]}
           onPress={() => setShowFilterModal(true)}
@@ -851,7 +869,7 @@ export default function EventListScreen() {
             </Text>
           </TouchableOpacity>
         )}
-      </View>
+      </ScrollView>
 
       <View style={styles.resultCountRow}>
         <Text style={styles.resultCount}>
@@ -1043,20 +1061,23 @@ export default function EventListScreen() {
     <SafeAreaView style={styles.container}>
       <FlatList
         data={listData}
-        keyExtractor={(row) => (row.kind === 'featured' ? 'featured' : row.group[0].id)}
+        keyExtractor={(row) => (row.kind === 'group' ? row.group[0].id : row.kind)}
         contentContainerStyle={styles.list}
         ListHeaderComponent={listHeader}
         // RN/RNW's eigener Sticky-Mechanismus statt manuellem CSS
         // position:"sticky" auf einem verschachtelten View — letzteres griff
         // innerhalb von FlatLists Web-DOM-Struktur nicht zuverlässig (Buttons
-        // blieben beim Herunterscrollen unerreichbar). Pinnt den kompletten
-        // Header (Banner + Suche + Filter) statt nur der Filterzeile — der
-        // Titel-Banner scrollt dadurch nicht mehr weg, dafür sind Filter/
-        // Suche garantiert erreichbar, auf jeder Scrollposition.
+        // blieben beim Herunterscrollen unerreichbar). Pinnt NUR noch
+        // Suche/Datum/Aktions-Buttons (siehe listHeader) — Banner und Titel
+        // scrollen als normale erste Zeile weg (row.kind === 'banner'),
+        // damit der gepinnte Bereich auf dem Handy nicht zu viel Platz frisst.
         stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={<Text style={styles.empty}>Keine Events gefunden.</Text>}
         renderItem={({ item: row }) => {
+          if (row.kind === 'banner') {
+            return bannerSection;
+          }
           if (row.kind === 'featured') {
             return (
               <View style={styles.featuredSection}>
@@ -1417,9 +1438,9 @@ const styles = StyleSheet.create({
   },
   actionButtonRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    marginBottom: 8,
+    paddingBottom: 8,
     gap: 10,
   },
   filterButton: {
