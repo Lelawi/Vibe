@@ -1124,7 +1124,19 @@ export default function EventListScreen() {
               </TouchableOpacity>
               {item.image_url ? (
                 <Image source={{ uri: item.image_url }} style={styles.cardThumb} />
-              ) : null}
+              ) : (
+                // Platzhalter statt einfach nichts zu rendern — sonst rutscht
+                // cardBody nach links und Karten ohne Bild sind nicht mehr
+                // auf gleicher Höhe mit denen, die eins haben.
+                <LinearGradient
+                  colors={['#2a0a4a', '#12082e']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.cardThumb}
+                >
+                  <Ionicons name="image-outline" size={22} color="rgba(255,255,255,0.35)" />
+                </LinearGradient>
+              )}
               <View style={styles.cardBody}>
                 <View style={styles.badgeRow}>
                   {item.category && <Text style={styles.badge}>{item.category}</Text>}
@@ -1630,6 +1642,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginRight: 12,
     backgroundColor: '#1a1a1a',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardBody: { flex: 1 },
   badgeRow: {
