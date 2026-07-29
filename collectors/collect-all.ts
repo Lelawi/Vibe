@@ -35,13 +35,14 @@ import { run as runPasingerFabrik } from './sources/pasinger_fabrik/index.js';
 import { run as runWerkhaus } from './sources/werkhaus/index.js';
 import { run as runOktoberfestEvents } from './sources/oktoberfest_events/index.js';
 import { run as runEintrittfreiMuenchen } from './sources/eintrittfrei_muenchen/index.js';
+import { run as runEventim } from './sources/eventim/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
 // Nicht enthalten (bewusst, siehe jeweilige Kommentare in den Source-Dateien):
 // - eventbrite, meetup, ticketmaster, facebook-events: benötigen kostenpflichtige/
 //   OAuth-gebundene API-Keys, die hier nicht konfiguriert sind
-// - residentadvisor, eventim: keine freie API, starker Bot-Schutz (Cloudflare/SPA)
+// - residentadvisor: keine freie API, starker Bot-Schutz (Cloudflare/SPA)
 // - reddit: keine strukturierten Eventdaten, ungeeignet als Quelle
 // - kulturserver, tickets_de, sueddeutsche: keine echte/erreichbare München-Quelle
 // - tz_az: tz.de/muenchen/veranstaltungen antwortet mit 404, keine funktionierende
@@ -119,6 +120,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'glockenbachwerkstatt', run: runGlockenbachwerkstatt },
   { name: 'oktoberfest-events', run: runOktoberfestEvents },
   { name: 'eintrittfrei-muenchen', run: runEintrittfreiMuenchen },
+  { name: 'eventim', run: runEventim, host: 'public-api.eventim.com' },
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.
