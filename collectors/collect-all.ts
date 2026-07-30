@@ -40,6 +40,9 @@ import { run as runEventim } from './sources/eventim/index.js';
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
 // Nicht enthalten (bewusst, siehe jeweilige Kommentare in den Source-Dateien):
+// - bars: befüllt die separate "bars"-Tabelle (nicht "events"), nicht diesen
+//   Lauf — Öffnungszeiten ändern sich selten, ein eigener wöchentlicher
+//   Workflow (.github/workflows/collect-bars.yml) reicht statt 2x täglich.
 // - eventbrite, meetup, ticketmaster, facebook-events: benötigen kostenpflichtige/
 //   OAuth-gebundene API-Keys, die hier nicht konfiguriert sind
 // - residentadvisor: keine freie API, starker Bot-Schutz (Cloudflare/SPA)

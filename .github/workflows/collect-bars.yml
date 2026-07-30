@@ -1,0 +1,26 @@
+name: Collect Bars
+
+on:
+  schedule:
+    # Wöchentlich statt wie collect-all.yml zweimal täglich — Bar-
+    # Öffnungszeiten in OpenStreetMap ändern sich selten, ein häufigerer Lauf
+    # brächte keinen Mehrwert.
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+jobs:
+  collect-bars:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: collectors
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run bars

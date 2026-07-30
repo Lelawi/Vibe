@@ -38,6 +38,9 @@ export default function Layout() {
             bei normaler Navigation nur doppelt und verwirrend danebenstehen. */}
         <Stack.Screen name="event/[id]" options={{ title: 'Event', headerShown: false }} />
         <Stack.Screen name="map" options={{ title: 'Karte' }} />
+        {/* Eigener "‹ Übersicht"-Button im Screen selbst, gleiches Muster wie
+            bei event/[id] — kein natives Header nötig. */}
+        <Stack.Screen name="bars" options={{ title: 'Bars', headerShown: false }} />
       </Stack>
     </>
   );

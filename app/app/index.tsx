@@ -789,10 +789,16 @@ export default function EventListScreen() {
             <Text style={styles.header}>Vibe</Text>
             <Text style={styles.subheader}>Events in München</Text>
           </View>
-          <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/map')}>
-            <Ionicons name="map-outline" size={15} color="#fff" />
-            <Text style={styles.mapButtonText}>Karte</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtonRow}>
+            <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/bars')}>
+              <Ionicons name="beer-outline" size={15} color="#fff" />
+              <Text style={styles.mapButtonText}>Bars</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/map')}>
+              <Ionicons name="map-outline" size={15} color="#fff" />
+              <Text style={styles.mapButtonText}>Karte</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </LinearGradient>
 
@@ -1583,6 +1589,7 @@ const styles = StyleSheet.create({
   // transparente Lücken zwischen den Header-Zeilen hindurchschimmern.
   listHeaderWrap: { backgroundColor: '#000' },
   stickyControls: { paddingTop: 12 },
+  headerButtonRow: { flexDirection: 'row', gap: 8 },
   mapButton: {
     flexDirection: 'row',
     alignItems: 'center',

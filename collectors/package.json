@@ -38,6 +38,7 @@
     "oktoberfest-events": "tsx sources/oktoberfest_events/index.ts",
     "eintrittfrei-muenchen": "tsx sources/eintrittfrei_muenchen/index.ts",
     "eventim": "tsx sources/eventim/index.ts",
+    "bars": "tsx sources/bars/index.ts",
     "test:eventim": "tsx --test sources/eventim/index.test.ts",
     "send-notifications": "tsx notifications/index.ts",
     "collect-all": "npm run collect-all:runner",
