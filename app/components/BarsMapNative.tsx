@@ -16,8 +16,14 @@ type Bar = {
   website: string | null;
 };
 
-function openInGoogleMaps(lat: number, lng: number, label?: string) {
-  const query = label?.trim();
+// Nur der Bar-Name reicht bei generischen OSM-Namen nicht als Suchbegriff —
+// z.B. ist eine Bar in OSM schlicht als "Bridge" statt "Bridge Bar" gepflegt,
+// eine reine Namenssuche auf Google Maps interpretiert das dann als
+// Freitextsuche und findet echte Brücken statt der Bar. Mit Adresse ist die
+// Anfrage eindeutig; ganz ohne Adresse lieber auf die exakten Koordinaten
+// zurückfallen statt auf den (ggf. mehrdeutigen) nackten Namen.
+function openInGoogleMaps(lat: number, lng: number, name: string, address?: string | null) {
+  const query = address ? `${name}, ${address}` : null;
   const url = query
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
     : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
@@ -117,7 +123,7 @@ export default function BarsMapNative() {
                     <Text style={styles.calloutLink}>Website öffnen</Text>
                   </Pressable>
                 )}
-                <Pressable onPress={() => openInGoogleMaps(bar.latitude!, bar.longitude!, bar.name)}>
+                <Pressable onPress={() => openInGoogleMaps(bar.latitude!, bar.longitude!, bar.name, bar.address)}>
                   <Text style={styles.calloutLink}>In Google Maps öffnen</Text>
                 </Pressable>
               </View>
