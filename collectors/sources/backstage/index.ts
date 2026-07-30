@@ -106,12 +106,20 @@ async function normalizeEvent(raw: BackstageEvent, supabase: ReturnType<typeof c
     organizer: 'Backstage München',
     source_url: `https://www.backstage.eu/event/${raw.event_id}`,
     image_url: backstageImageUrl(raw.main_image_path),
+    // min_price_cents ist bei ~63% aller Events null (per Direktabruf
+    // verifiziert, 2026-07) — das heißt i.d.R. nur "keine Ticketpreis-Daten
+    // vorhanden" (z.B. Fremdlocations, externe Ticketwege), nicht "kostenlos".
+    // Die explizite category "free & easy" ist dagegen ein echtes Signal des
+    // Anbieters selbst für die eigene "Free & Easy"-Eventreihe im Biergarten/
+    // Backyard — nur dort lässt sich null zuverlässig als "Kostenlos" lesen.
     price_info:
-      raw.min_price_cents == null
-        ? null
-        : raw.min_price_cents === 0
+      raw.min_price_cents === 0
         ? 'Kostenlos'
-        : `ab ${(raw.min_price_cents / 100).toFixed(2)} €`,
+        : raw.min_price_cents != null
+        ? `ab ${(raw.min_price_cents / 100).toFixed(2)} €`
+        : raw.category?.toLowerCase() === 'free & easy'
+        ? 'Kostenlos'
+        : null,
     latitude: coords?.latitude ?? null,
     longitude: coords?.longitude ?? null,
   };
