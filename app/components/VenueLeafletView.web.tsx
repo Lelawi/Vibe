@@ -22,7 +22,7 @@ import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import { todayLabel } from '../lib/openingHours';
-import { createClusterIcon } from '../lib/leafletCluster';
+import { createClusterIcon, type VenueStatusMarker } from '../lib/leafletCluster';
 
 export type VenueMarker = {
   id: string;
@@ -121,7 +121,13 @@ export default function VenueLeafletView({
               position={[venue.latitude, venue.longitude]}
               icon={createColoredIcon(color)}
               ref={(ref) => {
-                if (ref) markerRefs.current.set(venue.id, ref);
+                if (ref) {
+                  markerRefs.current.set(venue.id, ref);
+                  // Für die Cluster-Einfärbung nach Öffnungsstatus (siehe
+                  // createClusterIcon) — Leaflet-Marker kennen dieses Feld
+                  // nicht von sich aus.
+                  (ref as VenueStatusMarker).venueOpen = venue.open;
+                }
               }}
             >
               <Popup minWidth={200}>
