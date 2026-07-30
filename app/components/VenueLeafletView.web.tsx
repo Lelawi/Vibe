@@ -1,12 +1,12 @@
-// Eigene, schlanke Leaflet-Karte für Bars statt Wiederverwendung von
-// LeafletMapView.web.tsx (die ist auf Event-Popups mit Terminliste
+// Eigene, schlanke Leaflet-Karte für Bars/Restaurants statt Wiederverwendung
+// von LeafletMapView.web.tsx (die ist auf Event-Popups mit Terminliste
 // zugeschnitten) — gleiche Grundstruktur (MapContainer/TileLayer/Marker/
 // Popup), aber eigener Popup-Inhalt (Öffnungsstatus, heutige Öffnungszeiten,
 // Website). In eigener Datei aus demselben Grund wie LeafletMapView.web.tsx:
 // Leaflet greift beim Import auf window/document zu, per dynamischem
-// import() nur im Browser geladen (siehe BarsMapNative.web.tsx).
+// import() nur im Browser geladen (siehe VenueMapNative.web.tsx).
 //
-// Bar-Marker als farbige CircleMarker statt Leaflets Standard-Pin: der
+// Marker als farbige CircleMarker statt Leaflets Standard-Pin: der
 // Standard-Pin ist blau, exakt dieselbe Akzentfarbe (#0af) wie der "das bin
 // ich"-Punkt — beides blau ließ sich auf der Karte kaum unterscheiden. Grün/
 // Rot/Grau kodiert zusätzlich den Öffnungsstatus direkt auf der Karte, statt
@@ -17,7 +17,7 @@ import type L from 'leaflet';
 import { MapContainer, TileLayer, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
 import { todayLabel } from '../lib/openingHours';
 
-export type BarMarker = {
+export type VenueMarker = {
   id: string;
   name: string;
   address: string | null;
@@ -29,11 +29,11 @@ export type BarMarker = {
   image_url: string | null;
 };
 
-// Nur der Bar-Name reicht bei generischen OSM-Namen nicht als Suchbegriff —
-// z.B. ist eine Bar in OSM schlicht als "Bridge" statt "Bridge Bar" gepflegt,
-// eine reine Namenssuche auf Google Maps interpretiert das dann als
-// Freitextsuche und findet echte Brücken statt der Bar. Mit Adresse ist die
-// Anfrage eindeutig; ganz ohne Adresse lieber auf die exakten Koordinaten
+// Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff — z.B.
+// ist eine Bar in OSM schlicht als "Bridge" statt "Bridge Bar" gepflegt, eine
+// reine Namenssuche auf Google Maps interpretiert das dann als Freitextsuche
+// und findet echte Brücken statt der Bar. Mit Adresse ist die Anfrage
+// eindeutig; ganz ohne Adresse lieber auf die exakten Koordinaten
 // zurückfallen statt auf den (ggf. mehrdeutigen) nackten Namen.
 function googleMapsUrl(lat: number, lng: number, name: string, address?: string | null) {
   const query = address ? `${name}, ${address}` : null;
@@ -46,8 +46,8 @@ function markerColor(open: boolean | null): string {
   return open === true ? '#4ade80' : open === false ? '#ff6b6b' : '#999';
 }
 
-// Öffnet beim Laden automatisch das Popup einer bestimmten Bar, wenn von der
-// Listenansicht per id-Param dorthin navigiert wurde (Pendant zu
+// Öffnet beim Laden automatisch das Popup eines bestimmten Eintrags, wenn von
+// der Listenansicht per id-Param dorthin navigiert wurde (Pendant zu
 // AutoOpenPopup in LeafletMapView.web.tsx für die Event-Karte).
 function AutoOpenPopup({ targetId, markerRefs }: { targetId: string | null; markerRefs: React.MutableRefObject<Map<string, L.CircleMarker>> }) {
   const map = useMap();
@@ -61,15 +61,15 @@ function AutoOpenPopup({ targetId, markerRefs }: { targetId: string | null; mark
   return null;
 }
 
-export default function BarsLeafletView({
-  bars,
+export default function VenueLeafletView({
+  venues,
   centerLat,
   centerLng,
   zoom,
   userLocation,
   targetId = null,
 }: {
-  bars: BarMarker[];
+  venues: VenueMarker[];
   centerLat: number;
   centerLng: number;
   zoom: number;
@@ -84,35 +84,35 @@ export default function BarsLeafletView({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {bars.map((bar) => {
-        const hoursToday = todayLabel(bar.opening_hours_raw);
-        const color = markerColor(bar.open);
+      {venues.map((venue) => {
+        const hoursToday = todayLabel(venue.opening_hours_raw);
+        const color = markerColor(venue.open);
         return (
           <CircleMarker
-            key={bar.id}
-            center={[bar.latitude, bar.longitude]}
+            key={venue.id}
+            center={[venue.latitude, venue.longitude]}
             radius={9}
             pathOptions={{ color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }}
             ref={(ref) => {
-              if (ref) markerRefs.current.set(bar.id, ref);
+              if (ref) markerRefs.current.set(venue.id, ref);
             }}
           >
             <Popup minWidth={200}>
               <View style={styles.popup}>
-                {bar.image_url && <Image source={{ uri: bar.image_url }} style={styles.popupImage} />}
+                {venue.image_url && <Image source={{ uri: venue.image_url }} style={styles.popupImage} />}
                 <View style={styles.popupHeaderRow}>
-                  <Text style={styles.popupTitle}>{bar.name}</Text>
-                  {bar.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-                  {bar.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                  <Text style={styles.popupTitle}>{venue.name}</Text>
+                  {venue.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
+                  {venue.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
                 </View>
-                {bar.address && <Text style={styles.popupAddress}>{bar.address}</Text>}
+                {venue.address && <Text style={styles.popupAddress}>{venue.address}</Text>}
                 {hoursToday && <Text style={styles.popupHours}>Heute: {hoursToday}</Text>}
-                {bar.website && (
-                  <Pressable onPress={() => window.open(bar.website!, '_blank')}>
+                {venue.website && (
+                  <Pressable onPress={() => window.open(venue.website!, '_blank')}>
                     <Text style={styles.popupLink}>Website öffnen</Text>
                   </Pressable>
                 )}
-                <Pressable onPress={() => window.open(googleMapsUrl(bar.latitude, bar.longitude, bar.name, bar.address), '_blank')}>
+                <Pressable onPress={() => window.open(googleMapsUrl(venue.latitude, venue.longitude, venue.name, venue.address), '_blank')}>
                   <Text style={styles.popupMapsButton}>In Google Maps öffnen</Text>
                 </Pressable>
               </View>

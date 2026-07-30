@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 // Für den täglichen Cron-Check (siehe /loop-artige Erinnerung) statt einer
 // echten Hintergrund-Automatisierung: fasst neue event_reports (Nutzer-
 // Meldungen zu fehlerhaften Event-Daten, 0003_add_event_reports.sql) und
-// offene bar_closure_reports (0012/0013) zusammen. Lädt dotenv selbst statt
+// offene venue_closure_reports (Bars & Restaurants, 0012/0013/0015) zusammen. Lädt dotenv selbst statt
 // sich auf collect-all.ts's zentrales Laden zu verlassen, da dieses Skript
 // eigenständig läuft.
 //
@@ -47,22 +47,22 @@ async function run() {
   }
 
   const { data: closures, error: closuresError } = await supabase
-    .from('bar_closure_reports')
-    .select('bar_id,reported_at,status')
+    .from('venue_closure_reports')
+    .select('venue_id,reported_at,status')
     .eq('status', 'pending')
     .order('reported_at', { ascending: false });
-  if (closuresError) console.error('[check-feedback] bar_closure_reports fetch failed', closuresError);
+  if (closuresError) console.error('[check-feedback] venue_closure_reports fetch failed', closuresError);
 
-  const barIds = (closures ?? []).map((c) => c.bar_id);
-  const { data: bars } = barIds.length
-    ? await supabase.from('bars').select('id,name,address').in('id', barIds)
-    : { data: [] as { id: string; name: string; address: string | null }[] };
-  const barById = new Map((bars ?? []).map((b) => [b.id, b]));
+  const venueIds = (closures ?? []).map((c) => c.venue_id);
+  const { data: venues } = venueIds.length
+    ? await supabase.from('venues').select('id,name,type,address').in('id', venueIds)
+    : { data: [] as { id: string; name: string; type: string; address: string | null }[] };
+  const venueById = new Map((venues ?? []).map((v) => [v.id, v]));
 
-  console.log(`\n[check-feedback] pending bar_closure_reports: ${closures?.length ?? 0}`);
+  console.log(`\n[check-feedback] pending venue_closure_reports: ${closures?.length ?? 0}`);
   for (const c of closures ?? []) {
-    const bar = barById.get(c.bar_id);
-    console.log(`- ${bar?.name ?? c.bar_id} (${bar?.address ?? 'keine Adresse'}) — gemeldet ${c.reported_at}`);
+    const venue = venueById.get(c.venue_id);
+    console.log(`- [${venue?.type ?? '?'}] ${venue?.name ?? c.venue_id} (${venue?.address ?? 'keine Adresse'}) — gemeldet ${c.reported_at}`);
   }
 }
 

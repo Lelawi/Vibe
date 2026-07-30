@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator, Text, Linking, Pressable, TouchableOpacity } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import { supabase } from '../lib/supabase';
 import { isOpenNow, todayLabel } from '../lib/openingHours';
+import type { VenueType } from './VenueListScreen';
 
-type Bar = {
+type Venue = {
   id: string;
   name: string;
   address: string | null;
@@ -18,11 +18,11 @@ type Bar = {
   image_url: string | null;
 };
 
-// Nur der Bar-Name reicht bei generischen OSM-Namen nicht als Suchbegriff —
-// z.B. ist eine Bar in OSM schlicht als "Bridge" statt "Bridge Bar" gepflegt,
-// eine reine Namenssuche auf Google Maps interpretiert das dann als
-// Freitextsuche und findet echte Brücken statt der Bar. Mit Adresse ist die
-// Anfrage eindeutig; ganz ohne Adresse lieber auf die exakten Koordinaten
+// Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff — z.B.
+// ist eine Bar in OSM schlicht als "Bridge" statt "Bridge Bar" gepflegt, eine
+// reine Namenssuche auf Google Maps interpretiert das dann als Freitextsuche
+// und findet echte Brücken statt der Bar. Mit Adresse ist die Anfrage
+// eindeutig; ganz ohne Adresse lieber auf die exakten Koordinaten
 // zurückfallen statt auf den (ggf. mehrdeutigen) nackten Namen.
 function openInGoogleMaps(lat: number, lng: number, name: string, address?: string | null) {
   const query = address ? `${name}, ${address}` : null;
@@ -40,44 +40,54 @@ function pinColor(open: boolean | null): string {
   return open === true ? '#4ade80' : open === false ? '#ff6b6b' : '#999';
 }
 
-export default function BarsMapNative() {
-  const params = useLocalSearchParams<{ id?: string; lat?: string; lng?: string }>();
-  const [bars, setBars] = useState<Bar[]>([]);
+export default function VenueMapNative({
+  type,
+  targetId,
+  targetLat,
+  targetLng,
+}: {
+  type: VenueType;
+  targetId?: string | null;
+  targetLat?: number | null;
+  targetLng?: number | null;
+}) {
+  const [venues, setVenues] = useState<Venue[]>([]);
   const [confirmedClosedIds, setConfirmedClosedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [onlyOpen, setOnlyOpen] = useState(false);
   const markerRefs = useRef<Map<string, any>>(new Map());
 
   useEffect(() => {
-    async function loadBars() {
-      const [barsRes, reportsRes] = await Promise.all([
+    async function load() {
+      const [venuesRes, reportsRes] = await Promise.all([
         supabase
-          .from('bars')
+          .from('venues')
           .select('id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url')
+          .eq('type', type)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null),
-        // Nur bestätigt geschlossene Bars von der Karte nehmen — "pending"
-        // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe bars.tsx.
-        supabase.from('bar_closure_reports').select('bar_id,status').eq('status', 'confirmed'),
+        // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
+        // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
+        supabase.from('venue_closure_reports').select('venue_id,status').eq('status', 'confirmed'),
       ]);
-      if (!barsRes.error) setBars((barsRes.data ?? []) as Bar[]);
-      setConfirmedClosedIds(new Set((reportsRes.data ?? []).map((r) => r.bar_id as string)));
+      if (!venuesRes.error) setVenues((venuesRes.data ?? []) as Venue[]);
+      setConfirmedClosedIds(new Set((reportsRes.data ?? []).map((r) => r.venue_id as string)));
       setLoading(false);
     }
-    loadBars();
-  }, []);
+    load();
+  }, [type]);
 
   const markers = useMemo(
     () =>
-      bars
-        .filter((b) => !confirmedClosedIds.has(b.id))
-        .map((b) => {
+      venues
+        .filter((v) => !confirmedClosedIds.has(v.id))
+        .map((v) => {
           // Vom Betreiber gepflegte Öffnungszeiten (Website) sind
           // zuverlässiger als der oft ungenaue/veraltete OSM-Tag.
-          const effectiveHours = b.opening_hours_override ?? b.opening_hours_raw;
-          return { ...b, open: isOpenNow(effectiveHours), hoursToday: todayLabel(effectiveHours) };
+          const effectiveHours = v.opening_hours_override ?? v.opening_hours_raw;
+          return { ...v, open: isOpenNow(effectiveHours), hoursToday: todayLabel(effectiveHours) };
         }),
-    [bars, confirmedClosedIds]
+    [venues, confirmedClosedIds]
   );
 
   const visibleMarkers = useMemo(
@@ -86,17 +96,17 @@ export default function BarsMapNative() {
   );
 
   const initialRegion: Region =
-    params.lat && params.lng
-      ? { latitude: parseFloat(params.lat), longitude: parseFloat(params.lng), latitudeDelta: 0.02, longitudeDelta: 0.02 }
+    targetLat != null && targetLng != null
+      ? { latitude: targetLat, longitude: targetLng, latitudeDelta: 0.02, longitudeDelta: 0.02 }
       : { latitude: 48.1371, longitude: 11.5754, latitudeDelta: 0.08, longitudeDelta: 0.08 };
 
   useEffect(() => {
-    if (!params.id) return;
+    if (!targetId) return;
     const timeout = setTimeout(() => {
-      markerRefs.current.get(params.id!)?.showCallout();
+      markerRefs.current.get(targetId)?.showCallout();
     }, 400);
     return () => clearTimeout(timeout);
-  }, [params.id, markers]);
+  }, [targetId, markers]);
 
   if (loading) {
     return (
@@ -109,30 +119,30 @@ export default function BarsMapNative() {
   return (
     <View style={styles.wrap}>
       <MapView style={styles.map} initialRegion={initialRegion} showsUserLocation showsMyLocationButton>
-        {visibleMarkers.map((bar) => (
+        {visibleMarkers.map((venue) => (
           <Marker
-            key={bar.id}
+            key={venue.id}
             ref={(ref) => {
-              if (ref) markerRefs.current.set(bar.id, ref);
+              if (ref) markerRefs.current.set(venue.id, ref);
             }}
-            coordinate={{ latitude: bar.latitude!, longitude: bar.longitude! }}
-            pinColor={pinColor(bar.open)}
+            coordinate={{ latitude: venue.latitude!, longitude: venue.longitude! }}
+            pinColor={pinColor(venue.open)}
           >
             <Callout tooltip={false}>
               <View style={styles.callout}>
                 <View style={styles.calloutHeaderRow}>
-                  <Text style={styles.calloutTitle}>{bar.name}</Text>
-                  {bar.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-                  {bar.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                  <Text style={styles.calloutTitle}>{venue.name}</Text>
+                  {venue.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
+                  {venue.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
                 </View>
-                {bar.address && <Text style={styles.calloutAddress}>{bar.address}</Text>}
-                {bar.hoursToday && <Text style={styles.calloutHours}>Heute: {bar.hoursToday}</Text>}
-                {bar.website && (
-                  <Pressable onPress={() => Linking.openURL(bar.website!)}>
+                {venue.address && <Text style={styles.calloutAddress}>{venue.address}</Text>}
+                {venue.hoursToday && <Text style={styles.calloutHours}>Heute: {venue.hoursToday}</Text>}
+                {venue.website && (
+                  <Pressable onPress={() => Linking.openURL(venue.website!)}>
                     <Text style={styles.calloutLink}>Website öffnen</Text>
                   </Pressable>
                 )}
-                <Pressable onPress={() => openInGoogleMaps(bar.latitude!, bar.longitude!, bar.name, bar.address)}>
+                <Pressable onPress={() => openInGoogleMaps(venue.latitude!, venue.longitude!, venue.name, venue.address)}>
                   <Text style={styles.calloutLink}>In Google Maps öffnen</Text>
                 </Pressable>
               </View>

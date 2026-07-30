@@ -6,22 +6,25 @@ import { useRouter } from 'expo-router';
 // (leicht übersehen, wirkte wie ein Nebenfeature) und die separate
 // "‹ Übersicht"-Zurück-Zeile auf dem Bars-Screen — beide Ansichten sind
 // gleichrangig, der Wechsel soll sich auch so anfühlen.
-export default function ViewSwitcher({ active }: { active: 'events' | 'bars' }) {
+const SEGMENTS: { key: 'events' | 'bars' | 'restaurants'; label: string; route: string }[] = [
+  { key: 'events', label: 'Events', route: '/' },
+  { key: 'bars', label: 'Bars', route: '/bars' },
+  { key: 'restaurants', label: 'Restaurants', route: '/restaurants' },
+];
+
+export default function ViewSwitcher({ active }: { active: 'events' | 'bars' | 'restaurants' }) {
   const router = useRouter();
   return (
     <View style={styles.wrap}>
-      <TouchableOpacity
-        style={[styles.segment, active === 'events' && styles.segmentActive]}
-        onPress={() => active !== 'events' && router.replace('/')}
-      >
-        <Text style={[styles.label, active === 'events' && styles.labelActive]}>Events</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.segment, active === 'bars' && styles.segmentActive]}
-        onPress={() => active !== 'bars' && router.replace('/bars')}
-      >
-        <Text style={[styles.label, active === 'bars' && styles.labelActive]}>Bars</Text>
-      </TouchableOpacity>
+      {SEGMENTS.map((s) => (
+        <TouchableOpacity
+          key={s.key}
+          style={[styles.segment, active === s.key && styles.segmentActive]}
+          onPress={() => active !== s.key && router.replace(s.route)}
+        >
+          <Text style={[styles.label, active === s.key && styles.labelActive]}>{s.label}</Text>
+        </TouchableOpacity>
+      ))}
     </View>
   );
 }

@@ -1,15 +1,15 @@
-name: Collect Bars
+name: Collect Venues
 
 on:
   schedule:
-    # Wöchentlich statt wie collect-all.yml zweimal täglich — Bar-
-    # Öffnungszeiten in OpenStreetMap ändern sich selten, ein häufigerer Lauf
-    # brächte keinen Mehrwert.
+    # Wöchentlich statt wie collect-all.yml zweimal täglich — Öffnungszeiten
+    # in OpenStreetMap ändern sich selten, ein häufigerer Lauf brächte
+    # keinen Mehrwert.
     - cron: '0 5 * * 1'
   workflow_dispatch:
 
 jobs:
-  collect-bars:
+  collect-venues:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -24,3 +24,4 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run bars
+      - run: npm run restaurants
