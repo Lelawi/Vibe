@@ -386,21 +386,56 @@ export default function EventListScreen() {
   useEffect(() => {
     async function loadEvents() {
       const today = new Date().toISOString().slice(0, 10);
+      const columns =
+        'id, title, category, subcategory, organizer, address, description, source_url, image_url, price_info, sold_out, start_date, start_time, end_date, location_name, latitude, longitude';
+      // Mehrtägige Events (end_date gesetzt) sollen sichtbar bleiben,
+      // solange sie noch laufen — nicht nur bis zu ihrem Starttag.
+      const upcomingFilter = `start_date.gte.${today},end_date.gte.${today}`;
 
-      const { data, error } = await supabase
+      // Supabase deckelt jede einzelne Anfrage serverseitig auf ein Projekt-
+      // Limit (aktuell 1000 Zeilen) — unabhängig vom angeforderten .limit().
+      // Mit dem erweiterten eventim-Collector (ganz München, 180 Tage) sind
+      // es inzwischen 6000+ kommende Events; ein einzelnes .limit(500) kappte
+      // die sortierte Liste schon nach etwa einer Woche, alles danach
+      // (z.B. ein Konzert erst im Oktober) war unauffindbar, ohne dass
+      // irgendwo ein Fehler sichtbar wurde. Erst zählen, dann seitenweise
+      // parallel nachladen. Sekundäres order('id') macht die Sortierung über
+      // mehrere Seiten hinweg deterministisch — sonst könnten Events mit
+      // exakt gleichem start_date an einer Seitengrenze doppelt auftauchen
+      // oder fehlen, da Postgres bei Gleichstand sonst keine stabile
+      // Reihenfolge garantiert.
+      const pageSize = 1000;
+      const { count, error: countError } = await supabase
         .from('events')
-        .select('id, title, category, subcategory, organizer, address, description, source_url, image_url, price_info, sold_out, start_date, start_time, end_date, location_name, latitude, longitude')
-        // Mehrtägige Events (end_date gesetzt) sollen sichtbar bleiben,
-        // solange sie noch laufen — nicht nur bis zu ihrem Starttag.
-        .or(`start_date.gte.${today},end_date.gte.${today}`)
-        .is('duplicate_of', null)
-        .order('start_date', { ascending: true })
-        .limit(500);
+        .select('id', { count: 'exact', head: true })
+        .or(upcomingFilter)
+        .is('duplicate_of', null);
 
-      if (error) {
-        console.error('Fehler beim Laden:', error);
+      if (countError || count == null) {
+        console.error('Fehler beim Zählen:', countError);
+        setLoading(false);
+        return;
+      }
+
+      const pageCount = Math.max(1, Math.ceil(count / pageSize));
+      const pages = await Promise.all(
+        Array.from({ length: pageCount }, (_, i) =>
+          supabase
+            .from('events')
+            .select(columns)
+            .or(upcomingFilter)
+            .is('duplicate_of', null)
+            .order('start_date', { ascending: true })
+            .order('id', { ascending: true })
+            .range(i * pageSize, i * pageSize + pageSize - 1)
+        )
+      );
+
+      const firstError = pages.find((p) => p.error)?.error;
+      if (firstError) {
+        console.error('Fehler beim Laden:', firstError);
       } else {
-        setEvents(data ?? []);
+        setEvents(pages.flatMap((p) => p.data ?? []));
       }
       setLoading(false);
     }
