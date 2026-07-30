@@ -122,14 +122,20 @@ export default function VenueLeafletView({
       })}
       {userLocation && (
         <>
+          {/* interactive={false}: ohne das fängt dieser Halo-Kreis Klicks ab,
+              die eigentlich einem darunterliegenden Marker galten — genau der
+              Fall bei Restaurants nah an der eigenen Position, die sich
+              dadurch nicht mehr öffnen ließen. */}
           <Circle
             center={[userLocation.lat, userLocation.lng]}
             radius={80}
+            interactive={false}
             pathOptions={{ color: '#0af', fillColor: '#0af', fillOpacity: 0.15, weight: 0 }}
           />
           <CircleMarker
             center={[userLocation.lat, userLocation.lng]}
             radius={7}
+            interactive={false}
             pathOptions={{ color: '#fff', weight: 2, fillColor: '#0af', fillOpacity: 1 }}
           />
         </>

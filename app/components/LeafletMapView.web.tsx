@@ -140,14 +140,20 @@ export default function LeafletMapView({
       })}
       {userLocation && (
         <>
+          {/* interactive={false}: ohne das fängt dieser Halo-Kreis Klicks ab,
+              die eigentlich einem darunterliegenden Marker galten — Events
+              nah an der eigenen Position ließen sich dadurch nicht öffnen
+              (identischer Bug wie bei der Bars/Restaurants-Karte). */}
           <Circle
             center={[userLocation.lat, userLocation.lng]}
             radius={80}
+            interactive={false}
             pathOptions={{ color: '#0af', fillColor: '#0af', fillOpacity: 0.15, weight: 0 }}
           />
           <CircleMarker
             center={[userLocation.lat, userLocation.lng]}
             radius={7}
+            interactive={false}
             pathOptions={{ color: '#fff', weight: 2, fillColor: '#0af', fillOpacity: 1 }}
           />
         </>
