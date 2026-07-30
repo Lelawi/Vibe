@@ -24,7 +24,7 @@ import { fuzzyMatch } from '../lib/fuzzySearch';
 import { distanceKm, formatDistance } from '../lib/geo';
 import { fetchAllVenues } from '../lib/fetchAllVenues';
 import { useVenueFavorites } from '../lib/venueFavorites';
-import ViewSwitcher from './ViewSwitcher';
+import BottomTabBar from './BottomTabBar';
 
 // Web-only <input type="range">-Styling für den Umkreis-Slider (siehe
 // index.tsx) — reines HTML-Element statt @react-native-community/slider,
@@ -356,6 +356,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             </View>
           </View>
         ))}
+        <BottomTabBar active={switcherActive} mapRoute={config.mapRoute} />
       </SafeAreaView>
     );
   }
@@ -376,13 +377,6 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           <Text style={styles.subheader}>
             {openCount} von {filteredVenues.length} gerade geöffnet
           </Text>
-        </View>
-        <View style={styles.headerButtonRow}>
-          <ViewSwitcher active={switcherActive} />
-          <TouchableOpacity style={styles.mapButton} onPress={() => router.push(config.mapRoute)}>
-            <Ionicons name="map-outline" size={15} color="#fff" />
-            <Text style={styles.mapButtonText}>Karte</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </LinearGradient>
@@ -719,6 +713,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           );
         }}
       />
+      <BottomTabBar active={switcherActive} mapRoute={config.mapRoute} />
     </SafeAreaView>
   );
 }
@@ -762,21 +757,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 20,
   },
-  headerButtonRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   header: { fontSize: 30, fontWeight: '800', color: '#fff' },
   subheader: { fontSize: 14, color: '#cbb8f0', marginTop: 2 },
-  mapButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  mapButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   search: {
     backgroundColor: '#141414',
     borderRadius: 14,
@@ -838,7 +820,9 @@ const styles = StyleSheet.create({
   radiusSliderWrap: { flex: 1 },
   radiusAllLink: { color: '#666', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
   radiusAllLinkActive: { color: '#0af' },
-  listContent: { paddingHorizontal: 16, paddingBottom: 40 },
+  // paddingBottom deckt die fixe BottomTabBar ab, sonst wäre die letzte Karte
+  // dahinter verdeckt.
+  listContent: { paddingHorizontal: 16, paddingBottom: 90 },
   // Kompakte Ansicht: kleine Vorschau, mehr Einträge auf einen Blick — der
   // Standard, exakt wie die normale Event-Liste in index.tsx.
   compactCard: {

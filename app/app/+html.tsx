@@ -34,6 +34,20 @@ export default function Root({ children }: PropsWithChildren) {
           href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           crossOrigin=""
         />
+        {/* Marker-Clustering (Events- und Venues-Karte, siehe
+            react-leaflet-cluster) — nur die Basis-CSS für Spiderfy-Animation
+            und Cluster-Layout wird gebraucht, die Default-Theme-Kreise werden
+            per iconCreateFunction durch eigene App-Icons ersetzt. */}
+        <link
+          rel="stylesheet"
+          href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+          crossOrigin=""
+        />
+        <link
+          rel="stylesheet"
+          href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+          crossOrigin=""
+        />
 
         {/* Verhindert weißes Aufblitzen/Bounce-Scrolling beim initialen Laden,
             Standard-Snippet aus der Expo-Router-Doku für +html.tsx */}

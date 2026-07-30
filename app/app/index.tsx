@@ -16,7 +16,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import ViewSwitcher from '../components/ViewSwitcher';
+import BottomTabBar from '../components/BottomTabBar';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
@@ -802,6 +802,7 @@ export default function EventListScreen() {
             </View>
           </View>
         ))}
+        <BottomTabBar active="events" mapRoute="/map" />
       </SafeAreaView>
     );
   }
@@ -837,13 +838,6 @@ export default function EventListScreen() {
           <View>
             <Text style={styles.header}>Vibe</Text>
             <Text style={styles.subheader}>Events in München</Text>
-          </View>
-          <View style={styles.headerButtonRow}>
-            <ViewSwitcher active="events" />
-            <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/map')}>
-              <Ionicons name="map-outline" size={15} color="#fff" />
-              <Text style={styles.mapButtonText}>Karte</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </LinearGradient>
@@ -1587,6 +1581,7 @@ export default function EventListScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      <BottomTabBar active="events" mapRoute="/map" />
     </SafeAreaView>
   );
 }
@@ -1867,7 +1862,9 @@ const styles = StyleSheet.create({
   filterTabActive: { backgroundColor: '#0af' },
   filterTabText: { color: '#999', fontSize: 13, fontWeight: '600' },
   filterTabTextActive: { color: '#000' },
-  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
+  // paddingBottom deckt die fixe BottomTabBar ab, sonst wäre die letzte Karte
+  // dahinter verdeckt.
+  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 90 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 32, gap: 6 },
   emptyTitle: { color: '#ccc', fontSize: 16, fontWeight: '700', marginTop: 12 },

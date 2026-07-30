@@ -7,6 +7,8 @@ import { useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, Pressable, ScrollView } from 'react-native';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
+import { createClusterIcon } from '../lib/leafletCluster';
 
 // Leaflets Standard-Marker-Icons verweisen auf relative Bildpfade, die unter
 // Metro/Webpack-Bundlern nicht auflösen — stattdessen auf die CDN-Bilder
@@ -100,44 +102,50 @@ export default function LeafletMapView({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {venues.map((v) => {
-        const shownEvents = v.events.slice(0, MAX_POPUP_EVENTS);
-        const remaining = v.events.length - shownEvents.length;
-        return (
-          <Marker
-            key={v.key}
-            position={[v.latitude, v.longitude]}
-            ref={(ref) => {
-              if (ref) markerRefs.current.set(v.key, ref);
-            }}
-          >
-            <Popup minWidth={220}>
-              <View style={styles.popup}>
-                <Text style={styles.popupTitle}>{venueTitle(v.names)}</Text>
-                <ScrollView style={styles.popupEventList}>
-                  {shownEvents.map((ev) => (
-                    <Pressable key={ev.id} style={styles.popupEventRow} onPress={() => onOpenEvent(ev.id)}>
-                      <Text style={styles.popupEventTitle} numberOfLines={1}>{ev.title}</Text>
-                      <Text style={styles.popupEventDate}>{formatShort(ev.start_date, ev.start_time)}</Text>
+      <MarkerClusterGroup
+        iconCreateFunction={createClusterIcon}
+        showCoverageOnHover={false}
+        maxClusterRadius={60}
+      >
+        {venues.map((v) => {
+          const shownEvents = v.events.slice(0, MAX_POPUP_EVENTS);
+          const remaining = v.events.length - shownEvents.length;
+          return (
+            <Marker
+              key={v.key}
+              position={[v.latitude, v.longitude]}
+              ref={(ref) => {
+                if (ref) markerRefs.current.set(v.key, ref);
+              }}
+            >
+              <Popup minWidth={220}>
+                <View style={styles.popup}>
+                  <Text style={styles.popupTitle}>{venueTitle(v.names)}</Text>
+                  <ScrollView style={styles.popupEventList}>
+                    {shownEvents.map((ev) => (
+                      <Pressable key={ev.id} style={styles.popupEventRow} onPress={() => onOpenEvent(ev.id)}>
+                        <Text style={styles.popupEventTitle} numberOfLines={1}>{ev.title}</Text>
+                        <Text style={styles.popupEventDate}>{formatShort(ev.start_date, ev.start_time)}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                  {remaining > 0 && (
+                    <Pressable onPress={() => onOpenList(v.names)}>
+                      <Text style={styles.popupMoreLink}>+ {remaining} weitere · Liste öffnen</Text>
                     </Pressable>
-                  ))}
-                </ScrollView>
-                {remaining > 0 && (
-                  <Pressable onPress={() => onOpenList(v.names)}>
-                    <Text style={styles.popupMoreLink}>+ {remaining} weitere · Liste öffnen</Text>
+                  )}
+                  <Pressable
+                    style={styles.popupMapsButton}
+                    onPress={() => window.open(googleMapsUrl(v.latitude, v.longitude, venueTitle(v.names)), '_blank')}
+                  >
+                    <Text style={styles.popupMapsButtonText}>In Google Maps öffnen</Text>
                   </Pressable>
-                )}
-                <Pressable
-                  style={styles.popupMapsButton}
-                  onPress={() => window.open(googleMapsUrl(v.latitude, v.longitude, venueTitle(v.names)), '_blank')}
-                >
-                  <Text style={styles.popupMapsButtonText}>In Google Maps öffnen</Text>
-                </Pressable>
-              </View>
-            </Popup>
-          </Marker>
-        );
-      })}
+                </View>
+              </Popup>
+            </Marker>
+          );
+        })}
+      </MarkerClusterGroup>
       {userLocation && (
         <>
           {/* interactive={false}: ohne das fängt dieser Halo-Kreis Klicks ab,
