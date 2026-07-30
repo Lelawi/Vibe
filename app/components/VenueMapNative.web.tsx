@@ -3,6 +3,7 @@ import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { isOpenNow } from '../lib/openingHours';
+import { fetchAllVenues } from '../lib/fetchAllVenues';
 import type { VenueMarker } from './VenueLeafletView.web';
 import type { VenueType } from './VenueListScreen';
 
@@ -54,18 +55,19 @@ export default function VenueMapNative({
 
   useEffect(() => {
     async function load() {
-      const [venuesRes, reportsRes] = await Promise.all([
-        supabase
-          .from('venues')
-          .select('id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url')
-          .eq('type', type)
-          .not('latitude', 'is', null)
-          .not('longitude', 'is', null),
+      // Supabase deckelt eine einzelne Abfrage hart bei 1000 Zeilen — bei
+      // 2263 Restaurants hätte ein einfaches .select() über die Hälfte
+      // verschluckt (siehe app/lib/fetchAllVenues.ts).
+      const [venuesData, reportsRes] = await Promise.all([
+        fetchAllVenues<RawVenue>(
+          type,
+          'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url'
+        ),
         // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
         // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
         supabase.from('venue_closure_reports').select('venue_id,status').eq('status', 'confirmed'),
       ]);
-      if (!venuesRes.error) setVenues((venuesRes.data ?? []) as RawVenue[]);
+      setVenues(venuesData.filter((v) => v.latitude != null && v.longitude != null));
       setClosedIds(new Set((reportsRes.data ?? []).map((r) => r.venue_id as string)));
       setLoading(false);
     }

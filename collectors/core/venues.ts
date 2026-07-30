@@ -228,6 +228,11 @@ out body;
           opening_hours_raw: tags.opening_hours ?? null,
           website: tags.website ?? tags['contact:website'] ?? null,
           phone: tags.phone ?? tags['contact:phone'] ?? null,
+          // Nur bei Restaurants aussagekräftig (~80% Abdeckung, per
+          // Direktabruf verifiziert, 2026-07) — bei Bars praktisch nie
+          // gepflegt, aber unschädlich, das Feld trotzdem generisch
+          // mitzunehmen.
+          cuisine: tags.cuisine ?? null,
           type,
           updated_at: new Date().toISOString(),
         };

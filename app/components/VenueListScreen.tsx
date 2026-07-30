@@ -21,6 +21,8 @@ import { canonicalizeVenue } from '../lib/venue';
 import { isOpenNow, todayLabel } from '../lib/openingHours';
 import { fuzzyMatch } from '../lib/fuzzySearch';
 import { distanceKm, formatDistance } from '../lib/geo';
+import { fetchAllVenues } from '../lib/fetchAllVenues';
+import { useVenueFavorites } from '../lib/venueFavorites';
 import ViewSwitcher from './ViewSwitcher';
 
 export type VenueType = 'bar' | 'restaurant';
@@ -36,6 +38,7 @@ type Venue = {
   website: string | null;
   phone: string | null;
   image_url: string | null;
+  cuisine: string | null;
 };
 
 type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
@@ -98,6 +101,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   // "compact" (kleine Vorschau, mehr auf einen Blick) bleibt über den Toggle
   // erreichbar, falls die großen Bilder z.B. neben der Karte zu wuchtig wirken.
   const [viewMode, setViewMode] = useState<'cards' | 'compact'>('cards');
+  const [onlyOpen, setOnlyOpen] = useState(false);
+  const [cuisineFilter, setCuisineFilter] = useState<string | null>(null);
+  const { favorites, isFavorite, toggleFavorite } = useVenueFavorites();
 
   function toggleNearby() {
     if (userLocation) {
@@ -128,12 +134,14 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       // Wochen-Planung — hält diese eigene Abfrage klein und unabhängig von
       // der (viel größeren, paginierten) Hauptliste.
       const soon = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
-      const [venuesRes, eventsRes, reportsRes] = await Promise.all([
-        supabase
-          .from('venues')
-          .select('id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,phone,image_url')
-          .eq('type', type)
-          .order('name', { ascending: true }),
+      const [venuesData, eventsRes, reportsRes] = await Promise.all([
+        // Supabase deckelt eine einzelne Abfrage hart bei 1000 Zeilen — bei
+        // 2263 Restaurants hätte ein einfaches .select() über die Hälfte
+        // verschluckt (siehe app/lib/fetchAllVenues.ts).
+        fetchAllVenues<Venue>(
+          type,
+          'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,phone,image_url,cuisine'
+        ),
         supabase
           .from('events')
           .select('id,title,location_name,start_date,start_time')
@@ -144,7 +152,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           .limit(1000),
         supabase.from('venue_closure_reports').select('venue_id,status'),
       ]);
-      setVenues(venuesRes.data ?? []);
+      setVenues(venuesData.sort((a, b) => a.name.localeCompare(b.name, 'de')));
       setNearbyEvents(eventsRes.data ?? []);
       setClosureStatusByVenue(
         new Map((reportsRes.data ?? []).map((r) => [r.venue_id as string, r.status as ClosureStatus]))
@@ -228,10 +236,34 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       });
   }, [venues, eventsByVenue, userLocation, closureStatusByVenue]);
 
+  // Top-Küchen für den Schnellfilter (nur bei Restaurants sinnvoll — Bars
+  // pflegen den OSM-cuisine-Tag praktisch nie). Nach Häufigkeit sortiert,
+  // auf eine überschaubare Anzahl begrenzt statt aller ~40 vorkommenden
+  // Werte, sonst würde die Chip-Zeile unbrauchbar lang.
+  const cuisineOptions = useMemo(() => {
+    if (type !== 'restaurant') return [];
+    const counts = new Map<string, number>();
+    for (const v of venues) {
+      if (!v.cuisine) continue;
+      for (const c of v.cuisine.split(';')) {
+        const key = c.trim();
+        if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([key]) => key);
+  }, [venues, type]);
+
   const filteredVenues = useMemo(() => {
     return enrichedVenues
-      .filter((v) => fuzzyMatch([v.name, v.address].filter(Boolean).join(' '), search))
+      .filter((v) => fuzzyMatch([v.name, v.address, v.cuisine].filter(Boolean).join(' '), search))
+      .filter((v) => !onlyOpen || v.open === true)
+      .filter((v) => !cuisineFilter || v.cuisine?.split(';').map((c) => c.trim()).includes(cuisineFilter))
       .sort((a, b) => {
+        // Favoriten immer zuerst — der Grund, warum man einen Ort favorisiert
+        // hat, ändert sich nicht danach, ob er gerade offen hat oder wie weit
+        // er weg ist.
+        const favDiff = Number(isFavorite(b.id)) - Number(isFavorite(a.id));
+        if (favDiff !== 0) return favDiff;
         // Bei aktiver Nähe-Suche zählt nur die Entfernung — der eigentliche
         // Zweck ist "was ist gleich um die Ecke", ein offener Ort 3km weiter
         // weg soll einen geschlossenen direkt nebenan nicht überstimmen.
@@ -240,7 +272,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         if (priorityDiff !== 0) return priorityDiff;
         return a.name.localeCompare(b.name, 'de');
       });
-  }, [enrichedVenues, search]);
+  }, [enrichedVenues, search, onlyOpen, cuisineFilter, favorites]);
 
   const openCount = useMemo(() => filteredVenues.filter((v) => v.open === true).length, [filteredVenues]);
 
@@ -294,6 +326,12 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             </TouchableOpacity>
           )}
           <TouchableOpacity
+            style={[styles.iconButton, onlyOpen && styles.iconButtonActive]}
+            onPress={() => setOnlyOpen((v) => !v)}
+          >
+            <Ionicons name="time-outline" size={16} color={onlyOpen ? '#000' : '#ccc'} />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.iconButton}
             onPress={() => setViewMode((m) => (m === 'cards' ? 'compact' : 'cards'))}
           >
@@ -304,6 +342,27 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             <Text style={styles.mapButtonText}>Karte</Text>
           </TouchableOpacity>
         </View>
+
+        {cuisineOptions.length > 0 && (
+          <FlatList
+            horizontal
+            data={['Alle', ...cuisineOptions]}
+            keyExtractor={(c) => c}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.cuisineRow}
+            renderItem={({ item: cuisine }) => {
+              const active = cuisine === 'Alle' ? !cuisineFilter : cuisineFilter === cuisine;
+              return (
+                <TouchableOpacity
+                  style={[styles.cuisineChip, active && styles.cuisineChipActive]}
+                  onPress={() => setCuisineFilter(cuisine === 'Alle' ? null : cuisine)}
+                >
+                  <Text style={[styles.cuisineChipText, active && styles.cuisineChipTextActive]}>{cuisine}</Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        )}
       </LinearGradient>
 
       <FlatList
@@ -348,16 +407,28 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
 
           const footerNode = (
             <View style={styles.cardFooterRow}>
-              {item.website && (
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    Linking.openURL(item.website!);
-                  }}
-                >
-                  <Text style={styles.websiteLink}>Website öffnen</Text>
-                </TouchableOpacity>
-              )}
+              <View style={styles.cardFooterLinks}>
+                {item.website && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Linking.openURL(item.website!);
+                    }}
+                  >
+                    <Text style={styles.websiteLink}>Website öffnen</Text>
+                  </TouchableOpacity>
+                )}
+                {item.phone && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Linking.openURL(`tel:${item.phone}`);
+                    }}
+                  >
+                    <Text style={styles.websiteLink}>Anrufen</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               {item.closureStatus !== 'pending' && (
                 <TouchableOpacity
                   onPress={(e) => {
@@ -370,6 +441,24 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               )}
             </View>
           );
+
+          const favoriteButton = (
+            <TouchableOpacity
+              style={styles.favoriteBtn}
+              onPress={(e) => {
+                e.stopPropagation();
+                toggleFavorite(item.id);
+              }}
+            >
+              <Ionicons
+                name={isFavorite(item.id) ? 'heart' : 'heart-outline'}
+                size={18}
+                color={isFavorite(item.id) ? '#ff4d6d' : '#fff'}
+              />
+            </TouchableOpacity>
+          );
+
+          const cuisineLabel = item.cuisine?.split(';')[0]?.trim();
 
           const image = item.image_url ? (
             <Image source={{ uri: item.image_url }} style={viewMode === 'cards' ? styles.cardsImage : styles.compactThumb} />
@@ -391,11 +480,15 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 <View style={styles.cardBody}>
                   <View style={styles.cardHeaderRow}>
                     <Text style={styles.venueName}>{item.name}</Text>
-                    {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-                    {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                    <View style={styles.cardHeaderBadges}>
+                      {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
+                      {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                      {favoriteButton}
+                    </View>
                   </View>
-                  {(item.address || item.distanceKm != null) && (
+                  {(item.address || item.distanceKm != null || cuisineLabel) && (
                     <Text style={styles.venueAddress}>
+                      {cuisineLabel ? `${cuisineLabel} · ` : ''}
                       {item.address}
                       {item.address && item.distanceKm != null ? ' · ' : ''}
                       {item.distanceKm != null ? formatDistance(item.distanceKm) : ''}
@@ -416,13 +509,15 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             <TouchableOpacity style={styles.cardsCard} disabled={!hasCoords} onPress={onPress}>
               <View style={styles.cardsImageWrap}>
                 {image}
+                <View style={styles.favoriteBtnOverlay}>{favoriteButton}</View>
                 {item.open === true && <Text style={[styles.openBadge, styles.badgeOverlay]}>Geöffnet</Text>}
                 {item.open === false && <Text style={[styles.closedBadge, styles.badgeOverlay]}>Geschlossen</Text>}
               </View>
               <View style={styles.cardsBody}>
                 <Text style={styles.venueName}>{item.name}</Text>
-                {(item.address || item.distanceKm != null) && (
+                {(item.address || item.distanceKm != null || cuisineLabel) && (
                   <Text style={styles.venueAddress}>
+                    {cuisineLabel ? `${cuisineLabel} · ` : ''}
                     {item.address}
                     {item.address && item.distanceKm != null ? ' · ' : ''}
                     {item.distanceKm != null ? formatDistance(item.distanceKm) : ''}
@@ -455,6 +550,17 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   header: { fontSize: 30, fontWeight: '800', color: '#fff' },
+  cuisineRow: { paddingHorizontal: 16, marginTop: 12, gap: 8 },
+  cuisineChip: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+  },
+  cuisineChipActive: { backgroundColor: '#0af' },
+  cuisineChipText: { color: '#ccc', fontSize: 13, fontWeight: '600' },
+  cuisineChipTextActive: { color: '#000' },
   subheader: { fontSize: 14, color: '#cbb8f0', marginTop: 2 },
   toolRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginTop: 16, alignItems: 'center' },
   search: {
@@ -524,6 +630,9 @@ const styles = StyleSheet.create({
   badgeOverlay: { position: 'absolute', top: 10, right: 10 },
   cardBody: { flex: 1 },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardHeaderBadges: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  favoriteBtn: { padding: 2 },
+  favoriteBtnOverlay: { position: 'absolute', top: 10, left: 10 },
   venueName: { color: '#fff', fontSize: 16, fontWeight: '700', flexShrink: 1 },
   openBadge: {
     fontSize: 11,
@@ -549,6 +658,7 @@ const styles = StyleSheet.create({
   programWrap: { marginTop: 8, gap: 4 },
   programText: { color: '#5fd4ff', fontSize: 13 },
   cardFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  cardFooterLinks: { flexDirection: 'row', gap: 14 },
   websiteLink: { color: '#0af', fontSize: 13 },
   reportLink: { color: '#555', fontSize: 12 },
   pendingBadge: { color: '#f2c94c', fontSize: 12, fontWeight: '600', marginTop: 8 },
