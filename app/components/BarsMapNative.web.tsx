@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { isOpenNow } from '../lib/openingHours';
@@ -24,7 +25,9 @@ type RawBar = {
 const MUNICH_CENTER = { lat: 48.1371, lng: 11.5754 };
 
 export default function BarsMapNative() {
+  const params = useLocalSearchParams<{ id?: string; lat?: string; lng?: string }>();
   const [bars, setBars] = useState<RawBar[]>([]);
+  const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [onlyOpen, setOnlyOpen] = useState(false);
@@ -40,12 +43,16 @@ export default function BarsMapNative() {
 
   useEffect(() => {
     async function loadBars() {
-      const { data, error } = await supabase
-        .from('bars')
-        .select('id,name,address,latitude,longitude,opening_hours_raw,website')
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null);
-      if (!error) setBars((data ?? []) as RawBar[]);
+      const [barsRes, reportsRes] = await Promise.all([
+        supabase
+          .from('bars')
+          .select('id,name,address,latitude,longitude,opening_hours_raw,website')
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null),
+        supabase.from('bar_closure_reports').select('bar_id'),
+      ]);
+      if (!barsRes.error) setBars((barsRes.data ?? []) as RawBar[]);
+      setClosedIds(new Set((reportsRes.data ?? []).map((r) => r.bar_id as string)));
       setLoading(false);
     }
     loadBars();
@@ -53,18 +60,24 @@ export default function BarsMapNative() {
 
   const markers: BarMarker[] = useMemo(
     () =>
-      bars.map((b) => ({
-        id: b.id,
-        name: b.name,
-        address: b.address,
-        latitude: b.latitude!,
-        longitude: b.longitude!,
-        opening_hours_raw: b.opening_hours_raw,
-        open: isOpenNow(b.opening_hours_raw),
-        website: b.website,
-      })),
-    [bars]
+      bars
+        .filter((b) => !closedIds.has(b.id))
+        .map((b) => ({
+          id: b.id,
+          name: b.name,
+          address: b.address,
+          latitude: b.latitude!,
+          longitude: b.longitude!,
+          opening_hours_raw: b.opening_hours_raw,
+          open: isOpenNow(b.opening_hours_raw),
+          website: b.website,
+        })),
+    [bars, closedIds]
   );
+
+  const targetLat = params.lat ? parseFloat(params.lat) : null;
+  const targetLng = params.lng ? parseFloat(params.lng) : null;
+  const hasTarget = targetLat != null && targetLng != null && !Number.isNaN(targetLat) && !Number.isNaN(targetLng);
 
   // "Jetzt geöffnet"-Filter erst nach dem Öffnungsstatus-Mapping anwenden,
   // nicht schon in der Supabase-Abfrage — der Status hängt vom aktuellen
@@ -93,10 +106,11 @@ export default function BarsMapNative() {
       >
         <BarsLeafletView
           bars={visibleMarkers}
-          centerLat={userLocation?.lat ?? MUNICH_CENTER.lat}
-          centerLng={userLocation?.lng ?? MUNICH_CENTER.lng}
-          zoom={userLocation ? 15 : 13}
+          centerLat={hasTarget ? targetLat! : userLocation?.lat ?? MUNICH_CENTER.lat}
+          centerLng={hasTarget ? targetLng! : userLocation?.lng ?? MUNICH_CENTER.lng}
+          zoom={hasTarget ? 16 : userLocation ? 15 : 13}
           userLocation={userLocation}
+          targetId={hasTarget ? params.id ?? null : null}
         />
       </Suspense>
       <TouchableOpacity

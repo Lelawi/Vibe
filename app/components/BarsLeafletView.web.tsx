@@ -11,8 +11,10 @@
 // ich"-Punkt — beides blau ließ sich auf der Karte kaum unterscheiden. Grün/
 // Rot/Grau kodiert zusätzlich den Öffnungsstatus direkt auf der Karte, statt
 // ihn nur im Popup zu verraten.
+import { useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, Pressable } from 'react-native';
-import { MapContainer, TileLayer, Popup, Circle, CircleMarker } from 'react-leaflet';
+import type L from 'leaflet';
+import { MapContainer, TileLayer, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
 import { todayLabel } from '../lib/openingHours';
 
 export type BarMarker = {
@@ -37,19 +39,38 @@ function markerColor(open: boolean | null): string {
   return open === true ? '#4ade80' : open === false ? '#ff6b6b' : '#999';
 }
 
+// Öffnet beim Laden automatisch das Popup einer bestimmten Bar, wenn von der
+// Listenansicht per id-Param dorthin navigiert wurde (Pendant zu
+// AutoOpenPopup in LeafletMapView.web.tsx für die Event-Karte).
+function AutoOpenPopup({ targetId, markerRefs }: { targetId: string | null; markerRefs: React.MutableRefObject<Map<string, L.CircleMarker>> }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!targetId) return;
+    const timeout = setTimeout(() => {
+      markerRefs.current.get(targetId)?.openPopup();
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [targetId, map, markerRefs]);
+  return null;
+}
+
 export default function BarsLeafletView({
   bars,
   centerLat,
   centerLng,
   zoom,
   userLocation,
+  targetId = null,
 }: {
   bars: BarMarker[];
   centerLat: number;
   centerLng: number;
   zoom: number;
   userLocation?: { lat: number; lng: number } | null;
+  targetId?: string | null;
 }) {
+  const markerRefs = useRef<Map<string, L.CircleMarker>>(new Map());
+
   return (
     <MapContainer center={[centerLat, centerLng]} zoom={zoom} style={styles.map}>
       <TileLayer
@@ -65,6 +86,9 @@ export default function BarsLeafletView({
             center={[bar.latitude, bar.longitude]}
             radius={9}
             pathOptions={{ color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }}
+            ref={(ref) => {
+              if (ref) markerRefs.current.set(bar.id, ref);
+            }}
           >
             <Popup minWidth={200}>
               <View style={styles.popup}>
@@ -102,6 +126,7 @@ export default function BarsLeafletView({
           />
         </>
       )}
+      <AutoOpenPopup targetId={targetId} markerRefs={markerRefs} />
     </MapContainer>
   );
 }

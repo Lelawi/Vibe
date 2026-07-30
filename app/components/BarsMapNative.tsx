@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator, Text, Linking, Pressable, TouchableOpacity } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, Callout } from 'react-native-maps';
+import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import { supabase } from '../lib/supabase';
 import { isOpenNow, todayLabel } from '../lib/openingHours';
 
@@ -32,32 +33,55 @@ function pinColor(open: boolean | null): string {
 }
 
 export default function BarsMapNative() {
+  const params = useLocalSearchParams<{ id?: string; lat?: string; lng?: string }>();
   const [bars, setBars] = useState<Bar[]>([]);
+  const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [onlyOpen, setOnlyOpen] = useState(false);
+  const markerRefs = useRef<Map<string, any>>(new Map());
 
   useEffect(() => {
     async function loadBars() {
-      const { data, error } = await supabase
-        .from('bars')
-        .select('id,name,address,latitude,longitude,opening_hours_raw,website')
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null);
-      if (!error) setBars((data ?? []) as Bar[]);
+      const [barsRes, reportsRes] = await Promise.all([
+        supabase
+          .from('bars')
+          .select('id,name,address,latitude,longitude,opening_hours_raw,website')
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null),
+        supabase.from('bar_closure_reports').select('bar_id'),
+      ]);
+      if (!barsRes.error) setBars((barsRes.data ?? []) as Bar[]);
+      setClosedIds(new Set((reportsRes.data ?? []).map((r) => r.bar_id as string)));
       setLoading(false);
     }
     loadBars();
   }, []);
 
   const markers = useMemo(
-    () => bars.map((b) => ({ ...b, open: isOpenNow(b.opening_hours_raw), hoursToday: todayLabel(b.opening_hours_raw) })),
-    [bars]
+    () =>
+      bars
+        .filter((b) => !closedIds.has(b.id))
+        .map((b) => ({ ...b, open: isOpenNow(b.opening_hours_raw), hoursToday: todayLabel(b.opening_hours_raw) })),
+    [bars, closedIds]
   );
 
   const visibleMarkers = useMemo(
     () => (onlyOpen ? markers.filter((m) => m.open === true) : markers),
     [markers, onlyOpen]
   );
+
+  const initialRegion: Region =
+    params.lat && params.lng
+      ? { latitude: parseFloat(params.lat), longitude: parseFloat(params.lng), latitudeDelta: 0.02, longitudeDelta: 0.02 }
+      : { latitude: 48.1371, longitude: 11.5754, latitudeDelta: 0.08, longitudeDelta: 0.08 };
+
+  useEffect(() => {
+    if (!params.id) return;
+    const timeout = setTimeout(() => {
+      markerRefs.current.get(params.id!)?.showCallout();
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [params.id, markers]);
 
   if (loading) {
     return (
@@ -69,15 +93,13 @@ export default function BarsMapNative() {
 
   return (
     <View style={styles.wrap}>
-      <MapView
-        style={styles.map}
-        initialRegion={{ latitude: 48.1371, longitude: 11.5754, latitudeDelta: 0.08, longitudeDelta: 0.08 }}
-        showsUserLocation
-        showsMyLocationButton
-      >
+      <MapView style={styles.map} initialRegion={initialRegion} showsUserLocation showsMyLocationButton>
         {visibleMarkers.map((bar) => (
           <Marker
             key={bar.id}
+            ref={(ref) => {
+              if (ref) markerRefs.current.set(bar.id, ref);
+            }}
             coordinate={{ latitude: bar.latitude!, longitude: bar.longitude! }}
             pinColor={pinColor(bar.open)}
           >

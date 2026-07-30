@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   Linking,
   Platform,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,6 +53,7 @@ export default function BarsScreen() {
   const [search, setSearch] = useState('');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
+  const [closedReports, setClosedReports] = useState<Set<string>>(new Set());
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -87,7 +89,7 @@ export default function BarsScreen() {
       // Wochen-Planung — hält diese eigene Abfrage klein und unabhängig von
       // der (viel größeren, paginierten) Hauptliste.
       const soon = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
-      const [barsRes, eventsRes] = await Promise.all([
+      const [barsRes, eventsRes, reportsRes] = await Promise.all([
         supabase
           .from('bars')
           .select('id,name,address,latitude,longitude,opening_hours_raw,website,phone')
@@ -100,13 +102,32 @@ export default function BarsScreen() {
           .is('duplicate_of', null)
           .not('location_name', 'is', null)
           .limit(1000),
+        supabase.from('bar_closure_reports').select('bar_id'),
       ]);
       setBars(barsRes.data ?? []);
       setNearbyEvents(eventsRes.data ?? []);
+      setClosedReports(new Set((reportsRes.data ?? []).map((r) => r.bar_id as string)));
       setLoading(false);
     }
     load();
   }, []);
+
+  // Keine automatisierte Möglichkeit zu erkennen, ob eine OSM-gepflegte Bar
+  // tatsächlich noch existiert — stattdessen können Nutzer:innen das direkt
+  // melden. Optimistisches Ausblenden, damit es sich sofort "erledigt"
+  // anfühlt; schlägt der Insert fehl, kommt die Bar beim nächsten Laden
+  // einfach wieder.
+  async function reportClosed(barId: string, barName: string) {
+    setClosedReports((prev) => new Set(prev).add(barId));
+    const { error } = await supabase
+      .from('bar_closure_reports')
+      .upsert({ bar_id: barId }, { onConflict: 'bar_id' });
+    if (error && Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.alert(`Melden von "${barName}" ist fehlgeschlagen.`);
+    } else if (error) {
+      Alert.alert('Fehler', `Melden von "${barName}" ist fehlgeschlagen.`);
+    }
+  }
 
   // Programm der nächsten 2 Tage einer Bar zuordnen — über dieselbe
   // Venue-Kanonisierung, die auch der Location-Filter der Hauptliste nutzt
@@ -125,17 +146,19 @@ export default function BarsScreen() {
 
   const enrichedBars = useMemo(() => {
     const now = new Date();
-    return bars.map((bar) => ({
-      ...bar,
-      open: isOpenNow(bar.opening_hours_raw, now),
-      hoursToday: todayLabel(bar.opening_hours_raw, now),
-      program: eventsByVenue.get(canonicalizeVenue(bar.name)) ?? [],
-      distanceKm:
-        userLocation && bar.latitude != null && bar.longitude != null
-          ? distanceKm(userLocation.lat, userLocation.lng, bar.latitude, bar.longitude)
-          : null,
-    }));
-  }, [bars, eventsByVenue, userLocation]);
+    return bars
+      .filter((bar) => !closedReports.has(bar.id))
+      .map((bar) => ({
+        ...bar,
+        open: isOpenNow(bar.opening_hours_raw, now),
+        hoursToday: todayLabel(bar.opening_hours_raw, now),
+        program: eventsByVenue.get(canonicalizeVenue(bar.name)) ?? [],
+        distanceKm:
+          userLocation && bar.latitude != null && bar.longitude != null
+            ? distanceKm(userLocation.lat, userLocation.lng, bar.latitude, bar.longitude)
+            : null,
+      }));
+  }, [bars, eventsByVenue, userLocation, closedReports]);
 
   const filteredBars = useMemo(() => {
     return enrichedBars
@@ -216,46 +239,79 @@ export default function BarsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={<Text style={styles.empty}>Keine Bars gefunden.</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <View style={styles.cardHeaderRow}>
-              <Text style={styles.barName}>{item.name}</Text>
-              {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-              {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
-            </View>
-            {(item.address || item.distanceKm != null) && (
-              <Text style={styles.barAddress}>
-                {item.address}
-                {item.address && item.distanceKm != null ? ' · ' : ''}
-                {item.distanceKm != null ? formatDistance(item.distanceKm) : ''}
-              </Text>
-            )}
-            {item.hoursToday ? (
-              <Text style={styles.barHours}>Heute: {item.hoursToday}</Text>
-            ) : item.opening_hours_raw ? (
-              <Text style={styles.barHours}>{item.opening_hours_raw}</Text>
-            ) : (
-              <Text style={styles.barHoursUnknown}>Öffnungszeiten unbekannt</Text>
-            )}
-            {item.program.length > 0 && (
-              <View style={styles.programWrap}>
-                {item.program.map((ev) => (
-                  <TouchableOpacity key={ev.id} onPress={() => router.push(`/event/${ev.id}`)}>
-                    <Text style={styles.programText}>
-                      🎤 {ev.title}
-                      {ev.start_time ? ` · ${ev.start_time.slice(0, 5)}` : ''}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+        renderItem={({ item }) => {
+          const hasCoords = item.latitude != null && item.longitude != null;
+          return (
+            <TouchableOpacity
+              style={styles.card}
+              disabled={!hasCoords}
+              onPress={() =>
+                router.push({
+                  pathname: '/bars-map',
+                  params: { id: item.id, lat: String(item.latitude), lng: String(item.longitude) },
+                })
+              }
+            >
+              <View style={styles.cardHeaderRow}>
+                <Text style={styles.barName}>{item.name}</Text>
+                {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
+                {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
               </View>
-            )}
-            {item.website && (
-              <TouchableOpacity onPress={() => Linking.openURL(item.website!)}>
-                <Text style={styles.websiteLink}>Website öffnen</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+              {(item.address || item.distanceKm != null) && (
+                <Text style={styles.barAddress}>
+                  {item.address}
+                  {item.address && item.distanceKm != null ? ' · ' : ''}
+                  {item.distanceKm != null ? formatDistance(item.distanceKm) : ''}
+                </Text>
+              )}
+              {item.hoursToday ? (
+                <Text style={styles.barHours}>Heute: {item.hoursToday}</Text>
+              ) : item.opening_hours_raw ? (
+                <Text style={styles.barHours}>{item.opening_hours_raw}</Text>
+              ) : (
+                <Text style={styles.barHoursUnknown}>Öffnungszeiten unbekannt</Text>
+              )}
+              {item.program.length > 0 && (
+                <View style={styles.programWrap}>
+                  {item.program.map((ev) => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        router.push(`/event/${ev.id}`);
+                      }}
+                    >
+                      <Text style={styles.programText}>
+                        🎤 {ev.title}
+                        {ev.start_time ? ` · ${ev.start_time.slice(0, 5)}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              <View style={styles.cardFooterRow}>
+                {item.website && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Linking.openURL(item.website!);
+                    }}
+                  >
+                    <Text style={styles.websiteLink}>Website öffnen</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    reportClosed(item.id, item.name);
+                  }}
+                >
+                  <Text style={styles.reportLink}>Gibt's nicht mehr?</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
       />
     </SafeAreaView>
   );
@@ -339,5 +395,7 @@ const styles = StyleSheet.create({
   barHoursUnknown: { color: '#555', fontSize: 13, marginTop: 4, fontStyle: 'italic' },
   programWrap: { marginTop: 8, gap: 4 },
   programText: { color: '#5fd4ff', fontSize: 13 },
-  websiteLink: { color: '#0af', fontSize: 13, marginTop: 8 },
+  cardFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  websiteLink: { color: '#0af', fontSize: 13 },
+  reportLink: { color: '#555', fontSize: 12 },
 });
