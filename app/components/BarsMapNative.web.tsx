@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { isOpenNow } from '../lib/openingHours';
 import type { BarMarker } from './BarsLeafletView.web';
@@ -26,6 +27,7 @@ export default function BarsMapNative() {
   const [bars, setBars] = useState<RawBar[]>([]);
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [onlyOpen, setOnlyOpen] = useState(false);
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return;
@@ -64,6 +66,14 @@ export default function BarsMapNative() {
     [bars]
   );
 
+  // "Jetzt geöffnet"-Filter erst nach dem Öffnungsstatus-Mapping anwenden,
+  // nicht schon in der Supabase-Abfrage — der Status hängt vom aktuellen
+  // Zeitpunkt ab und wird clientseitig aus opening_hours_raw berechnet.
+  const visibleMarkers = useMemo(
+    () => (onlyOpen ? markers.filter((m) => m.open === true) : markers),
+    [markers, onlyOpen]
+  );
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -73,24 +83,54 @@ export default function BarsMapNative() {
   }
 
   return (
-    <Suspense
-      fallback={
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#fff" />
-        </View>
-      }
-    >
-      <BarsLeafletView
-        bars={markers}
-        centerLat={userLocation?.lat ?? MUNICH_CENTER.lat}
-        centerLng={userLocation?.lng ?? MUNICH_CENTER.lng}
-        zoom={userLocation ? 15 : 13}
-        userLocation={userLocation}
-      />
-    </Suspense>
+    <View style={styles.wrap}>
+      <Suspense
+        fallback={
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#fff" />
+          </View>
+        }
+      >
+        <BarsLeafletView
+          bars={visibleMarkers}
+          centerLat={userLocation?.lat ?? MUNICH_CENTER.lat}
+          centerLng={userLocation?.lng ?? MUNICH_CENTER.lng}
+          zoom={userLocation ? 15 : 13}
+          userLocation={userLocation}
+        />
+      </Suspense>
+      <TouchableOpacity
+        style={[styles.filterButton, onlyOpen && styles.filterButtonActive]}
+        onPress={() => setOnlyOpen((v) => !v)}
+      >
+        <Ionicons name="time-outline" size={15} color={onlyOpen ? '#000' : '#fff'} />
+        <Text style={[styles.filterButtonText, onlyOpen && styles.filterButtonTextActive]}>
+          Jetzt geöffnet ({markers.filter((m) => m.open === true).length})
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  filterButton: {
+    position: 'absolute',
+    top: 12,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(20,20,20,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    zIndex: 1000,
+  },
+  filterButtonActive: { backgroundColor: '#4ade80' },
+  filterButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  filterButtonTextActive: { color: '#000' },
 });

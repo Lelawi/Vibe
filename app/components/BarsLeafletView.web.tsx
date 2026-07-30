@@ -5,17 +5,15 @@
 // Website). In eigener Datei aus demselben Grund wie LeafletMapView.web.tsx:
 // Leaflet greift beim Import auf window/document zu, per dynamischem
 // import() nur im Browser geladen (siehe BarsMapNative.web.tsx).
+//
+// Bar-Marker als farbige CircleMarker statt Leaflets Standard-Pin: der
+// Standard-Pin ist blau, exakt dieselbe Akzentfarbe (#0af) wie der "das bin
+// ich"-Punkt — beides blau ließ sich auf der Karte kaum unterscheiden. Grün/
+// Rot/Grau kodiert zusätzlich den Öffnungsstatus direkt auf der Karte, statt
+// ihn nur im Popup zu verraten.
 import { StyleSheet, View, Text, Pressable } from 'react-native';
-import L from 'leaflet';
-import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Popup, Circle, CircleMarker } from 'react-leaflet';
 import { todayLabel } from '../lib/openingHours';
-
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
 
 export type BarMarker = {
   id: string;
@@ -33,6 +31,10 @@ function googleMapsUrl(lat: number, lng: number, label?: string) {
   return query
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
     : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+}
+
+function markerColor(open: boolean | null): string {
+  return open === true ? '#4ade80' : open === false ? '#ff6b6b' : '#999';
 }
 
 export default function BarsLeafletView({
@@ -56,8 +58,14 @@ export default function BarsLeafletView({
       />
       {bars.map((bar) => {
         const hoursToday = todayLabel(bar.opening_hours_raw);
+        const color = markerColor(bar.open);
         return (
-          <Marker key={bar.id} position={[bar.latitude, bar.longitude]}>
+          <CircleMarker
+            key={bar.id}
+            center={[bar.latitude, bar.longitude]}
+            radius={9}
+            pathOptions={{ color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }}
+          >
             <Popup minWidth={200}>
               <View style={styles.popup}>
                 <View style={styles.popupHeaderRow}>
@@ -77,7 +85,7 @@ export default function BarsLeafletView({
                 </Pressable>
               </View>
             </Popup>
-          </Marker>
+          </CircleMarker>
         );
       })}
       {userLocation && (

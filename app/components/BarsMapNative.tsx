@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, ActivityIndicator, Text, Linking, Pressable } from 'react-native';
+import { StyleSheet, View, ActivityIndicator, Text, Linking, Pressable, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Callout } from 'react-native-maps';
 import { supabase } from '../lib/supabase';
 import { isOpenNow, todayLabel } from '../lib/openingHours';
@@ -22,9 +23,18 @@ function openInGoogleMaps(lat: number, lng: number, label?: string) {
   Linking.openURL(url);
 }
 
+// Grün/Rot/Grau statt des App-Blaus (#0af) — das ist bereits "meine
+// Position" (der native blaue Standort-Punkt von showsUserLocation), zwei
+// blaue Elemente auf derselben Karte waren kaum zu unterscheiden. Kodiert
+// zusätzlich den Öffnungsstatus direkt auf der Karte.
+function pinColor(open: boolean | null): string {
+  return open === true ? '#4ade80' : open === false ? '#ff6b6b' : '#999';
+}
+
 export default function BarsMapNative() {
   const [bars, setBars] = useState<Bar[]>([]);
   const [loading, setLoading] = useState(true);
+  const [onlyOpen, setOnlyOpen] = useState(false);
 
   useEffect(() => {
     async function loadBars() {
@@ -44,6 +54,11 @@ export default function BarsMapNative() {
     [bars]
   );
 
+  const visibleMarkers = useMemo(
+    () => (onlyOpen ? markers.filter((m) => m.open === true) : markers),
+    [markers, onlyOpen]
+  );
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -53,40 +68,56 @@ export default function BarsMapNative() {
   }
 
   return (
-    <MapView
-      style={styles.map}
-      initialRegion={{ latitude: 48.1371, longitude: 11.5754, latitudeDelta: 0.08, longitudeDelta: 0.08 }}
-      showsUserLocation
-      showsMyLocationButton
-    >
-      {markers.map((bar) => (
-        <Marker key={bar.id} coordinate={{ latitude: bar.latitude!, longitude: bar.longitude! }}>
-          <Callout tooltip={false}>
-            <View style={styles.callout}>
-              <View style={styles.calloutHeaderRow}>
-                <Text style={styles.calloutTitle}>{bar.name}</Text>
-                {bar.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-                {bar.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
-              </View>
-              {bar.address && <Text style={styles.calloutAddress}>{bar.address}</Text>}
-              {bar.hoursToday && <Text style={styles.calloutHours}>Heute: {bar.hoursToday}</Text>}
-              {bar.website && (
-                <Pressable onPress={() => Linking.openURL(bar.website!)}>
-                  <Text style={styles.calloutLink}>Website öffnen</Text>
+    <View style={styles.wrap}>
+      <MapView
+        style={styles.map}
+        initialRegion={{ latitude: 48.1371, longitude: 11.5754, latitudeDelta: 0.08, longitudeDelta: 0.08 }}
+        showsUserLocation
+        showsMyLocationButton
+      >
+        {visibleMarkers.map((bar) => (
+          <Marker
+            key={bar.id}
+            coordinate={{ latitude: bar.latitude!, longitude: bar.longitude! }}
+            pinColor={pinColor(bar.open)}
+          >
+            <Callout tooltip={false}>
+              <View style={styles.callout}>
+                <View style={styles.calloutHeaderRow}>
+                  <Text style={styles.calloutTitle}>{bar.name}</Text>
+                  {bar.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
+                  {bar.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                </View>
+                {bar.address && <Text style={styles.calloutAddress}>{bar.address}</Text>}
+                {bar.hoursToday && <Text style={styles.calloutHours}>Heute: {bar.hoursToday}</Text>}
+                {bar.website && (
+                  <Pressable onPress={() => Linking.openURL(bar.website!)}>
+                    <Text style={styles.calloutLink}>Website öffnen</Text>
+                  </Pressable>
+                )}
+                <Pressable onPress={() => openInGoogleMaps(bar.latitude!, bar.longitude!, bar.name)}>
+                  <Text style={styles.calloutLink}>In Google Maps öffnen</Text>
                 </Pressable>
-              )}
-              <Pressable onPress={() => openInGoogleMaps(bar.latitude!, bar.longitude!, bar.name)}>
-                <Text style={styles.calloutLink}>In Google Maps öffnen</Text>
-              </Pressable>
-            </View>
-          </Callout>
-        </Marker>
-      ))}
-    </MapView>
+              </View>
+            </Callout>
+          </Marker>
+        ))}
+      </MapView>
+      <TouchableOpacity
+        style={[styles.filterButton, onlyOpen && styles.filterButtonActive]}
+        onPress={() => setOnlyOpen((v) => !v)}
+      >
+        <Ionicons name="time-outline" size={15} color={onlyOpen ? '#000' : '#fff'} />
+        <Text style={[styles.filterButtonText, onlyOpen && styles.filterButtonTextActive]}>
+          Jetzt geöffnet ({markers.filter((m) => m.open === true).length})
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: { flex: 1 },
   map: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
   callout: { minWidth: 200, padding: 4 },
@@ -97,4 +128,21 @@ const styles = StyleSheet.create({
   calloutAddress: { fontSize: 12, color: '#444' },
   calloutHours: { fontSize: 12, color: '#444', marginTop: 2 },
   calloutLink: { fontSize: 12, color: '#0af', fontWeight: '600', marginTop: 4 },
+  filterButton: {
+    position: 'absolute',
+    top: 12,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(20,20,20,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  filterButtonActive: { backgroundColor: '#4ade80' },
+  filterButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  filterButtonTextActive: { color: '#000' },
 });
