@@ -141,7 +141,18 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         fetchAllVenues<Venue>(
           type,
           'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,phone,image_url,cuisine'
-        ),
+        ).catch(async (err) => {
+          // cuisine kam erst mit 0016_venues_cuisine.sql dazu — falls diese
+          // Migration noch nicht angewendet wurde, soll die Liste trotzdem
+          // funktionieren (nur ohne Küchen-Badge/Filter) statt komplett leer
+          // zu bleiben.
+          console.warn('[VenueListScreen] retrying without cuisine column', err);
+          const fallback = await fetchAllVenues<Omit<Venue, 'cuisine'>>(
+            type,
+            'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,phone,image_url'
+          );
+          return fallback.map((v) => ({ ...v, cuisine: null }));
+        }),
         supabase
           .from('events')
           .select('id,title,location_name,start_date,start_time')
@@ -278,10 +289,28 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
 
   const switcherActive = type === 'bar' ? 'bars' : 'restaurants';
 
+  const hasAnyActiveFilter = search.trim() !== '' || onlyOpen || cuisineFilter !== null;
+  function resetAllFilters() {
+    setSearch('');
+    setOnlyOpen(false);
+    setCuisineFilter(null);
+  }
+
   if (loading) {
+    // Platzhalter-Karten statt nacktem Spinner — an die Eventseite angelehnt
+    // (index.tsx), damit sich der Ladezustand über alle drei Reiter gleich
+    // anfühlt statt nur bei Events poliert zu wirken.
     return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color="#fff" />
+      <SafeAreaView style={styles.loadingContainer}>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <View key={i} style={styles.skeletonCard}>
+            <View style={styles.skeletonThumb} />
+            <View style={styles.skeletonBody}>
+              <View style={styles.skeletonLine} />
+              <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
+            </View>
+          </View>
+        ))}
       </SafeAreaView>
     );
   }
@@ -300,6 +329,11 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             <Text style={styles.subheader}>
               {openCount} von {filteredVenues.length} gerade geöffnet
             </Text>
+            {hasAnyActiveFilter && (
+              <TouchableOpacity onPress={resetAllFilters}>
+                <Text style={styles.resetLink}>Alle Filter zurücksetzen</Text>
+              </TouchableOpacity>
+            )}
           </View>
           <ViewSwitcher active={switcherActive} />
         </View>
@@ -369,7 +403,22 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         data={filteredVenues}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<Text style={styles.empty}>{config.emptyText}</Text>}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Ionicons name={config.icon} size={40} color="#444" />
+            <Text style={styles.emptyTitle}>{config.emptyText}</Text>
+            {hasAnyActiveFilter ? (
+              <>
+                <Text style={styles.emptyHint}>Mit den aktuellen Filtern gibt es nichts zu sehen.</Text>
+                <TouchableOpacity style={styles.emptyResetButton} onPress={resetAllFilters}>
+                  <Text style={styles.emptyResetButtonText}>Alle Filter zurücksetzen</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <Text style={styles.emptyHint}>Schau später nochmal vorbei.</Text>
+            )}
+          </View>
+        }
         renderItem={({ item }) => {
           const hasCoords = item.latitude != null && item.longitude != null;
           const onPress = () =>
@@ -541,6 +590,30 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  loadingContainer: { flex: 1, backgroundColor: '#000', paddingTop: 24, paddingHorizontal: 16 },
+  skeletonCard: {
+    flexDirection: 'row',
+    backgroundColor: '#141414',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+  },
+  skeletonThumb: { width: 72, height: 72, borderRadius: 12, backgroundColor: '#1f1f1f', marginRight: 12 },
+  skeletonBody: { flex: 1, justifyContent: 'center', gap: 8 },
+  skeletonLine: { height: 12, borderRadius: 6, backgroundColor: '#1f1f1f', width: '80%' },
+  skeletonLineShort: { width: '50%' },
+  resetLink: { color: '#0af', fontSize: 12, fontWeight: '600', marginTop: 4 },
+  emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 32, gap: 6 },
+  emptyTitle: { color: '#ccc', fontSize: 16, fontWeight: '700', marginTop: 12 },
+  emptyHint: { color: '#666', fontSize: 13, textAlign: 'center' },
+  emptyResetButton: {
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    backgroundColor: '#0af',
+  },
+  emptyResetButtonText: { color: '#000', fontWeight: '700', fontSize: 14 },
   banner: { borderBottomLeftRadius: 28, borderBottomRightRadius: 28, paddingBottom: 16 },
   headerRow: {
     flexDirection: 'row',
@@ -594,7 +667,6 @@ const styles = StyleSheet.create({
   },
   mapButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   listContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
-  empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   // Kompakte Ansicht: kleine Vorschau, mehr Einträge auf einen Blick.
   compactCard: {
     flexDirection: 'row',

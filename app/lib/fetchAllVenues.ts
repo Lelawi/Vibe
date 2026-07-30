@@ -14,7 +14,11 @@ export async function fetchAllVenues<T>(type: VenueType, columns: string): Promi
     .from('venues')
     .select('id', { count: 'exact', head: true })
     .eq('type', type);
-  if (countError || !count) return [];
+  if (countError) {
+    console.error('[fetchAllVenues] count query failed', countError);
+    return [];
+  }
+  if (!count) return [];
 
   const pageCount = Math.max(1, Math.ceil(count / pageSize));
   const pages = await Promise.all(
@@ -27,5 +31,20 @@ export async function fetchAllVenues<T>(type: VenueType, columns: string): Promi
         .range(i * pageSize, i * pageSize + pageSize - 1)
     )
   );
+  // Ein fehlerhaftes Schema (z.B. eine Spalte aus einer noch nicht
+  // angewendeten Migration) soll sichtbar auffliegen statt sich als leere
+  // Liste zu tarnen — genau das ist beim fehlenden cuisine-Feld passiert
+  // ("column venues.cuisine does not exist" führte ohne diesen Check zu
+  // einem stillen "keine Bars gefunden", obwohl 581 Bars existierten).
+  // Wirft nur, wenn ALLE Seiten fehlschlagen (ein echtes Query-/Schema-
+  // Problem) — einzelne fehlgeschlagene Seiten bei riesigen Datenmengen
+  // würden sonst schon bei einem einzigen Netzwerk-Hänger die komplette
+  // Liste unnötig zum Absturz bringen.
+  if (pages.length > 0 && pages.every((p) => p.error)) {
+    throw pages[0].error;
+  }
+  for (const p of pages) {
+    if (p.error) console.error('[fetchAllVenues] page query failed', p.error);
+  }
   return pages.flatMap((p) => (p.data ?? []) as T[]);
 }
