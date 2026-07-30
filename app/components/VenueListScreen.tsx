@@ -26,6 +26,14 @@ import { fetchAllVenues } from '../lib/fetchAllVenues';
 import { useVenueFavorites } from '../lib/venueFavorites';
 import ViewSwitcher from './ViewSwitcher';
 
+// Web-only <input type="range">-Styling für den Umkreis-Slider (siehe
+// index.tsx) — reines HTML-Element statt @react-native-community/slider,
+// dessen Web-Support über react-native-web unzuverlässig ist.
+const radiusSliderStyle = {
+  width: '100%' as const,
+  accentColor: '#0af',
+};
+
 export type VenueType = 'bar' | 'restaurant';
 
 type Venue = {
@@ -123,6 +131,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   const [viewMode, setViewMode] = useState<'compact' | 'cards'>('compact');
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [cuisineFilter, setCuisineFilter] = useState<string | null>(null);
+  // Fehlte bisher hier komplett, obwohl der Nähe-Button bei Events dieselbe
+  // Zusatzauswahl aufklappt (Umkreis-Slider, null = "Alle").
+  const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
   const { favorites, isFavorite, toggleFavorite } = useVenueFavorites();
 
   function toggleNearby() {
@@ -289,6 +300,14 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       .filter((v) => fuzzyMatch([v.name, v.address, v.cuisine].filter(Boolean).join(' '), search))
       .filter((v) => !onlyOpen || v.open === true)
       .filter((v) => !cuisineFilter || v.cuisine?.split(';').map((c) => c.trim()).includes(cuisineFilter))
+      .filter((v) => {
+        // Nur bei aktivem Umkreis-Slider einschränken — Orte ohne Koordinaten
+        // (distanceKm null) fallen dann automatisch raus, da ihre Entfernung
+        // nicht bestimmbar ist (gleiche Logik wie der Umkreis-Filter in
+        // index.tsx).
+        if (!userLocation || nearbyRadiusKm === null) return true;
+        return v.distanceKm != null && v.distanceKm <= nearbyRadiusKm;
+      })
       .sort((a, b) => {
         // Favoriten immer zuerst — der Grund, warum man einen Ort favorisiert
         // hat, ändert sich nicht danach, ob er gerade offen hat oder wie weit
@@ -303,7 +322,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         if (priorityDiff !== 0) return priorityDiff;
         return a.name.localeCompare(b.name, 'de');
       });
-  }, [enrichedVenues, search, onlyOpen, cuisineFilter, favorites]);
+  }, [enrichedVenues, search, onlyOpen, cuisineFilter, favorites, userLocation, nearbyRadiusKm]);
 
   const openCount = useMemo(() => filteredVenues.filter((v) => v.open === true).length, [filteredVenues]);
   const switcherActive = type === 'bar' ? 'bars' : 'restaurants';
@@ -469,6 +488,38 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             </TouchableOpacity>
           )}
         </View>
+
+        {locationStatus === 'denied' && (
+          <Text style={styles.locationHint}>
+            Standort nicht verfügbar — bitte Standortzugriff im Browser erlauben.
+          </Text>
+        )}
+
+        {userLocation && (
+          <View style={styles.radiusRow}>
+            <Text style={styles.radiusLabel}>
+              Umkreis: {nearbyRadiusKm === null ? 'Alle' : `${nearbyRadiusKm} km`}
+            </Text>
+            <View style={styles.radiusSliderWrap}>
+              {/* Web-only wie das ganze Nähe-Feature (Platform.OS==='web' schon
+                  eine Ebene höher am Nähe-Button selbst). */}
+              <input
+                type="range"
+                min={1}
+                max={25}
+                step={1}
+                value={nearbyRadiusKm ?? 25}
+                onChange={(e) => setNearbyRadiusKm(Number(e.target.value))}
+                style={radiusSliderStyle}
+              />
+            </View>
+            <TouchableOpacity onPress={() => setNearbyRadiusKm(null)}>
+              <Text style={[styles.radiusAllLink, nearbyRadiusKm === null && styles.radiusAllLinkActive]}>
+                Alle
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -781,6 +832,12 @@ const styles = StyleSheet.create({
   },
   resultCount: { color: '#666', fontSize: 12 },
   resultCountResetLink: { color: '#888', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
+  locationHint: { color: '#888', fontSize: 12, paddingHorizontal: 16, marginBottom: 8 },
+  radiusRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8, gap: 10 },
+  radiusLabel: { color: '#888', fontSize: 12, minWidth: 84 },
+  radiusSliderWrap: { flex: 1 },
+  radiusAllLink: { color: '#666', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
+  radiusAllLinkActive: { color: '#0af' },
   listContent: { paddingHorizontal: 16, paddingBottom: 40 },
   // Kompakte Ansicht: kleine Vorschau, mehr Einträge auf einen Blick — der
   // Standard, exakt wie die normale Event-Liste in index.tsx.
