@@ -19,6 +19,7 @@ type RawBar = {
   latitude: number | null;
   longitude: number | null;
   opening_hours_raw: string | null;
+  opening_hours_override: string | null;
   website: string | null;
   image_url: string | null;
 };
@@ -47,7 +48,7 @@ export default function BarsMapNative() {
       const [barsRes, reportsRes] = await Promise.all([
         supabase
           .from('bars')
-          .select('id,name,address,latitude,longitude,opening_hours_raw,website,image_url')
+          .select('id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url')
           .not('latitude', 'is', null)
           .not('longitude', 'is', null),
         // Nur bestätigt geschlossene Bars von der Karte nehmen — "pending"
@@ -65,17 +66,22 @@ export default function BarsMapNative() {
     () =>
       bars
         .filter((b) => !closedIds.has(b.id))
-        .map((b) => ({
-          id: b.id,
-          name: b.name,
-          address: b.address,
-          latitude: b.latitude!,
-          longitude: b.longitude!,
-          opening_hours_raw: b.opening_hours_raw,
-          open: isOpenNow(b.opening_hours_raw),
-          website: b.website,
-          image_url: b.image_url,
-        })),
+        .map((b) => {
+          // Vom Betreiber gepflegte Öffnungszeiten (Website) sind
+          // zuverlässiger als der oft ungenaue/veraltete OSM-Tag.
+          const effectiveHours = b.opening_hours_override ?? b.opening_hours_raw;
+          return {
+            id: b.id,
+            name: b.name,
+            address: b.address,
+            latitude: b.latitude!,
+            longitude: b.longitude!,
+            opening_hours_raw: effectiveHours,
+            open: isOpenNow(effectiveHours),
+            website: b.website,
+            image_url: b.image_url,
+          };
+        }),
     [bars, closedIds]
   );
 

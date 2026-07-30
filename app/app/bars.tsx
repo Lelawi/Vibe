@@ -30,6 +30,7 @@ type Bar = {
   latitude: number | null;
   longitude: number | null;
   opening_hours_raw: string | null;
+  opening_hours_override: string | null;
   website: string | null;
   phone: string | null;
   image_url: string | null;
@@ -93,7 +94,7 @@ export default function BarsScreen() {
       const [barsRes, eventsRes, reportsRes] = await Promise.all([
         supabase
           .from('bars')
-          .select('id,name,address,latitude,longitude,opening_hours_raw,website,phone,image_url')
+          .select('id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,phone,image_url')
           .order('name', { ascending: true }),
         supabase
           .from('events')
@@ -169,17 +170,24 @@ export default function BarsScreen() {
       // bleibt sichtbar (siehe reportClosed-Kommentar), damit ein
       // versehentlicher Klick nichts unwiderruflich verschwinden lässt.
       .filter((bar) => closureStatusByBar.get(bar.id) !== 'confirmed')
-      .map((bar) => ({
-        ...bar,
-        open: isOpenNow(bar.opening_hours_raw, now),
-        hoursToday: todayLabel(bar.opening_hours_raw, now),
-        program: eventsByVenue.get(canonicalizeVenue(bar.name)) ?? [],
-        closureStatus: closureStatusByBar.get(bar.id) ?? null,
-        distanceKm:
-          userLocation && bar.latitude != null && bar.longitude != null
-            ? distanceKm(userLocation.lat, userLocation.lng, bar.latitude, bar.longitude)
-            : null,
-      }));
+      .map((bar) => {
+        // Vom Betreiber gepflegte Öffnungszeiten (von der Bar-Website
+        // gescrapt) sind zuverlässiger als der oft ungenaue/veraltete
+        // OSM-opening_hours-Tag — wo vorhanden, hat der Override Vorrang.
+        const effectiveHours = bar.opening_hours_override ?? bar.opening_hours_raw;
+        return {
+          ...bar,
+          effectiveHours,
+          open: isOpenNow(effectiveHours, now),
+          hoursToday: todayLabel(effectiveHours, now),
+          program: eventsByVenue.get(canonicalizeVenue(bar.name)) ?? [],
+          closureStatus: closureStatusByBar.get(bar.id) ?? null,
+          distanceKm:
+            userLocation && bar.latitude != null && bar.longitude != null
+              ? distanceKm(userLocation.lat, userLocation.lng, bar.latitude, bar.longitude)
+              : null,
+        };
+      });
   }, [bars, eventsByVenue, userLocation, closureStatusByBar]);
 
   const filteredBars = useMemo(() => {
@@ -301,8 +309,8 @@ export default function BarsScreen() {
                 )}
                 {item.hoursToday ? (
                   <Text style={styles.barHours}>Heute: {item.hoursToday}</Text>
-                ) : item.opening_hours_raw ? (
-                  <Text style={styles.barHours}>{item.opening_hours_raw}</Text>
+                ) : item.effectiveHours ? (
+                  <Text style={styles.barHours}>{item.effectiveHours}</Text>
                 ) : (
                   <Text style={styles.barHoursUnknown}>Öffnungszeiten unbekannt</Text>
                 )}
