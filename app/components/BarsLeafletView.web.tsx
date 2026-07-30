@@ -12,7 +12,7 @@
 // Rot/Grau kodiert zusätzlich den Öffnungsstatus direkt auf der Karte, statt
 // ihn nur im Popup zu verraten.
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { StyleSheet, View, Text, Pressable, Image } from 'react-native';
 import type L from 'leaflet';
 import { MapContainer, TileLayer, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
 import { todayLabel } from '../lib/openingHours';
@@ -26,6 +26,7 @@ export type BarMarker = {
   opening_hours_raw: string | null;
   open: boolean | null;
   website: string | null;
+  image_url: string | null;
 };
 
 // Nur der Bar-Name reicht bei generischen OSM-Namen nicht als Suchbegriff —
@@ -98,6 +99,7 @@ export default function BarsLeafletView({
           >
             <Popup minWidth={200}>
               <View style={styles.popup}>
+                {bar.image_url && <Image source={{ uri: bar.image_url }} style={styles.popupImage} />}
                 <View style={styles.popupHeaderRow}>
                   <Text style={styles.popupTitle}>{bar.name}</Text>
                   {bar.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
@@ -140,6 +142,7 @@ export default function BarsLeafletView({
 const styles = StyleSheet.create({
   map: { flex: 1, width: '100%', height: '100%' },
   popup: { minWidth: 200, padding: 4 },
+  popupImage: { width: '100%', height: 90, borderRadius: 8, marginBottom: 6 },
   popupHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   popupTitle: { fontWeight: '700', fontSize: 14, color: '#000' },
   openBadge: { fontSize: 10, fontWeight: '700', color: '#1a7a3d', backgroundColor: '#4ade8033', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },

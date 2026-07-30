@@ -35,6 +35,30 @@ function buildAddress(tags: Record<string, string>): string | null {
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
+// OSM selbst pflegt so gut wie nie ein "image"-Tag auf Bar-Knoten, aber viele
+// Bars haben eine eigene Website mit og:image (dieselbe Quelle nutzen z.B.
+// sources/auer_dult, sources/milla). Best effort: schlägt der Abruf fehl
+// oder gibt es kein og:image, bleibt image_url einfach null — keine Bar soll
+// deswegen aus dem Lauf rausfallen.
+async function fetchOgImage(website: string): Promise<string | null> {
+  try {
+    const res = await fetch(website, {
+      headers: { 'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const match = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+      ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+    if (!match) return null;
+    // Relative og:image-URLs (z.B. "/images/hero.jpg") kommen vor —
+    // gegen die Website-URL auflösen statt kaputte relative Pfade zu speichern.
+    return new URL(match[1], website).toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function run() {
   console.log('[bars] starting');
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -54,7 +78,7 @@ export async function run() {
     if (!res.ok) { console.warn('[bars] overpass fetch failed', res.status); return; }
 
     const data = (await res.json()) as { elements: OverpassElement[] };
-    const bars = data.elements
+    const rawBars = data.elements
       .filter((el) => el.tags?.name)
       .map((el) => {
         const tags = el.tags!;
@@ -71,7 +95,32 @@ export async function run() {
         };
       });
 
-    if (bars.length === 0) { console.log('[bars] no bars parsed'); return; }
+    if (rawBars.length === 0) { console.log('[bars] no bars parsed'); return; }
+
+    // Bereits vorhandene image_url je osm_id wiederverwenden statt bei jedem
+    // (wöchentlichen) Lauf alle Websites erneut abzuklappern — nur für Bars
+    // ohne bekanntes Bild wird neu gefetcht.
+    const { data: existing } = await supabase.from('bars').select('osm_id,image_url');
+    const existingImageByOsmId = new Map((existing ?? []).map((b) => [b.osm_id as number, b.image_url as string | null]));
+
+    const toFetch = rawBars.filter((b) => b.website && !existingImageByOsmId.get(b.osm_id));
+    console.log('[bars] fetching og:image for', toFetch.length, 'bars without a known image');
+    const imageByOsmId = new Map<number, string | null>();
+    const CONCURRENCY = 6;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < toFetch.length) {
+        const bar = toFetch[cursor++];
+        imageByOsmId.set(bar.osm_id, await fetchOgImage(bar.website!));
+      }
+    }
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+    const bars = rawBars.map((b) => ({
+      ...b,
+      image_url: imageByOsmId.get(b.osm_id) ?? existingImageByOsmId.get(b.osm_id) ?? null,
+    }));
+
     console.log('[bars] upserting', bars.length, 'bars');
     const { error } = await supabase.from('bars').upsert(bars, { onConflict: 'osm_id' });
     if (error) console.error('[bars] upsert error', error);

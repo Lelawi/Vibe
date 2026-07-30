@@ -16,6 +16,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import ViewSwitcher from '../components/ViewSwitcher';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
@@ -838,10 +839,7 @@ export default function EventListScreen() {
             <Text style={styles.subheader}>Events in München</Text>
           </View>
           <View style={styles.headerButtonRow}>
-            <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/bars')}>
-              <Ionicons name="beer-outline" size={15} color="#fff" />
-              <Text style={styles.mapButtonText}>Bars</Text>
-            </TouchableOpacity>
+            <ViewSwitcher active="events" />
             <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/map')}>
               <Ionicons name="map-outline" size={15} color="#fff" />
               <Text style={styles.mapButtonText}>Karte</Text>
@@ -1637,7 +1635,7 @@ const styles = StyleSheet.create({
   // transparente Lücken zwischen den Header-Zeilen hindurchschimmern.
   listHeaderWrap: { backgroundColor: '#000' },
   stickyControls: { paddingTop: 12 },
-  headerButtonRow: { flexDirection: 'row', gap: 8 },
+  headerButtonRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   mapButton: {
     flexDirection: 'row',
     alignItems: 'center',

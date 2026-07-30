@@ -8,17 +8,20 @@ import {
   TextInput,
   ActivityIndicator,
   SafeAreaView,
+  Image,
   Linking,
   Platform,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { isOpenNow, todayLabel } from '../lib/openingHours';
 import { fuzzyMatch } from '../lib/fuzzySearch';
 import { distanceKm, formatDistance } from '../lib/geo';
+import ViewSwitcher from '../components/ViewSwitcher';
 
 type Bar = {
   id: string;
@@ -29,7 +32,10 @@ type Bar = {
   opening_hours_raw: string | null;
   website: string | null;
   phone: string | null;
+  image_url: string | null;
 };
+
+type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
 
 type NearbyEvent = {
   id: string;
@@ -53,12 +59,7 @@ export default function BarsScreen() {
   const [search, setSearch] = useState('');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
-  const [closedReports, setClosedReports] = useState<Set<string>>(new Set());
-
-  function goBack() {
-    if (router.canGoBack()) router.back();
-    else router.replace('/');
-  }
+  const [closureStatusByBar, setClosureStatusByBar] = useState<Map<string, ClosureStatus>>(new Map());
 
   function toggleNearby() {
     if (userLocation) {
@@ -92,7 +93,7 @@ export default function BarsScreen() {
       const [barsRes, eventsRes, reportsRes] = await Promise.all([
         supabase
           .from('bars')
-          .select('id,name,address,latitude,longitude,opening_hours_raw,website,phone')
+          .select('id,name,address,latitude,longitude,opening_hours_raw,website,phone,image_url')
           .order('name', { ascending: true }),
         supabase
           .from('events')
@@ -102,26 +103,43 @@ export default function BarsScreen() {
           .is('duplicate_of', null)
           .not('location_name', 'is', null)
           .limit(1000),
-        supabase.from('bar_closure_reports').select('bar_id'),
+        supabase.from('bar_closure_reports').select('bar_id,status'),
       ]);
       setBars(barsRes.data ?? []);
       setNearbyEvents(eventsRes.data ?? []);
-      setClosedReports(new Set((reportsRes.data ?? []).map((r) => r.bar_id as string)));
+      setClosureStatusByBar(
+        new Map((reportsRes.data ?? []).map((r) => [r.bar_id as string, r.status as ClosureStatus]))
+      );
       setLoading(false);
     }
     load();
   }, []);
 
-  // Keine automatisierte Möglichkeit zu erkennen, ob eine OSM-gepflegte Bar
-  // tatsächlich noch existiert — stattdessen können Nutzer:innen das direkt
-  // melden. Optimistisches Ausblenden, damit es sich sofort "erledigt"
-  // anfühlt; schlägt der Insert fehl, kommt die Bar beim nächsten Laden
-  // einfach wieder.
+  // Ein einzelner Tap (z.B. versehentlich beim Scrollen) darf eine Bar nicht
+  // sofort und endgültig verschwinden lassen — daher 1) eine Rückfrage vor
+  // dem Melden, und 2) selbst nach Bestätigung nur ein "pending"-Status statt
+  // direktem Ausblenden. Die Bar bleibt sichtbar (mit Hinweis-Badge), bis die
+  // Meldung geprüft wurde — das übernimmt vorerst manuell Claude auf Zuruf
+  // (siehe collectors/sources/bars/review-closures.ts), da es keine freie
+  // Datenquelle gibt, die "existiert nicht mehr" verlässlich automatisch
+  // bestätigen könnte.
+  function confirmReportClosed(barId: string, barName: string) {
+    const message = `"${barName}" als "gibt's nicht mehr" melden? Die Bar wird dann zur Prüfung markiert.`;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(message)) reportClosed(barId, barName);
+      return;
+    }
+    Alert.alert('Bar melden?', message, [
+      { text: 'Abbrechen', style: 'cancel' },
+      { text: 'Melden', style: 'destructive', onPress: () => reportClosed(barId, barName) },
+    ]);
+  }
+
   async function reportClosed(barId: string, barName: string) {
-    setClosedReports((prev) => new Set(prev).add(barId));
+    setClosureStatusByBar((prev) => new Map(prev).set(barId, 'pending'));
     const { error } = await supabase
       .from('bar_closure_reports')
-      .upsert({ bar_id: barId }, { onConflict: 'bar_id' });
+      .upsert({ bar_id: barId, status: 'pending' }, { onConflict: 'bar_id' });
     if (error && Platform.OS === 'web' && typeof window !== 'undefined') {
       window.alert(`Melden von "${barName}" ist fehlgeschlagen.`);
     } else if (error) {
@@ -147,18 +165,22 @@ export default function BarsScreen() {
   const enrichedBars = useMemo(() => {
     const now = new Date();
     return bars
-      .filter((bar) => !closedReports.has(bar.id))
+      // Nur bestätigt geschlossene Bars wirklich ausblenden — "pending"
+      // bleibt sichtbar (siehe reportClosed-Kommentar), damit ein
+      // versehentlicher Klick nichts unwiderruflich verschwinden lässt.
+      .filter((bar) => closureStatusByBar.get(bar.id) !== 'confirmed')
       .map((bar) => ({
         ...bar,
         open: isOpenNow(bar.opening_hours_raw, now),
         hoursToday: todayLabel(bar.opening_hours_raw, now),
         program: eventsByVenue.get(canonicalizeVenue(bar.name)) ?? [],
+        closureStatus: closureStatusByBar.get(bar.id) ?? null,
         distanceKm:
           userLocation && bar.latitude != null && bar.longitude != null
             ? distanceKm(userLocation.lat, userLocation.lng, bar.latitude, bar.longitude)
             : null,
       }));
-  }, [bars, eventsByVenue, userLocation, closedReports]);
+  }, [bars, eventsByVenue, userLocation, closureStatusByBar]);
 
   const filteredBars = useMemo(() => {
     return enrichedBars
@@ -179,20 +201,14 @@ export default function BarsScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.center}>
-        <TouchableOpacity style={styles.backBar} onPress={goBack}>
-          <Text style={styles.backBarText}>‹ Übersicht</Text>
-        </TouchableOpacity>
-        <ActivityIndicator size="large" color="#fff" />
+        <ViewSwitcher active="bars" />
+        <ActivityIndicator size="large" color="#fff" style={{ marginTop: 16 }} />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <TouchableOpacity style={styles.backBar} onPress={goBack}>
-        <Text style={styles.backBarText}>‹ Übersicht</Text>
-      </TouchableOpacity>
-
       <View style={styles.headerBlock}>
         <View style={styles.headerTitleRow}>
           <View>
@@ -201,10 +217,13 @@ export default function BarsScreen() {
               {openCount} von {filteredBars.length} gerade geöffnet
             </Text>
           </View>
-          <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/bars-map')}>
-            <Ionicons name="map-outline" size={15} color="#fff" />
-            <Text style={styles.mapButtonText}>Karte</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtonRow}>
+            <ViewSwitcher active="bars" />
+            <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/bars-map')}>
+              <Ionicons name="map-outline" size={15} color="#fff" />
+              <Text style={styles.mapButtonText}>Karte</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -252,62 +271,84 @@ export default function BarsScreen() {
                 })
               }
             >
-              <View style={styles.cardHeaderRow}>
-                <Text style={styles.barName}>{item.name}</Text>
-                {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-                {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
-              </View>
-              {(item.address || item.distanceKm != null) && (
-                <Text style={styles.barAddress}>
-                  {item.address}
-                  {item.address && item.distanceKm != null ? ' · ' : ''}
-                  {item.distanceKm != null ? formatDistance(item.distanceKm) : ''}
-                </Text>
-              )}
-              {item.hoursToday ? (
-                <Text style={styles.barHours}>Heute: {item.hoursToday}</Text>
-              ) : item.opening_hours_raw ? (
-                <Text style={styles.barHours}>{item.opening_hours_raw}</Text>
+              {item.image_url ? (
+                <Image source={{ uri: item.image_url }} style={styles.cardThumb} />
               ) : (
-                <Text style={styles.barHoursUnknown}>Öffnungszeiten unbekannt</Text>
+                // Platzhalter statt nichts zu rendern — sonst rutscht cardBody
+                // nach links und Bars ohne Bild sind nicht mehr auf gleicher
+                // Höhe wie die mit Bild (gleiche Logik wie index.tsx).
+                <LinearGradient
+                  colors={['#2a0a4a', '#12082e']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.cardThumb}
+                >
+                  <Ionicons name="beer-outline" size={22} color="rgba(255,255,255,0.35)" />
+                </LinearGradient>
               )}
-              {item.program.length > 0 && (
-                <View style={styles.programWrap}>
-                  {item.program.map((ev) => (
+              <View style={styles.cardBody}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.barName}>{item.name}</Text>
+                  {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
+                  {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                </View>
+                {(item.address || item.distanceKm != null) && (
+                  <Text style={styles.barAddress}>
+                    {item.address}
+                    {item.address && item.distanceKm != null ? ' · ' : ''}
+                    {item.distanceKm != null ? formatDistance(item.distanceKm) : ''}
+                  </Text>
+                )}
+                {item.hoursToday ? (
+                  <Text style={styles.barHours}>Heute: {item.hoursToday}</Text>
+                ) : item.opening_hours_raw ? (
+                  <Text style={styles.barHours}>{item.opening_hours_raw}</Text>
+                ) : (
+                  <Text style={styles.barHoursUnknown}>Öffnungszeiten unbekannt</Text>
+                )}
+                {item.program.length > 0 && (
+                  <View style={styles.programWrap}>
+                    {item.program.map((ev) => (
+                      <TouchableOpacity
+                        key={ev.id}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          router.push(`/event/${ev.id}`);
+                        }}
+                      >
+                        <Text style={styles.programText}>
+                          🎤 {ev.title}
+                          {ev.start_time ? ` · ${ev.start_time.slice(0, 5)}` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {item.closureStatus === 'pending' && (
+                  <Text style={styles.pendingBadge}>⏳ Als geschlossen gemeldet — wird geprüft</Text>
+                )}
+                <View style={styles.cardFooterRow}>
+                  {item.website && (
                     <TouchableOpacity
-                      key={ev.id}
                       onPress={(e) => {
                         e.stopPropagation();
-                        router.push(`/event/${ev.id}`);
+                        Linking.openURL(item.website!);
                       }}
                     >
-                      <Text style={styles.programText}>
-                        🎤 {ev.title}
-                        {ev.start_time ? ` · ${ev.start_time.slice(0, 5)}` : ''}
-                      </Text>
+                      <Text style={styles.websiteLink}>Website öffnen</Text>
                     </TouchableOpacity>
-                  ))}
+                  )}
+                  {item.closureStatus !== 'pending' && (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        confirmReportClosed(item.id, item.name);
+                      }}
+                    >
+                      <Text style={styles.reportLink}>Gibt's nicht mehr?</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-              )}
-              <View style={styles.cardFooterRow}>
-                {item.website && (
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      Linking.openURL(item.website!);
-                    }}
-                  >
-                    <Text style={styles.websiteLink}>Website öffnen</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    reportClosed(item.id, item.name);
-                  }}
-                >
-                  <Text style={styles.reportLink}>Gibt's nicht mehr?</Text>
-                </TouchableOpacity>
               </View>
             </TouchableOpacity>
           );
@@ -320,10 +361,9 @@ export default function BarsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
-  backBar: { paddingHorizontal: 16, paddingVertical: 12 },
-  backBarText: { color: '#0af', fontSize: 15, fontWeight: '600' },
-  headerBlock: { paddingHorizontal: 16, marginBottom: 12 },
+  headerBlock: { paddingHorizontal: 16, paddingTop: 12, marginBottom: 12 },
   headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  headerButtonRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   title: { color: '#fff', fontSize: 24, fontWeight: '700' },
   subtitle: { color: '#888', fontSize: 13, marginTop: 2 },
   mapButton: {
@@ -363,6 +403,7 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 16, paddingBottom: 40 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   card: {
+    flexDirection: 'row',
     backgroundColor: '#141414',
     borderRadius: 16,
     borderWidth: 1,
@@ -370,6 +411,16 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
+  cardThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    marginRight: 12,
+    backgroundColor: '#1a1a1a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardBody: { flex: 1 },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   barName: { color: '#fff', fontSize: 16, fontWeight: '700', flexShrink: 1 },
   openBadge: {
@@ -398,4 +449,5 @@ const styles = StyleSheet.create({
   cardFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
   websiteLink: { color: '#0af', fontSize: 13 },
   reportLink: { color: '#555', fontSize: 12 },
+  pendingBadge: { color: '#f2c94c', fontSize: 12, fontWeight: '600', marginTop: 8 },
 });

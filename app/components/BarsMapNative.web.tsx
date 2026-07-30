@@ -20,6 +20,7 @@ type RawBar = {
   longitude: number | null;
   opening_hours_raw: string | null;
   website: string | null;
+  image_url: string | null;
 };
 
 const MUNICH_CENTER = { lat: 48.1371, lng: 11.5754 };
@@ -46,10 +47,12 @@ export default function BarsMapNative() {
       const [barsRes, reportsRes] = await Promise.all([
         supabase
           .from('bars')
-          .select('id,name,address,latitude,longitude,opening_hours_raw,website')
+          .select('id,name,address,latitude,longitude,opening_hours_raw,website,image_url')
           .not('latitude', 'is', null)
           .not('longitude', 'is', null),
-        supabase.from('bar_closure_reports').select('bar_id'),
+        // Nur bestätigt geschlossene Bars von der Karte nehmen — "pending"
+        // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe bars.tsx.
+        supabase.from('bar_closure_reports').select('bar_id,status').eq('status', 'confirmed'),
       ]);
       if (!barsRes.error) setBars((barsRes.data ?? []) as RawBar[]);
       setClosedIds(new Set((reportsRes.data ?? []).map((r) => r.bar_id as string)));
@@ -71,6 +74,7 @@ export default function BarsMapNative() {
           opening_hours_raw: b.opening_hours_raw,
           open: isOpenNow(b.opening_hours_raw),
           website: b.website,
+          image_url: b.image_url,
         })),
     [bars, closedIds]
   );
