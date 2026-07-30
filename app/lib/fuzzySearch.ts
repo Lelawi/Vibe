@@ -16,6 +16,14 @@ function normalize(s: string): string {
     .replace(/ß/g, 'ss');
 }
 
+// Optimal-String-Alignment-Variante von Levenshtein: benachbarte Buchstaben-
+// Vertauschungen ("konzret" statt "konzert") kosten nur 1 Edit statt 2 (zwei
+// Substitutionen bei reinem Levenshtein). Ohne diese Sonderregel müsste die
+// Toleranz in maxDistanceFor() großzügiger sein, um Buchstabendreher noch zu
+// tolerieren — genau diese Großzügigkeit ließ aber z.B. "apache" fälschlich
+// auf "space" matchen (Editierdistanz 2 bei reinem Levenshtein, beides
+// eigenständige, unverwandte Wörter). Mit Transpositions-Sonderregel kann
+// die generelle Toleranz enger bleiben, ohne echte Tippfehler zu verlieren.
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const m = a.length;
@@ -23,16 +31,20 @@ function levenshtein(a: string, b: string): number {
   if (m === 0) return n;
   if (n === 0) return m;
 
-  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  const d: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+
   for (let i = 1; i <= m; i++) {
-    const curr = [i];
     for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
     }
-    prev = curr;
   }
-  return prev[n];
+  return d[m][n];
 }
 
 // Für sehr kurze Suchwörter (<=2 Zeichen, z.B. "P1") ist eine Toleranz von 1
@@ -42,11 +54,18 @@ function levenshtein(a: string, b: string): number {
 // spaltete sich beim Wort-Split in ein alleinstehendes "p" auf, das jede
 // Suche nach "P1" fälschlich traf. Für tokenLength<=2 daher exakte
 // Wortübereinstimmung verlangen statt Fuzzy-Toleranz.
+//
+// Toleranz 2 für 5-8-Zeichen-Wörter (frühere Fassung) erlaubte genug
+// Editierabstand, um komplett andere, gleich lange Wörter zu treffen (z.B.
+// "apache" -> "space", Distanz 2) — kein Tippfehler mehr, sondern ein
+// falscher Treffer. Dank Transpositions-Sonderregel oben deckt Distanz 1
+// weiterhin Buchstabendreher ab, daher bis 8 Zeichen auf 1 verschärft; erst
+// ab 9 Zeichen (mehr "Spielraum" im Wort, seltener zufällige Kollision mit
+// einem echten anderen Wort) noch 2 zulassen.
 function maxDistanceFor(tokenLength: number): number {
   if (tokenLength <= 2) return 0;
-  if (tokenLength <= 4) return 1;
-  if (tokenLength <= 8) return 2;
-  return 3;
+  if (tokenLength <= 8) return 1;
+  return 2;
 }
 
 // Prüft, ob jedes Wort der Suchanfrage (getrennt durch Leerzeichen) im
