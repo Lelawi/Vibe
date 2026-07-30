@@ -414,7 +414,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   <TouchableOpacity
                     key={cuisine}
                     style={[styles.filterChip, active && styles.filterChipActive]}
-                    onPress={() => setCuisineFilter(cuisine === 'Alle' ? null : cuisine)}
+                    onPress={() => setCuisineFilter(cuisine === 'Alle' || cuisineFilter === cuisine ? null : cuisine)}
                   >
                     <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{cuisine}</Text>
                   </TouchableOpacity>
