@@ -612,17 +612,65 @@ export default function EventListScreen() {
     return groups;
   }, [filteredEvents, userLocation, nearbyRadiusKm]);
 
+  // Genre-Profil aus den eigenen Favoriten: welche Genres tauchen unter den
+  // (noch bevorstehenden) favorisierten Events am häufigsten auf. Ohne Login/
+  // Accounts ist das die einzige verfügbare "Geschmacks"-Information — nur
+  // aus aktuell geladenen (=künftigen) Events ableitbar, bereits vergangene
+  // Favoriten fließen nicht ein, da sie gar nicht mehr geladen werden.
+  const favoriteGenreProfile = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of enrichedEvents) {
+      if (favorites.includes(e.id)) {
+        counts.set(e.eventGenre, (counts.get(e.eventGenre) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [enrichedEvents, favorites]);
+
   // "Empfohlen"-Leiste nach dem Vorbild von Apps wie Posh/DICE: statt einer
-  // reinen chronologischen Liste zuerst ein paar Bild-starke Highlights zum
-  // schnellen Durchstöbern zeigen ("Vibe" auf einen Blick statt Textzeile für
-  // Textzeile). Nimmt bewusst je Serie nur den nächsten Termin (group[0]) und
-  // verlangt ein Bild, sonst wäre die Leiste optisch nicht von der Liste
-  // unterscheidbar. Kein separates Ranking/ML nötig — respektiert einfach die
-  // aktuell aktiven Filter/Sortierung (Nähe etc.) und zeigt die ersten Treffer an.
-  const featuredEvents = useMemo(
-    () => eventGroups.map((g) => g[0]).filter((e) => e.image_url).slice(0, 10),
-    [eventGroups]
-  );
+  // reinen chronologischen Liste ein paar Bild-starke Highlights zum
+  // schnellen Durchstöbern zeigen. Nimmt bewusst je Serie nur den nächsten
+  // Termin (group[0]) und verlangt ein Bild, sonst wäre die Leiste optisch
+  // nicht von der Liste unterscheidbar.
+  //
+  // Tatsächlich personalisiert statt nur chronologisch: eigene Favoriten
+  // zuerst, dann Events von gefolgten Veranstaltern ("Lieblingskünstler"),
+  // dann Events, deren Genre häufig unter den eigenen Favoriten vorkommt,
+  // erst danach schlicht chronologisch. Innerhalb jeder Stufe bleibt die
+  // bisherige Sortierung (Datum bzw. Nähe) erhalten — Array.sort ist seit
+  // ES2019 stabil, ein reiner Score-Vergleich verändert die Reihenfolge
+  // gleich bewerteter Events also nicht. Zusätzlich ein Diversitäts-Deckel
+  // (max. 2 pro Veranstalter/Location), damit ein einzelner Anbieter mit
+  // vielen Terminen nicht die ganze Leiste füllt.
+  const featuredEvents = useMemo(() => {
+    const candidates = eventGroups.map((g) => g[0]).filter((e) => e.image_url);
+
+    // eventGroups ist als Event[] getypt (verliert die eventGenre/
+    // eventCanonicalLocation-Zusatzfelder von enrichedEvents auf
+    // TS-Ebene), daher hier bewusst erneut aus title/category ableiten statt
+    // die (zur Laufzeit zwar vorhandenen, statisch aber unbekannten) Felder
+    // anzusprechen — bei einer Handvoll Kandidaten kein Performance-Thema.
+    function score(e: (typeof candidates)[number]): number {
+      if (favorites.includes(e.id)) return 3;
+      if (e.organizer && followedOrganizers.includes(e.organizer)) return 2;
+      if (favoriteGenreProfile.has(normalizeGenreGroup(e.subcategory ?? e.category))) return 1;
+      return 0;
+    }
+
+    const ranked = [...candidates].sort((a, b) => score(b) - score(a));
+
+    const perKeyCount = new Map<string, number>();
+    const result: typeof candidates = [];
+    for (const e of ranked) {
+      const key = e.organizer ?? canonicalizeVenue(e.location_name);
+      const used = perKeyCount.get(key) ?? 0;
+      if (used >= 2) continue;
+      perKeyCount.set(key, used + 1);
+      result.push(e);
+      if (result.length >= 10) break;
+    }
+    return result;
+  }, [eventGroups, favorites, followedOrganizers, favoriteGenreProfile]);
 
   // Muss vor dem frühen "if (loading) return"-Block unten stehen — Hooks
   // dürfen laut React-Regeln nie bedingt übersprungen werden. Stand hier
