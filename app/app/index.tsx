@@ -680,9 +680,21 @@ export default function EventListScreen() {
   };
 
   if (loading) {
+    // Platzhalter-Karten statt nacktem Spinner — bei der Erstladung (jetzt
+    // mit 4000+ Events durch eventim entsprechend länger) wirkt eine leere
+    // Mitte-des-Screens-Animation länger tot, als sie tatsächlich dauert.
+    // Keine Shimmer-Animation, nur statische Blöcke: hält das Risiko klein.
     return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color="#fff" />
+      <SafeAreaView style={styles.loadingContainer}>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <View key={i} style={styles.skeletonCard}>
+            <View style={styles.skeletonThumb} />
+            <View style={styles.skeletonBody}>
+              <View style={styles.skeletonLine} />
+              <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
+            </View>
+          </View>
+        ))}
       </SafeAreaView>
     );
   }
@@ -798,12 +810,17 @@ export default function EventListScreen() {
         </ScrollView>
       </View>
 
-      {/* Horizontal scrollbar statt umbrechend: mit inzwischen 6 Buttons
-          (Filter/Favoriten/Kostenlos/Ausstellungen/Nähe/Benachrichtigungen)
-          fraß eine umbrechende Reihe auf dem Handy zu viel von der gepinnten
-          Kopfzeile — wächst mit jedem künftigen Button weiter in die Höhe.
-          Eine scrollbare Zeile bleibt dagegen dauerhaft auf einer Zeilenhöhe,
-          Filter/Favoriten stehen als erste Buttons sofort sichtbar. */}
+      {/* Horizontal scrollbar statt umbrechend: mit inzwischen 7 Buttons
+          (Filter/Favoriten/Kostenlos/Ausstellungen/Nähe/Benachrichtigungen/
+          Erinnerung) fraß eine umbrechende Reihe auf dem Handy zu viel von
+          der gepinnten Kopfzeile — wächst mit jedem künftigen Button weiter
+          in die Höhe. Eine scrollbare Zeile bleibt dagegen dauerhaft auf
+          einer Zeilenhöhe, Filter/Favoriten stehen als erste Buttons sofort
+          sichtbar. Das Fade-Overlay am rechten Rand signalisiert, dass noch
+          mehr Buttons folgen — sonst wirkt die Reihe wie vollständig
+          sichtbar und der letzte Button (aktuell "Erinnerung") bleibt
+          unentdeckt. */}
+      <View style={styles.actionButtonRowWrap}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -903,6 +920,14 @@ export default function EventListScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+      <LinearGradient
+        pointerEvents="none"
+        colors={['#0000', '#000']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.actionButtonRowFade}
+      />
+      </View>
 
       <View style={styles.resultCountRow}>
         <Text style={styles.resultCount}>
@@ -1106,7 +1131,24 @@ export default function EventListScreen() {
         // damit der gepinnte Bereich auf dem Handy nicht zu viel Platz frisst.
         stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={<Text style={styles.empty}>Keine Events gefunden.</Text>}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Ionicons name="calendar-clear-outline" size={40} color="#444" />
+            <Text style={styles.emptyTitle}>Keine Events gefunden</Text>
+            {hasAnyActiveFilter ? (
+              <>
+                <Text style={styles.emptyHint}>
+                  Mit den aktuellen Filtern gibt es nichts zu sehen.
+                </Text>
+                <TouchableOpacity style={styles.emptyResetButton} onPress={resetAllFilters}>
+                  <Text style={styles.emptyResetButtonText}>Alle Filter zurücksetzen</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <Text style={styles.emptyHint}>Schau später nochmal vorbei.</Text>
+            )}
+          </View>
+        }
         renderItem={({ item: row }) => {
           if (row.kind === 'banner') {
             return bannerSection;
@@ -1442,6 +1484,18 @@ export default function EventListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  loadingContainer: { flex: 1, backgroundColor: '#000', paddingTop: 24, paddingHorizontal: 16 },
+  skeletonCard: {
+    flexDirection: 'row',
+    backgroundColor: '#141414',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+  },
+  skeletonThumb: { width: 72, height: 72, borderRadius: 12, backgroundColor: '#1f1f1f', marginRight: 12 },
+  skeletonBody: { flex: 1, justifyContent: 'center', gap: 8 },
+  skeletonLine: { height: 12, borderRadius: 6, backgroundColor: '#1f1f1f', width: '80%' },
+  skeletonLineShort: { width: '50%' },
   banner: {
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
@@ -1526,12 +1580,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginRight: 8,
   },
+  actionButtonRowWrap: { position: 'relative' },
   actionButtonRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 8,
     gap: 10,
+  },
+  actionButtonRowFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 8,
+    width: 28,
   },
   filterButton: {
     flexDirection: 'row',
@@ -1696,6 +1758,17 @@ const styles = StyleSheet.create({
   filterTabTextActive: { color: '#000' },
   list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
+  emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 32, gap: 6 },
+  emptyTitle: { color: '#ccc', fontSize: 16, fontWeight: '700', marginTop: 12 },
+  emptyHint: { color: '#666', fontSize: 13, textAlign: 'center' },
+  emptyResetButton: {
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    backgroundColor: '#0af',
+  },
+  emptyResetButtonText: { color: '#000', fontWeight: '700', fontSize: 14 },
   featuredSection: { marginBottom: 18 },
   featuredSectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   featuredSectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
