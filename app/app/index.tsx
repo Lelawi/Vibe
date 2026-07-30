@@ -471,70 +471,93 @@ export default function EventListScreen() {
     };
   }, []);
 
+  // Teure, pro-Event aber unveränderliche Ableitungen (Datum formatieren,
+  // Genre-Regex-Abgleich, Venue-Kanonisierung, Haystack-String bauen) nur
+  // einmal berechnen, wenn sich events ändert — nicht bei jedem Tastendruck
+  // im Suchfeld oder jedem Filter-Toggle neu. Bei 500 Events fiel das nicht
+  // auf, bei 6000+ (seit eventim ganz München abdeckt) machte genau das die
+  // Filterung spürbar ruckelig, weil filteredEvents vorher bei jeder
+  // Abhängigkeitsänderung diese Arbeit für die komplette Liste wiederholte.
+  const enrichedEvents = useMemo(
+    () =>
+      events.map((e) => {
+        const formattedDate = formatDate(e.start_date, e.start_time);
+        const eventGenre = normalizeGenreGroup(e.subcategory ?? e.category);
+        const eventCanonicalLocation = canonicalizeVenue(e.location_name);
+        // Tippfehler-tolerant statt exaktem Teilstring — ein Wort in der
+        // Suchanfrage muss nicht 1:1 vorkommen, kleine Abweichungen (z.B.
+        // "konzret" statt "konzert") werden toleriert. Alle Felder zu einem
+        // Haystack zusammenfassen statt einzeln zu prüfen, damit auch
+        // Suchbegriffe über mehrere Felder hinweg (z.B. "backstage rock")
+        // funktionieren.
+        const haystack = [
+          e.title,
+          e.location_name,
+          e.category,
+          e.subcategory,
+          eventGenre,
+          e.organizer,
+          e.address,
+          e.description,
+          formattedDate,
+          toGermanNumericDates(e.start_date),
+        ]
+          .filter(Boolean)
+          .join(' ');
+        return { ...e, formattedDate, eventGenre, eventCanonicalLocation, haystack };
+      }),
+    [events]
+  );
+
   const categories = useMemo(() => {
     const unique = new Set(events.map((e) => e.category).filter(Boolean));
     return Array.from(unique).sort() as string[];
   }, [events]);
 
   const genres = useMemo(() => {
-    const unique = new Set(
-      events.map((e) => normalizeGenreGroup(e.subcategory ?? e.category)).filter(Boolean)
-    );
+    const unique = new Set(enrichedEvents.map((e) => e.eventGenre).filter(Boolean));
     return Array.from(unique).sort() as string[];
-  }, [events]);
+  }, [enrichedEvents]);
 
   const locations = useMemo(() => {
     const map = new Map<string, Set<string>>();
-    events.forEach((e) => {
+    enrichedEvents.forEach((e) => {
       const orig = e.location_name ?? 'Unbekannt';
-      const key = canonicalizeVenue(orig);
-      if (!map.has(key)) map.set(key, new Set());
-      map.get(key)!.add(orig);
+      if (!map.has(e.eventCanonicalLocation)) map.set(e.eventCanonicalLocation, new Set());
+      map.get(e.eventCanonicalLocation)!.add(orig);
     });
     return Array.from(map.keys()).sort() as string[];
-  }, [events]);
+  }, [enrichedEvents]);
 
   const filteredLocationOptions = useMemo(() => {
     const query = locationSearch.toLowerCase();
     return locations.filter((loc) => loc.toLowerCase().includes(query));
   }, [locations, locationSearch]);
 
+  // Kurze Verzögerung, bevor eine neue Sucheingabe tatsächlich die komplette
+  // Liste neu filtert — das Textfeld selbst (value={search}) bleibt sofort
+  // responsiv, nur die teure Filterung über alle Events wartet, bis kurz
+  // nichts mehr getippt wurde, statt bei jedem einzelnen Zeichen zu laufen.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const filteredEvents = useMemo(() => {
     const { from, to } = dateFilter === 'custom' ? { from: '', to: null } : getDateRange(dateFilter);
 
-    return events.filter((e) => {
-      const formattedDate = formatDate(e.start_date, e.start_time);
-      const eventGenre = normalizeGenreGroup(e.subcategory ?? e.category);
-      // Tippfehler-tolerant statt exaktem Teilstring — ein Wort in der
-      // Suchanfrage muss nicht 1:1 vorkommen, kleine Abweichungen (z.B. "konzret"
-      // statt "konzert") werden toleriert. Alle Felder zu einem Haystack
-      // zusammenfassen statt einzeln zu prüfen, damit auch Suchbegriffe über
-      // mehrere Felder hinweg (z.B. "backstage rock") funktionieren.
-      const haystack = [
-        e.title,
-        e.location_name,
-        e.category,
-        e.subcategory,
-        eventGenre,
-        e.organizer,
-        e.address,
-        e.description,
-        formattedDate,
-        toGermanNumericDates(e.start_date),
-      ]
-        .filter(Boolean)
-        .join(' ');
-      const matchesSearch = fuzzyMatch(haystack, search);
+    return enrichedEvents.filter((e) => {
+      const matchesSearch = fuzzyMatch(e.haystack, debouncedSearch);
       const matchesCategory =
         selectedCategories.length === 0 ||
         (e.category !== null && selectedCategories.includes(e.category));
       const matchesGenre =
         selectedGenres.length === 0 ||
-        selectedGenres.includes(eventGenre);
-      const eventCanonical = canonicalizeVenue(e.location_name);
+        selectedGenres.includes(e.eventGenre);
       const matchesLocation =
         selectedLocations.length === 0 ||
-        selectedLocations.includes(eventCanonical);
+        selectedLocations.includes(e.eventCanonicalLocation);
       // Mehrtägige Events (end_date gesetzt) sollen als "an diesem Tag
       // stattfindend" zählen, solange der Filtertag irgendwo innerhalb ihres
       // Laufzeitraums liegt — nicht nur am Starttag. Daher Bereichsüberlappung
@@ -553,7 +576,7 @@ export default function EventListScreen() {
       const matchesMultiDay = !showMultiDayOnly || (e.end_date !== null && e.end_date !== e.start_date);
       return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate && matchesFavorite && matchesFree && matchesMultiDay;
     });
-  }, [events, search, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites, showFreeOnly, showMultiDayOnly]);
+  }, [enrichedEvents, debouncedSearch, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites, showFreeOnly, showMultiDayOnly]);
 
   // Bündelt wiederkehrende Events (gleicher Titel + gleicher Ort, z.B. eine
   // wöchentliche Partyreihe) zu einer Gruppe. In der Liste wird nur der
