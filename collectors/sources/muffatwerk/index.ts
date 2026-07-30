@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
-import { extractJsonLdEvents, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry, buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
+import { extractJsonLdEvents, extractJsonLdPricesByUrl, extractInMuenchenTeasers, parseGermanDate, checkInMuenchenFreeEntry, buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 
 // Muffatwerk ist derselbe Gebäudekomplex wie die bereits erfasste
 // Muffathalle, aber in-muenchen.de führt beide als eigene Locationseiten mit
@@ -35,8 +35,14 @@ export async function run() {
     const html = await res.text();
     const $ = cheerio.load(html);
 
-    const events = extractJsonLdEvents($);
-    if (!events.length) events.push(...extractInMuenchenTeasers($, MUFFATWERK_URL));
+    // JSON-LD zeigt nur die nächsten ~25 Termine, aber mit echten Preisen;
+    // die Teaser-Liste zeigt alle, aber nie einen Preis. Teaser bleiben die
+    // primäre, vollständige Liste; JSON-LD wird nur zur Preis-Anreicherung
+    // per URL-Abgleich genutzt (Fallback auf JSON-LD als Event-Liste nur,
+    // falls die Teaser-Seite mal leer zurückkommt).
+    const teaserEvents = extractInMuenchenTeasers($, MUFFATWERK_URL);
+    const priceByUrl = extractJsonLdPricesByUrl($);
+    const events = teaserEvents.length ? teaserEvents : extractJsonLdEvents($);
 
     for (const ev of events) {
       let start_date: string | null = null;
@@ -57,7 +63,7 @@ export async function run() {
       const eventUrl = ev.url ?? MUFFATWERK_URL;
       const sourceId = buildStableSourceId('muffatwerk', String(eventUrl), start_date);
       const coords = await getCoordinates(supabase, 'Muffatwerk', MUFFATWERK_ADDRESS, 'München');
-      const price_info = await checkInMuenchenFreeEntry(eventUrl);
+      const price_info = priceByUrl.get(String(eventUrl)) ?? (await checkInMuenchenFreeEntry(eventUrl));
 
       collected.push({
         source_id: sourceId,

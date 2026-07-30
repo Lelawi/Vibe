@@ -85,9 +85,28 @@ function nodeToEvent(node: any): ParsedEvent | null {
   };
 }
 
+// schema.org kennt neben dem generischen "Event" auch benannte Subtypen
+// (TheaterEvent, MusicEvent, ComedyEvent, ScreeningEvent, SportsEvent,
+// ExhibitionEvent, ...), die alle gültige Event-Knoten sind. in-muenchen.de
+// nutzt genau das (TheaterEvent) für seine Venue-Seiten — ein reiner
+// "=== 'Event'"-Vergleich hätte diese Knoten komplett ignoriert (per
+// Direktabruf verifiziert, 2026-07: dadurch griff für alle ~19
+// in-muenchen.de-Collectors nie diese JSON-LD-Route, sondern immer der
+// schwächere extractInMuenchenTeasers()-Fallback, obwohl die echten Daten
+// die ganze Zeit im JSON-LD lagen — inklusive echter Ticketpreise über
+// offers.price, die die separate checkInMuenchenFreeEntry()-Detailseiten-
+// Prüfung strukturell nie findet, weil die Event-Detailseite selbst nie
+// Beträge zeigt, nur die hier gescrapte Venue-Übersichtsseite).
+function isEventType(type: unknown): boolean {
+  if (typeof type === 'string') return type === 'Event' || type.endsWith('Event');
+  if (Array.isArray(type)) return type.some(isEventType);
+  return false;
+}
+
 // Sammelt alle schema.org "Event"-Knoten aus JSON-LD <script>-Tags einer Seite,
-// inkl. verschachtelter @graph- und ItemList-Strukturen, wie sie von vielen
-// deutschen CMS (TYPO3, WordPress-Eventplugins) für SEO ausgegeben werden.
+// inkl. verschachtelter @graph-, ItemList- und LocalBusiness/Place.event-
+// Strukturen, wie sie von vielen deutschen CMS (TYPO3, WordPress-
+// Eventplugins) für SEO ausgegeben werden.
 export function extractJsonLdEvents($: CheerioAPI): ParsedEvent[] {
   const events: ParsedEvent[] = [];
 
@@ -100,8 +119,7 @@ export function extractJsonLdEvents($: CheerioAPI): ParsedEvent[] {
     if (typeof node !== 'object') return;
 
     const type = node['@type'];
-    const isEvent = type === 'Event' || (Array.isArray(type) && type.includes('Event'));
-    if (isEvent) {
+    if (isEventType(type)) {
       const ev = nodeToEvent(node);
       if (ev) events.push(ev);
     }
@@ -109,6 +127,10 @@ export function extractJsonLdEvents($: CheerioAPI): ParsedEvent[] {
     if (type === 'ItemList' && Array.isArray(node.itemListElement)) {
       for (const item of node.itemListElement) visit(item?.item ?? item);
     }
+    // z.B. LocalBusiness/Place mit einem verschachtelten "event"-Feld
+    // (Einzelobjekt oder Array) — nicht selbst ein Event-Knoten, aber Träger
+    // von welchen.
+    if (node.event) visit(node.event);
   };
 
   const scripts = $('script[type="application/ld+json"]')
@@ -125,6 +147,22 @@ export function extractJsonLdEvents($: CheerioAPI): ParsedEvent[] {
   }
 
   return events;
+}
+
+// Baut eine URL -> Preisinfo-Map aus dem JSON-LD einer in-muenchen.de-Venue-
+// Seite. Bewusst als Zusatzquelle statt als Ersatz für extractInMuenchenTeasers:
+// das JSON-LD zeigt pro Seite nur die nächsten ~25 Termine (per Direktabruf
+// verifiziert, 2026-07: 25 JSON-LD-Events gegenüber 80-100 Teaser-Events auf
+// derselben Seite), die Teaser-Liste dagegen alle sichtbaren Termine. Nur für
+// die überlappende Teilmenge lässt sich so der echte Ticketpreis ergänzen,
+// den checkInMuenchenFreeEntry() strukturell nie findet (die Event-
+// Detailseite selbst zeigt nie Beträge, nur "Eintritt frei" oder gar nichts).
+export function extractJsonLdPricesByUrl($: CheerioAPI): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const ev of extractJsonLdEvents($)) {
+    if (ev.url && ev.priceInfo) map.set(ev.url, ev.priceInfo);
+  }
+  return map;
 }
 
 // Findet Links auf einer Seite, deren sichtbarer Text ein erkennbares Datum
