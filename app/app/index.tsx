@@ -1200,7 +1200,15 @@ export default function EventListScreen() {
                       <Text style={styles.seriesBadge}>{group.length} Termine</Text>
                     </View>
                   )}
-                  {item.sold_out === true && <Text style={styles.soldOutBadge}>Ausverkauft</Text>}
+                  {/* Bei einer Serie nur "Ausverkauft" zeigen, wenn wirklich
+                      ALLE Termine ausverkauft sind — sonst wäre die Karte
+                      irreführend, obwohl group[0] (der nächste Termin) nur
+                      einer von vielen ist und andere Termine noch buchbar
+                      sein können. Preis/Status pro Termin steht stattdessen
+                      in der aufgeklappten Terminliste. */}
+                  {(hasMore ? group.every((g) => g.sold_out === true) : item.sold_out === true) && (
+                    <Text style={styles.soldOutBadge}>Ausverkauft</Text>
+                  )}
                 </View>
                 <Text style={styles.title}>{item.title}</Text>
                 <Text style={styles.meta}>
@@ -1381,6 +1389,10 @@ export default function EventListScreen() {
                   }}
                 >
                   <Text style={styles.modalRowText}>{formatDate(item.start_date, item.start_time)}</Text>
+                  <View style={styles.modalRowMeta}>
+                    {item.price_info && <Text style={styles.modalRowPrice}>{item.price_info}</Text>}
+                    {item.sold_out === true && <Text style={styles.soldOutBadge}>Ausverkauft</Text>}
+                  </View>
                 </TouchableOpacity>
               )}
               ListFooterComponent={
@@ -1843,6 +1855,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   modalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
@@ -1851,6 +1866,8 @@ const styles = StyleSheet.create({
   modalRowActive: { backgroundColor: '#0af1' },
   modalRowText: { color: '#ccc', fontSize: 15 },
   modalRowTextActive: { color: '#0af', fontWeight: '700' },
+  modalRowMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modalRowPrice: { color: '#999', fontSize: 13 },
   modalButtonRow: {
     flexDirection: 'row',
     gap: 10,
