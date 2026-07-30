@@ -1,0 +1,96 @@
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import { supabase } from '../lib/supabase';
+import { isOpenNow } from '../lib/openingHours';
+import type { BarMarker } from './BarsLeafletView.web';
+
+// Lädt die eigentliche Leaflet-Karte erst zur Laufzeit im Browser — gleicher
+// Grund wie bei MapNative.web.tsx: Leaflet greift beim Modul-Import direkt
+// auf window/document zu und würde den statischen Web-Export-Prerender
+// (expo export --platform web) zum Absturz bringen.
+const BarsLeafletView = lazy(() => import('./BarsLeafletView.web'));
+
+type RawBar = {
+  id: string;
+  name: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  opening_hours_raw: string | null;
+  website: string | null;
+};
+
+const MUNICH_CENTER = { lat: 48.1371, lng: 11.5754 };
+
+export default function BarsMapNative() {
+  const [bars, setBars] = useState<RawBar[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  }, []);
+
+  useEffect(() => {
+    async function loadBars() {
+      const { data, error } = await supabase
+        .from('bars')
+        .select('id,name,address,latitude,longitude,opening_hours_raw,website')
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null);
+      if (!error) setBars((data ?? []) as RawBar[]);
+      setLoading(false);
+    }
+    loadBars();
+  }, []);
+
+  const markers: BarMarker[] = useMemo(
+    () =>
+      bars.map((b) => ({
+        id: b.id,
+        name: b.name,
+        address: b.address,
+        latitude: b.latitude!,
+        longitude: b.longitude!,
+        opening_hours_raw: b.opening_hours_raw,
+        open: isOpenNow(b.opening_hours_raw),
+        website: b.website,
+      })),
+    [bars]
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#fff" />
+      </View>
+    );
+  }
+
+  return (
+    <Suspense
+      fallback={
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      }
+    >
+      <BarsLeafletView
+        bars={markers}
+        centerLat={userLocation?.lat ?? MUNICH_CENTER.lat}
+        centerLng={userLocation?.lng ?? MUNICH_CENTER.lng}
+        zoom={userLocation ? 15 : 13}
+        userLocation={userLocation}
+      />
+    </Suspense>
+  );
+}
+
+const styles = StyleSheet.create({
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+});

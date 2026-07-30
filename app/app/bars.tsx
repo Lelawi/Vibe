@@ -9,17 +9,22 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Linking,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { isOpenNow, todayLabel } from '../lib/openingHours';
 import { fuzzyMatch } from '../lib/fuzzySearch';
+import { distanceKm, formatDistance } from '../lib/geo';
 
 type Bar = {
   id: string;
   name: string;
   address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   opening_hours_raw: string | null;
   website: string | null;
   phone: string | null;
@@ -45,10 +50,33 @@ export default function BarsScreen() {
   const [nearbyEvents, setNearbyEvents] = useState<NearbyEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
 
   function goBack() {
     if (router.canGoBack()) router.back();
     else router.replace('/');
+  }
+
+  function toggleNearby() {
+    if (userLocation) {
+      setUserLocation(null);
+      setLocationStatus('idle');
+      return;
+    }
+    if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationStatus('denied');
+      return;
+    }
+    setLocationStatus('loading');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocationStatus('idle');
+      },
+      () => setLocationStatus('denied'),
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
   }
 
   useEffect(() => {
@@ -62,7 +90,7 @@ export default function BarsScreen() {
       const [barsRes, eventsRes] = await Promise.all([
         supabase
           .from('bars')
-          .select('id,name,address,opening_hours_raw,website,phone')
+          .select('id,name,address,latitude,longitude,opening_hours_raw,website,phone')
           .order('name', { ascending: true }),
         supabase
           .from('events')
@@ -102,13 +130,21 @@ export default function BarsScreen() {
       open: isOpenNow(bar.opening_hours_raw, now),
       hoursToday: todayLabel(bar.opening_hours_raw, now),
       program: eventsByVenue.get(canonicalizeVenue(bar.name)) ?? [],
+      distanceKm:
+        userLocation && bar.latitude != null && bar.longitude != null
+          ? distanceKm(userLocation.lat, userLocation.lng, bar.latitude, bar.longitude)
+          : null,
     }));
-  }, [bars, eventsByVenue]);
+  }, [bars, eventsByVenue, userLocation]);
 
   const filteredBars = useMemo(() => {
     return enrichedBars
       .filter((b) => fuzzyMatch([b.name, b.address].filter(Boolean).join(' '), search))
       .sort((a, b) => {
+        // Bei aktiver Nähe-Suche zählt nur die Entfernung — der eigentliche
+        // Zweck ist "was ist gleich um die Ecke", eine offene Bar 3km weiter
+        // weg soll eine geschlossene direkt nebenan nicht überstimmen.
+        if (a.distanceKm != null && b.distanceKm != null) return a.distanceKm - b.distanceKm;
         const priorityDiff = OPEN_PRIORITY[openState(a.open)] - OPEN_PRIORITY[openState(b.open)];
         if (priorityDiff !== 0) return priorityDiff;
         return a.name.localeCompare(b.name, 'de');
@@ -135,19 +171,45 @@ export default function BarsScreen() {
       </TouchableOpacity>
 
       <View style={styles.headerBlock}>
-        <Text style={styles.title}>Bars</Text>
-        <Text style={styles.subtitle}>
-          {openCount} von {filteredBars.length} gerade geöffnet
-        </Text>
+        <View style={styles.headerTitleRow}>
+          <View>
+            <Text style={styles.title}>Bars</Text>
+            <Text style={styles.subtitle}>
+              {openCount} von {filteredBars.length} gerade geöffnet
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.mapButton} onPress={() => router.push('/bars-map')}>
+            <Ionicons name="map-outline" size={15} color="#fff" />
+            <Text style={styles.mapButtonText}>Karte</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <TextInput
-        style={styles.search}
-        placeholder="Bar oder Adresse suchen..."
-        placeholderTextColor="#666"
-        value={search}
-        onChangeText={setSearch}
-      />
+      <View style={styles.toolRow}>
+        <TextInput
+          style={styles.search}
+          placeholder="Bar oder Adresse suchen..."
+          placeholderTextColor="#666"
+          value={search}
+          onChangeText={setSearch}
+        />
+        {Platform.OS === 'web' && (
+          <TouchableOpacity
+            style={[styles.nearbyButton, userLocation && styles.nearbyButtonActive]}
+            onPress={toggleNearby}
+            disabled={locationStatus === 'loading'}
+          >
+            {locationStatus === 'loading' ? (
+              <ActivityIndicator size="small" color="#999" />
+            ) : (
+              <Ionicons name="location-outline" size={16} color={userLocation ? '#000' : '#999'} />
+            )}
+            <Text style={[styles.nearbyButtonText, userLocation && styles.nearbyButtonTextActive]}>
+              {locationStatus === 'loading' ? 'Lädt…' : 'Nähe'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       <FlatList
         data={filteredBars}
@@ -161,7 +223,13 @@ export default function BarsScreen() {
               {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
               {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
             </View>
-            {item.address && <Text style={styles.barAddress}>{item.address}</Text>}
+            {(item.address || item.distanceKm != null) && (
+              <Text style={styles.barAddress}>
+                {item.address}
+                {item.address && item.distanceKm != null ? ' · ' : ''}
+                {item.distanceKm != null ? formatDistance(item.distanceKm) : ''}
+              </Text>
+            )}
             {item.hoursToday ? (
               <Text style={styles.barHours}>Heute: {item.hoursToday}</Text>
             ) : item.opening_hours_raw ? (
@@ -199,11 +267,24 @@ const styles = StyleSheet.create({
   backBar: { paddingHorizontal: 16, paddingVertical: 12 },
   backBarText: { color: '#0af', fontSize: 15, fontWeight: '600' },
   headerBlock: { paddingHorizontal: 16, marginBottom: 12 },
+  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   title: { color: '#fff', fontSize: 24, fontWeight: '700' },
   subtitle: { color: '#888', fontSize: 13, marginTop: 2 },
+  mapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  mapButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  toolRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 12, alignItems: 'center' },
   search: {
-    marginHorizontal: 16,
-    marginBottom: 12,
+    flex: 1,
     backgroundColor: '#141414',
     borderRadius: 12,
     paddingHorizontal: 14,
@@ -211,6 +292,18 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
   },
+  nearbyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  nearbyButtonActive: { backgroundColor: '#0af' },
+  nearbyButtonText: { color: '#999', fontSize: 14, fontWeight: '600' },
+  nearbyButtonTextActive: { color: '#000' },
   listContent: { paddingHorizontal: 16, paddingBottom: 40 },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   card: {

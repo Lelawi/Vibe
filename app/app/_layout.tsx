@@ -41,6 +41,7 @@ export default function Layout() {
         {/* Eigener "‹ Übersicht"-Button im Screen selbst, gleiches Muster wie
             bei event/[id] — kein natives Header nötig. */}
         <Stack.Screen name="bars" options={{ title: 'Bars', headerShown: false }} />
+        <Stack.Screen name="bars-map" options={{ title: 'Bars-Karte' }} />
       </Stack>
     </>
   );
