@@ -4,6 +4,7 @@ import {
   Text,
   View,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
@@ -51,6 +52,23 @@ type NearbyEvent = {
   start_time: string | null;
 };
 
+type EnrichedVenue = Venue & {
+  effectiveHours: string | null;
+  open: boolean | null;
+  hoursToday: string | null;
+  program: NearbyEvent[];
+  closureStatus: ClosureStatus | null;
+  distanceKm: number | null;
+};
+
+// Eine eigene Zeilen-Union statt filteredVenues direkt als FlatList-data, nach
+// demselben Muster wie index.tsx (ListRow: banner/featured/group): der
+// Banner (Titel+Switcher+Karte) und der "nichts gefunden"-Hinweis sollen als
+// normale Listenzeilen scrollen bzw. angezeigt werden, nicht über FlatLists
+// eigenes ListEmptyComponent — das feuert nie, solange data mindestens die
+// Banner-Zeile enthält.
+type ListRow = { kind: 'banner' } | { kind: 'empty' } | { kind: 'venue'; venue: EnrichedVenue };
+
 const OPEN_PRIORITY: Record<'open' | 'unknown' | 'closed', number> = { open: 0, unknown: 1, closed: 2 };
 
 function openState(open: boolean | null): 'open' | 'unknown' | 'closed' {
@@ -97,10 +115,12 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
   const [closureStatusByVenue, setClosureStatusByVenue] = useState<Map<string, ClosureStatus>>(new Map());
-  // "cards" (großes Bild oben, an die Eventseite angelehnt) ist der Default;
-  // "compact" (kleine Vorschau, mehr auf einen Blick) bleibt über den Toggle
-  // erreichbar, falls die großen Bilder z.B. neben der Karte zu wuchtig wirken.
-  const [viewMode, setViewMode] = useState<'cards' | 'compact'>('cards');
+  // "compact" (kleine Vorschau links, viel auf einen Blick) ist der Default,
+  // exakt wie die normale Event-Liste in index.tsx — "cards" (großes Bild
+  // oben) bleibt für alle erreichbar, die die Bild-Vorschau lieber größer
+  // haben wollen, ist bei Events aber nur der Sonderfall der "Empfohlen für
+  // dich"-Karussellzeile, nicht der Standard.
+  const [viewMode, setViewMode] = useState<'compact' | 'cards'>('compact');
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [cuisineFilter, setCuisineFilter] = useState<string | null>(null);
   const { favorites, isFavorite, toggleFavorite } = useVenueFavorites();
@@ -286,15 +306,21 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   }, [enrichedVenues, search, onlyOpen, cuisineFilter, favorites]);
 
   const openCount = useMemo(() => filteredVenues.filter((v) => v.open === true).length, [filteredVenues]);
-
   const switcherActive = type === 'bar' ? 'bars' : 'restaurants';
-
   const hasAnyActiveFilter = search.trim() !== '' || onlyOpen || cuisineFilter !== null;
+
   function resetAllFilters() {
     setSearch('');
     setOnlyOpen(false);
     setCuisineFilter(null);
   }
+
+  const listData: ListRow[] = useMemo(() => {
+    const rows: ListRow[] = [{ kind: 'banner' }];
+    if (filteredVenues.length === 0) rows.push({ kind: 'empty' });
+    else filteredVenues.forEach((venue) => rows.push({ kind: 'venue', venue }));
+    return rows;
+  }, [filteredVenues]);
 
   if (loading) {
     // Platzhalter-Karten statt nacktem Spinner — an die Eventseite angelehnt
@@ -315,111 +341,170 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <LinearGradient
-        colors={['#2a0a4a', '#12082e', '#000000']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.banner}
-      >
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.header}>{config.title}</Text>
-            <Text style={styles.subheader}>
-              {openCount} von {filteredVenues.length} gerade geöffnet
-            </Text>
-            {hasAnyActiveFilter && (
-              <TouchableOpacity onPress={resetAllFilters}>
-                <Text style={styles.resetLink}>Alle Filter zurücksetzen</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <ViewSwitcher active={switcherActive} />
+  // Scrollt als normale erste Zeile weg statt gepinnt zu bleiben — exakt wie
+  // der "Vibe"-Banner in index.tsx, damit der angeheftete Bereich (Suche/
+  // Filter) auf dem Handy nicht zu viel Platz frisst.
+  const bannerSection = (
+    <LinearGradient
+      colors={['#2a0a4a', '#12082e', '#000000']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.banner}
+    >
+      <View style={styles.headerRow}>
+        <View>
+          <Text style={styles.header}>{config.title}</Text>
+          <Text style={styles.subheader}>
+            {openCount} von {filteredVenues.length} gerade geöffnet
+          </Text>
         </View>
-
-        <View style={styles.toolRow}>
-          <TextInput
-            style={styles.search}
-            placeholder={config.searchPlaceholder}
-            placeholderTextColor="#666"
-            value={search}
-            onChangeText={setSearch}
-          />
-          {Platform.OS === 'web' && (
-            <TouchableOpacity
-              style={[styles.iconButton, userLocation && styles.iconButtonActive]}
-              onPress={toggleNearby}
-              disabled={locationStatus === 'loading'}
-            >
-              {locationStatus === 'loading' ? (
-                <ActivityIndicator size="small" color="#999" />
-              ) : (
-                <Ionicons name="location-outline" size={16} color={userLocation ? '#000' : '#ccc'} />
-              )}
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={[styles.iconButton, onlyOpen && styles.iconButtonActive]}
-            onPress={() => setOnlyOpen((v) => !v)}
-          >
-            <Ionicons name="time-outline" size={16} color={onlyOpen ? '#000' : '#ccc'} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => setViewMode((m) => (m === 'cards' ? 'compact' : 'cards'))}
-          >
-            <Ionicons name={viewMode === 'cards' ? 'list-outline' : 'image-outline'} size={16} color="#ccc" />
-          </TouchableOpacity>
+        <View style={styles.headerButtonRow}>
+          <ViewSwitcher active={switcherActive} />
           <TouchableOpacity style={styles.mapButton} onPress={() => router.push(config.mapRoute)}>
             <Ionicons name="map-outline" size={15} color="#fff" />
             <Text style={styles.mapButtonText}>Karte</Text>
           </TouchableOpacity>
         </View>
+      </View>
+    </LinearGradient>
+  );
+
+  const listHeader = (
+    <View style={styles.listHeaderWrap}>
+      <View style={styles.stickyControls}>
+        <View style={styles.searchWrap}>
+          <TextInput
+            style={[styles.search, styles.searchInput]}
+            placeholder={config.searchPlaceholder}
+            placeholderTextColor="#666"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity style={styles.searchClearBtn} onPress={() => setSearch('')}>
+              <Text style={styles.searchClearBtnText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {cuisineOptions.length > 0 && (
-          <FlatList
-            horizontal
-            data={['Alle', ...cuisineOptions]}
-            keyExtractor={(c) => c}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.cuisineRow}
-            renderItem={({ item: cuisine }) => {
-              const active = cuisine === 'Alle' ? !cuisineFilter : cuisineFilter === cuisine;
-              return (
-                <TouchableOpacity
-                  style={[styles.cuisineChip, active && styles.cuisineChipActive]}
-                  onPress={() => setCuisineFilter(cuisine === 'Alle' ? null : cuisine)}
-                >
-                  <Text style={[styles.cuisineChipText, active && styles.cuisineChipTextActive]}>{cuisine}</Text>
-                </TouchableOpacity>
-              );
-            }}
-          />
-        )}
-      </LinearGradient>
-
-      <FlatList
-        data={filteredVenues}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name={config.icon} size={40} color="#444" />
-            <Text style={styles.emptyTitle}>{config.emptyText}</Text>
-            {hasAnyActiveFilter ? (
-              <>
-                <Text style={styles.emptyHint}>Mit den aktuellen Filtern gibt es nichts zu sehen.</Text>
-                <TouchableOpacity style={styles.emptyResetButton} onPress={resetAllFilters}>
-                  <Text style={styles.emptyResetButtonText}>Alle Filter zurücksetzen</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <Text style={styles.emptyHint}>Schau später nochmal vorbei.</Text>
-            )}
+          <View style={styles.controlRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cuisineScrollContent}
+              style={styles.cuisineScroll}
+            >
+              {['Alle', ...cuisineOptions].map((cuisine) => {
+                const active = cuisine === 'Alle' ? !cuisineFilter : cuisineFilter === cuisine;
+                return (
+                  <TouchableOpacity
+                    key={cuisine}
+                    style={[styles.filterChip, active && styles.filterChipActive]}
+                    onPress={() => setCuisineFilter(cuisine === 'Alle' ? null : cuisine)}
+                  >
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{cuisine}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
-        }
-        renderItem={({ item }) => {
+        )}
+
+        <View style={styles.actionButtonRowWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.actionButtonRow}
+          >
+            <TouchableOpacity
+              style={[styles.filterButton, onlyOpen && styles.filterChipActive]}
+              onPress={() => setOnlyOpen((v) => !v)}
+            >
+              <Ionicons name="time-outline" size={16} color={onlyOpen ? '#000' : '#999'} />
+              <Text style={[styles.filterButtonText, onlyOpen && styles.filterChipTextActive]}>Nur geöffnet</Text>
+            </TouchableOpacity>
+
+            {Platform.OS === 'web' && (
+              <TouchableOpacity
+                style={[styles.filterButton, userLocation && styles.filterChipActive]}
+                onPress={toggleNearby}
+                disabled={locationStatus === 'loading'}
+              >
+                {locationStatus === 'loading' ? (
+                  <ActivityIndicator size="small" color="#999" />
+                ) : (
+                  <Ionicons name="location-outline" size={16} color={userLocation ? '#000' : '#999'} />
+                )}
+                <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
+                  {locationStatus === 'loading' ? 'Lädt…' : 'Nähe'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.filterButton}
+              onPress={() => setViewMode((m) => (m === 'compact' ? 'cards' : 'compact'))}
+            >
+              <Ionicons name={viewMode === 'compact' ? 'image-outline' : 'list-outline'} size={16} color="#999" />
+              <Text style={styles.filterButtonText}>{viewMode === 'compact' ? 'Bild-Karten' : 'Kompakt'}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+          <LinearGradient
+            pointerEvents="none"
+            colors={['#0000', '#000']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.actionButtonRowFade}
+          />
+        </View>
+
+        <View style={styles.resultCountRow}>
+          <Text style={styles.resultCount}>
+            {filteredVenues.length} {filteredVenues.length === 1 ? config.title.slice(0, -1) : config.title} gefunden
+          </Text>
+          {hasAnyActiveFilter && (
+            <TouchableOpacity onPress={resetAllFilters}>
+              <Text style={styles.resultCountResetLink}>Alle Filter zurücksetzen</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <FlatList
+        data={listData}
+        keyExtractor={(row) => (row.kind === 'venue' ? row.venue.id : row.kind)}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={listHeader}
+        stickyHeaderIndices={[0]}
+        keyboardShouldPersistTaps="handled"
+        renderItem={({ item: row }) => {
+          if (row.kind === 'banner') return bannerSection;
+
+          if (row.kind === 'empty') {
+            return (
+              <View style={styles.emptyState}>
+                <Ionicons name={config.icon} size={40} color="#444" />
+                <Text style={styles.emptyTitle}>{config.emptyText}</Text>
+                {hasAnyActiveFilter ? (
+                  <>
+                    <Text style={styles.emptyHint}>Mit den aktuellen Filtern gibt es nichts zu sehen.</Text>
+                    <TouchableOpacity style={styles.emptyResetButton} onPress={resetAllFilters}>
+                      <Text style={styles.emptyResetButtonText}>Alle Filter zurücksetzen</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={styles.emptyHint}>Schau später nochmal vorbei.</Text>
+                )}
+              </View>
+            );
+          }
+
+          const item = row.venue;
           const hasCoords = item.latitude != null && item.longitude != null;
           const onPress = () =>
             router.push({
@@ -522,19 +607,17 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             </LinearGradient>
           );
 
-          if (viewMode === 'compact') {
+          if (viewMode === 'cards') {
             return (
-              <TouchableOpacity style={styles.compactCard} disabled={!hasCoords} onPress={onPress}>
-                {image}
-                <View style={styles.cardBody}>
-                  <View style={styles.cardHeaderRow}>
-                    <Text style={styles.venueName}>{item.name}</Text>
-                    <View style={styles.cardHeaderBadges}>
-                      {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-                      {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
-                      {favoriteButton}
-                    </View>
-                  </View>
+              <TouchableOpacity style={styles.cardsCard} disabled={!hasCoords} onPress={onPress}>
+                <View style={styles.cardsImageWrap}>
+                  {image}
+                  <View style={styles.favoriteBtnOverlay}>{favoriteButton}</View>
+                  {item.open === true && <Text style={[styles.openBadge, styles.badgeOverlay]}>Geöffnet</Text>}
+                  {item.open === false && <Text style={[styles.closedBadge, styles.badgeOverlay]}>Geschlossen</Text>}
+                </View>
+                <View style={styles.cardsBody}>
+                  <Text style={styles.venueName}>{item.name}</Text>
                   {(item.address || item.distanceKm != null || cuisineLabel) && (
                     <Text style={styles.venueAddress}>
                       {cuisineLabel ? `${cuisineLabel} · ` : ''}
@@ -555,15 +638,17 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           }
 
           return (
-            <TouchableOpacity style={styles.cardsCard} disabled={!hasCoords} onPress={onPress}>
-              <View style={styles.cardsImageWrap}>
-                {image}
-                <View style={styles.favoriteBtnOverlay}>{favoriteButton}</View>
-                {item.open === true && <Text style={[styles.openBadge, styles.badgeOverlay]}>Geöffnet</Text>}
-                {item.open === false && <Text style={[styles.closedBadge, styles.badgeOverlay]}>Geschlossen</Text>}
-              </View>
-              <View style={styles.cardsBody}>
-                <Text style={styles.venueName}>{item.name}</Text>
+            <TouchableOpacity style={styles.compactCard} disabled={!hasCoords} onPress={onPress}>
+              {image}
+              <View style={styles.cardBody}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.venueName}>{item.name}</Text>
+                  <View style={styles.cardHeaderBadges}>
+                    {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
+                    {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                    {favoriteButton}
+                  </View>
+                </View>
                 {(item.address || item.distanceKm != null || cuisineLabel) && (
                   <Text style={styles.venueAddress}>
                     {cuisineLabel ? `${cuisineLabel} · ` : ''}
@@ -602,7 +687,11 @@ const styles = StyleSheet.create({
   skeletonBody: { flex: 1, justifyContent: 'center', gap: 8 },
   skeletonLine: { height: 12, borderRadius: 6, backgroundColor: '#1f1f1f', width: '80%' },
   skeletonLineShort: { width: '50%' },
-  resetLink: { color: '#0af', fontSize: 12, fontWeight: '600', marginTop: 4 },
+  // Deckt den gesamten gepinnten Header opak ab (siehe stickyHeaderIndices
+  // an der FlatList) — sonst würden hochscrollende Karten durch transparente
+  // Lücken zwischen den Header-Zeilen hindurchschimmern.
+  listHeaderWrap: { backgroundColor: '#000' },
+  stickyControls: { paddingTop: 12 },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 32, gap: 6 },
   emptyTitle: { color: '#ccc', fontSize: 16, fontWeight: '700', marginTop: 12 },
   emptyHint: { color: '#666', fontSize: 13, textAlign: 'center' },
@@ -614,46 +703,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#0af',
   },
   emptyResetButtonText: { color: '#000', fontWeight: '700', fontSize: 14 },
-  banner: { borderBottomLeftRadius: 28, borderBottomRightRadius: 28, paddingBottom: 16 },
+  banner: { borderBottomLeftRadius: 28, borderBottomRightRadius: 28, paddingBottom: 22 },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 20,
   },
+  headerButtonRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   header: { fontSize: 30, fontWeight: '800', color: '#fff' },
-  cuisineRow: { paddingHorizontal: 16, marginTop: 12, gap: 8 },
-  cuisineChip: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-  },
-  cuisineChipActive: { backgroundColor: '#0af' },
-  cuisineChipText: { color: '#ccc', fontSize: 13, fontWeight: '600' },
-  cuisineChipTextActive: { color: '#000' },
   subheader: { fontSize: 14, color: '#cbb8f0', marginTop: 2 },
-  toolRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginTop: 16, alignItems: 'center' },
-  search: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#fff',
-    fontSize: 16,
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconButtonActive: { backgroundColor: '#0af' },
   mapButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -661,13 +721,69 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 14,
+    borderRadius: 20,
     paddingHorizontal: 14,
-    height: 44,
+    paddingVertical: 8,
   },
   mapButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  listContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
-  // Kompakte Ansicht: kleine Vorschau, mehr Einträge auf einen Blick.
+  search: {
+    backgroundColor: '#141414',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: '#fff',
+    // Mind. 16px, sonst zoomt iOS Safari beim Fokussieren automatisch rein.
+    fontSize: 16,
+  },
+  searchWrap: { marginHorizontal: 16, marginTop: 4, marginBottom: 10, position: 'relative', justifyContent: 'center' },
+  searchInput: { paddingRight: 38 },
+  searchClearBtn: {
+    position: 'absolute',
+    right: 6,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  searchClearBtnText: { color: '#666', fontSize: 14 },
+  controlRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16, marginBottom: 8 },
+  cuisineScroll: { flex: 1 },
+  cuisineScrollContent: { paddingRight: 8, alignItems: 'center' },
+  filterChip: {
+    backgroundColor: '#141414',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginRight: 8,
+  },
+  filterChipActive: { backgroundColor: '#0af' },
+  filterChipText: { color: '#999', fontSize: 13, fontWeight: '600' },
+  filterChipTextActive: { color: '#000' },
+  actionButtonRowWrap: { position: 'relative' },
+  actionButtonRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 10 },
+  actionButtonRowFade: { position: 'absolute', right: 0, top: 0, bottom: 8, width: 28 },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#141414',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  filterButtonText: { color: '#999', fontSize: 13, fontWeight: '600' },
+  resultCountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  resultCount: { color: '#666', fontSize: 12 },
+  resultCountResetLink: { color: '#888', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
+  listContent: { paddingHorizontal: 16, paddingBottom: 40 },
+  // Kompakte Ansicht: kleine Vorschau, mehr Einträge auf einen Blick — der
+  // Standard, exakt wie die normale Event-Liste in index.tsx.
   compactCard: {
     flexDirection: 'row',
     backgroundColor: '#141414',
@@ -686,8 +802,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Bild-Karten-Ansicht: großes Bild oben, an die Eventseite angelehnt
-  // (index.tsx-Kartenlayout), statt der kleinen seitlichen Vorschau.
+  // Bild-Karten-Ansicht: großes Bild oben (wie index.tsx's "Empfohlen für
+  // dich"-Karussellkarten), über den Ansicht-Toggle erreichbar statt Standard.
   cardsCard: {
     backgroundColor: '#141414',
     borderRadius: 16,
@@ -710,7 +826,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#4ade80',
-    backgroundColor: '#1a1a1aee',
+    backgroundColor: '#4ade8022',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -719,7 +835,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#ff6b6b',
-    backgroundColor: '#1a1a1aee',
+    backgroundColor: '#ff6b6b22',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
