@@ -37,6 +37,7 @@ import { run as runOktoberfestEvents } from './sources/oktoberfest_events/index.
 import { run as runEintrittfreiMuenchen } from './sources/eintrittfrei_muenchen/index.js';
 import { run as runEventim } from './sources/eventim/index.js';
 import { run as runWannda } from './sources/wannda/index.js';
+import { run as runKinoMondSterne } from './sources/kino_mond_sterne/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -126,6 +127,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'eintrittfrei-muenchen', run: runEintrittfreiMuenchen },
   { name: 'eventim', run: runEventim, host: 'public-api.eventim.com' },
   { name: 'wannda', run: runWannda },
+  { name: 'kino-mond-sterne', run: runKinoMondSterne },
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.

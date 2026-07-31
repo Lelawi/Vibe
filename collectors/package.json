@@ -39,6 +39,7 @@
     "eintrittfrei-muenchen": "tsx sources/eintrittfrei_muenchen/index.ts",
     "eventim": "tsx sources/eventim/index.ts",
     "wannda": "tsx sources/wannda/index.ts",
+    "kino-mond-sterne": "tsx sources/kino_mond_sterne/index.ts",
     "bars": "tsx sources/bars/index.ts",
     "restaurants": "tsx sources/restaurants/index.ts",
     "spaetis": "tsx sources/spaetis/index.ts",
