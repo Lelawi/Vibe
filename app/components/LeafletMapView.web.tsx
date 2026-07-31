@@ -117,7 +117,17 @@ function FocusTarget({
       if (parent) {
         parent.spiderfy();
         setTimeout(() => marker.openPopup(), 50);
+        return;
       }
+      // Marker existiert bereits als React-Ref, ist aber von der
+      // MarkerClusterGroup noch keinem Cluster zugeordnet UND noch nicht
+      // direkt auf der Karte (weder hasLayer noch __parent) — bei großen
+      // Listen fügt leaflet.markercluster seine Layer teils über mehrere
+      // Frames verzögert hinzu (chunkedLoading). Ohne diesen Retry blieb der
+      // Klick dann wortlos wirkungslos (identischer Bug wie in
+      // VenueLeafletView.web.tsx, dort per Nutzer-Feedback bei Restaurants
+      // — der mit Abstand größten Liste — beobachtet).
+      if (attempts++ < 20) setTimeout(tryFocus, 100);
     }
     tryFocus();
     return () => {

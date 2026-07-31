@@ -136,7 +136,17 @@ function FocusTarget({
       if (parent) {
         parent.spiderfy();
         setTimeout(() => marker.openPopup(), 50);
+        return;
       }
+      // Marker existiert bereits als React-Ref, ist aber von der
+      // MarkerClusterGroup noch keinem Cluster zugeordnet UND noch nicht
+      // direkt auf der Karte (weder hasLayer noch __parent) — bei sehr
+      // großen Listen (2263 Restaurants) fügt leaflet.markercluster seine
+      // Layer teils über mehrere Frames verzögert hinzu (chunkedLoading).
+      // Ohne diesen Retry blieb der Klick dann wortlos wirkungslos (per
+      // Nutzer-Feedback: "wird nicht automatisch markiert", nur bei
+      // Restaurants beobachtet — der mit Abstand größten Liste).
+      if (attempts++ < 20) setTimeout(tryFocus, 100);
     }
     tryFocus();
     return () => {

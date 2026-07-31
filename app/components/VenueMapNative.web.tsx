@@ -242,7 +242,12 @@ const styles = StyleSheet.create({
   filterButtonTextActive: { color: '#000' },
   locateButton: {
     position: 'absolute',
-    bottom: 24,
+    // 90 statt 24: die BottomTabBar wird auch auf Kartenscreens angezeigt
+    // (position: absolute, ~54-64px hoch) und hätte den Button bei einem
+    // niedrigeren Wert fast komplett verdeckt (per Nutzer-Feedback) — 90
+    // ist bereits der etablierte Sicherheitsabstand in dieser Codebase
+    // (siehe backToTopBtn in VenueListScreen.tsx).
+    bottom: 90,
     right: 16,
     width: 44,
     height: 44,

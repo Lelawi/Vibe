@@ -768,41 +768,49 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               <View style={styles.cardFooterLinks}>
                 {item.website && (
                   <TouchableOpacity
+                    style={[styles.actionChip, styles.actionChipWebsite]}
                     onPress={(e) => {
                       e.stopPropagation();
                       Linking.openURL(item.website!);
                     }}
                   >
-                    <Text style={styles.websiteLink}>Website öffnen</Text>
+                    <Ionicons name="globe-outline" size={13} color="#0af" />
+                    <Text style={[styles.actionChipText, styles.actionChipTextWebsite]}>Website</Text>
                   </TouchableOpacity>
                 )}
                 {item.phone && (
                   <TouchableOpacity
+                    style={[styles.actionChip, styles.actionChipCall]}
                     onPress={(e) => {
                       e.stopPropagation();
                       Linking.openURL(`tel:${item.phone}`);
                     }}
                   >
-                    <Text style={styles.websiteLink}>Anrufen</Text>
+                    <Ionicons name="call-outline" size={13} color="#4ade80" />
+                    <Text style={[styles.actionChipText, styles.actionChipTextCall]}>Anrufen</Text>
                   </TouchableOpacity>
                 )}
                 {item.lunch_menu_url && (
                   <TouchableOpacity
+                    style={[styles.actionChip, styles.actionChipMenu]}
                     onPress={(e) => {
                       e.stopPropagation();
                       Linking.openURL(item.lunch_menu_url!);
                     }}
                   >
-                    <Text style={styles.websiteLink}>Mittagskarte</Text>
+                    <Ionicons name="restaurant-outline" size={13} color="#f2c94c" />
+                    <Text style={[styles.actionChipText, styles.actionChipTextMenu]}>Mittagskarte</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
+                  style={[styles.actionChip, styles.actionChipMaps]}
                   onPress={(e) => {
                     e.stopPropagation();
                     Linking.openURL(googleMapsUrl(item.name, item.address));
                   }}
                 >
-                  <Text style={styles.websiteLink}>In Google Maps öffnen</Text>
+                  <Ionicons name="map-outline" size={13} color="#c084fc" />
+                  <Text style={[styles.actionChipText, styles.actionChipTextMaps]}>Google Maps</Text>
                 </TouchableOpacity>
               </View>
               {/* Eigene Zeile statt neben den Links (space-between): auf dem
@@ -849,20 +857,33 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             <Text style={styles.lunchBadge}>🍺 0,5l Helles: {item.beer_price_eur.toFixed(2).replace('.', ',')} €</Text>
           );
 
+          // Die große Bild-Karten-Größe nur ansetzen, wenn dieser Eintrag
+          // tatsächlich den großen Karten-Zweig unten erreicht (Bild-Karten-
+          // Modus UND echtes Foto vorhanden) — sonst würde ein Eintrag ohne
+          // Foto im Bild-Karten-Modus fälschlich mit der großen Boxgröße in
+          // die kompakte Zeile durchfallen.
+          const useCardsLayout = viewMode === 'cards' && Boolean(item.image_url);
           const image = item.image_url ? (
-            <Image source={{ uri: item.image_url }} style={viewMode === 'cards' ? styles.cardsImage : styles.compactThumb} />
+            <Image source={{ uri: item.image_url }} style={useCardsLayout ? styles.cardsImage : styles.compactThumb} />
           ) : (
             <LinearGradient
               colors={['#2a0a4a', '#12082e']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={viewMode === 'cards' ? styles.cardsImage : styles.compactThumb}
+              style={useCardsLayout ? styles.cardsImage : styles.compactThumb}
             >
-              <Ionicons name={config.icon} size={viewMode === 'cards' ? 30 : 22} color="rgba(255,255,255,0.35)" />
+              <Ionicons name={config.icon} size={useCardsLayout ? 30 : 22} color="rgba(255,255,255,0.35)" />
             </LinearGradient>
           );
 
-          if (viewMode === 'cards') {
+          // Nur Einträge mit echtem Foto als große Bild-Karte zeigen — der
+          // riesige Farbverlauf-Platzhalter (gleiche Boxgröße wie ein echtes
+          // Foto) bringt ohne Bildinhalt keinen Mehrwert und wirkt gerade auf
+          // dem Handy wie verschenkter Platz (per Nutzer-Feedback: "sieht auf
+          // dem Handy gut aus, allerdings nur wenn es wirklich Bilder gibt").
+          // Einträge ohne Bild fallen automatisch auf die kompakte Zeile
+          // zurück, auch wenn der Bild-Karten-Modus aktiv ist.
+          if (useCardsLayout) {
             return (
               <TouchableOpacity style={styles.cardsCard} disabled={!hasCoords} onPress={onPress}>
                 <View style={styles.cardsImageWrap}>
@@ -1065,6 +1086,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
     padding: 14,
     marginBottom: 10,
+    // Auf schmalen (Handy-)Bildschirmen ohne Effekt (Elternbreite liegt
+    // darunter), begrenzt aber auf breiten Desktop-Fenstern die Kartenbreite
+    // auf eine lesbare Spalte statt auf volle Fensterbreite gestreckt.
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
   },
   compactThumb: {
     width: 72,
@@ -1084,6 +1111,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
     marginBottom: 14,
     overflow: 'hidden',
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
   },
   cardsImageWrap: { position: 'relative' },
   // 4:3 statt vorher fix 160px Höhe (bei typischer Kartenbreite ~2,3:1,
@@ -1126,8 +1156,31 @@ const styles = StyleSheet.create({
   programWrap: { marginTop: 8, gap: 4 },
   programText: { color: '#5fd4ff', fontSize: 13 },
   cardFooterRow: { marginTop: 8 },
-  cardFooterLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
-  websiteLink: { color: '#0af', fontSize: 13 },
+  cardFooterLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  // Vorher alle vier Aktionen (Website/Anrufen/Mittagskarte/Google Maps) als
+  // identisch aussehende blaue Textlinks — kaum auseinanderzuhalten, welcher
+  // Link zu welcher Aktion gehört (per Nutzer-Feedback: "sehen sich zu
+  // ähnlich"). Jetzt eigene Farbe+Icon je Aktion, an bereits etablierte
+  // Bedeutungen in der App angelehnt (Grün wie "Geöffnet", Gelb wie den
+  // Mittagslunch-Badge) statt neue Farbcodes zu erfinden.
+  actionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  actionChipText: { fontSize: 12, fontWeight: '600' },
+  actionChipWebsite: { borderColor: '#00aaff33', backgroundColor: '#00aaff14' },
+  actionChipTextWebsite: { color: '#0af' },
+  actionChipCall: { borderColor: '#4ade8033', backgroundColor: '#4ade8014' },
+  actionChipTextCall: { color: '#4ade80' },
+  actionChipMenu: { borderColor: '#f2c94c33', backgroundColor: '#f2c94c14' },
+  actionChipTextMenu: { color: '#f2c94c' },
+  actionChipMaps: { borderColor: '#c084fc33', backgroundColor: '#c084fc14' },
+  actionChipTextMaps: { color: '#c084fc' },
   reportLinkRow: { alignSelf: 'flex-start', marginTop: 6 },
   reportLink: { color: '#555', fontSize: 12 },
   pendingBadge: { color: '#f2c94c', fontSize: 12, fontWeight: '600', marginTop: 8 },

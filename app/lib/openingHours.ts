@@ -79,8 +79,20 @@ export function parseOpeningHours(raw: string | null | undefined): DayRule[] | n
     const segment = block.trim();
     if (!segment) continue;
 
-    // Ein Block ist "<Tage> <Zeitbereiche>", z.B. "Mo-Th 17:00-24:00, Fr 17:00-01:00"
-    // enthält mehrere solcher Teilblöcke, kommagetrennt.
+    // Ein Block ist "<Tage>[,<Tage>...] <Zeitbereiche>", z.B.
+    // "Tu-Fr,Su 09:00-23:00, Fr,Sa 09:00-24:00" (zwei echte Restaurant-
+    // Datensätze, siehe Café Westend/Sappralott) — das Komma trennt hier
+    // NICHT zwangsläufig eigenständige Teilregeln, sondern häufig nur eine
+    // Liste von Tagen, die sich erst den ZeitBEREICH des nächsten Teilstücks
+    // teilen ("Tu-Fr" und "Su" teilen sich "09:00-23:00"). Ein Teilstück ganz
+    // ohne eigene Zeit sammelt seine Tage deshalb in pendingDays, bis ein
+    // Teilstück MIT Zeit sie einlöst (per Nutzer-Feedback: Tu-Fr/Fr wurden
+    // dadurch fälschlich als durchgehend geschlossen behandelt, weil sie nie
+    // eine eigene Zeit bekamen). Weiterhin unterstützt: mehrere komplett
+    // eigenständige "Tage Zeit"-Teilstücke, kommagetrennt, z.B.
+    // "Mo-Th 17:00-24:00, Fr 17:00-01:00" — hier hat jedes Teilstück direkt
+    // seine eigene Zeit, pendingDays bleibt in dem Fall stets leer.
+    let pendingDays: number[] = [];
     for (const part of segment.split(',')) {
       const piece = part.trim();
       if (!piece) continue;
@@ -91,8 +103,17 @@ export function parseOpeningHours(raw: string | null | undefined): DayRule[] | n
       if (!days) return null; // unbekanntes Muster -> lieber ganz abbrechen als falsch parsen
 
       const rest = tokens.slice(1).join(' ');
-      if (rest === 'off' || rest === '') {
-        rules.push({ days, ranges: [], closed: rest === 'off' });
+      if (rest === '') {
+        // Nur Tage, keine Zeit -> für das nächste Teilstück mit Zeit vormerken.
+        pendingDays.push(...days);
+        continue;
+      }
+
+      const allDays = [...new Set([...pendingDays, ...days])];
+      pendingDays = [];
+
+      if (rest === 'off') {
+        rules.push({ days: allDays, ranges: [], closed: true });
         continue;
       }
 
@@ -103,8 +124,11 @@ export function parseOpeningHours(raw: string | null | undefined): DayRule[] | n
         ranges.push(range);
       }
       if (ranges.length === 0) return null;
-      rules.push({ days, ranges, closed: false });
+      rules.push({ days: allDays, ranges, closed: false });
     }
+    // Tage ohne je eine zugeordnete Zeit übrig (Block endet mitten in einer
+    // Tagesliste) -> unbekanntes Muster, lieber abbrechen als falsch parsen.
+    if (pendingDays.length > 0) return null;
   }
 
   return rules.length > 0 ? rules : null;
