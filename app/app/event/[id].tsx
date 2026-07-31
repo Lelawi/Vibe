@@ -198,15 +198,14 @@ export default function EventDetailScreen() {
     ? { key: 'maps', onPress: () => openInGoogleMaps() }
     : null;
 
-  // Koordinaten+Label statt Namens-/Adress-Freitextsuche: gleicher Grund wie
-  // googleMapsUrl in VenueListScreen.tsx/VenueLeafletView.web.tsx — bei
-  // Veranstaltungsorten, die auch Filialketten sind, lieferte die
-  // Freitextsuche mehrere Treffer statt direkt zum richtigen Ort zu springen.
   function openInGoogleMaps() {
     if (!hasCoords) return;
-    const label = [event!.location_name, event!.address].filter(Boolean).join(', ').trim();
-    const url = label
-      ? `https://www.google.com/maps?q=${event!.latitude},${event!.longitude}(${encodeURIComponent(label)})`
+    const query = [event!.location_name, event!.address]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const url = query
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
       : `https://www.google.com/maps/search/?api=1&query=${event!.latitude},${event!.longitude}`;
     Linking.openURL(url);
   }

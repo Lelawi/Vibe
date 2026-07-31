@@ -360,16 +360,15 @@ function cuisineLabel(raw: string, language: Language): string {
 // Adresse ist die Anfrage eindeutig, "München" als Ortszusatz grenzt die
 // Freitextsuche ausreichend ein, wenn keine Adresse gepflegt ist (bei
 // kleinen Kiosken/Spätis in OSM häufig).
-// Koordinaten+Label statt Namens-/Adress-Freitextsuche, wenn vorhanden: bei
-// Ketten (z.B. "REWE To Go") mit mehreren Filialen in München lieferte die
-// Freitextsuche mehrere Treffer statt direkt zur richtigen Filiale zu
-// springen (per Nutzer-Feedback). Das alte Format "q=lat,lng(Label)" zeigt
-// trotzdem den Namen als Pin-Beschriftung an, im Gegensatz zu einer reinen
-// "query=lat,lng"-Koordinatensuche ohne Namen/Infos.
-function googleMapsUrl(name: string, address?: string | null, lat?: number | null, lng?: number | null) {
-  if (lat != null && lng != null) {
-    return `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(name)})`;
-  }
+// Namens-/Adress-Freitextsuche statt Koordinate: eine reine "q=lat,lng"-
+// oder "q=lat,lng(Label)"-URL zeigt in aktuellem Google Maps nur noch die
+// nackte Koordinate ohne Namen/Infos an (per Nutzer-Feedback getestet, das
+// Klammer-Label-Format wird nicht mehr ausgewertet) — der Versuch, damit
+// Filialketten wie "REWE To Go" präziser zu treffen, war also ein Rückschritt
+// gegenüber dieser Textsuche und wurde zurückgenommen. Für Ketten bleibt die
+// Freitextsuche mit Adresse die verlässlichere Option, auch wenn sie bei
+// unvollständigen Adressdaten gelegentlich mehrere Treffer zeigt.
+function googleMapsUrl(name: string, address?: string | null) {
   const query = address ? `${name}, ${address}` : `${name}, München`;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
@@ -1031,7 +1030,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   style={[styles.actionChip, styles.actionChipMaps]}
                   onPress={(e) => {
                     e.stopPropagation();
-                    Linking.openURL(googleMapsUrl(item.name, item.address, item.latitude, item.longitude));
+                    Linking.openURL(googleMapsUrl(item.name, item.address));
                   }}
                 >
                   <Ionicons name="map-outline" size={13} color="#c084fc" />

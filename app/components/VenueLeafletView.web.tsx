@@ -66,14 +66,11 @@ export type VenueMarker = {
 // einen anonymen Pin ohne Namen/Infos in Google Maps (per Nutzer-Feedback
 // gemeldet: "zeigt die Koordinate statt den Shop"). "München" als Ortszusatz
 // grenzt die Freitextsuche ausreichend ein, ohne den Namen ganz wegzulassen.
-// Koordinaten+Label statt Namens-/Adress-Freitextsuche, wenn vorhanden —
-// siehe gleichnamige Funktion in VenueListScreen.tsx für den Grund (Ketten
-// wie "REWE To Go" lieferten sonst mehrere Filialen als Sucher-Treffer statt
-// direkt zur richtigen zu springen).
-function googleMapsUrl(name: string, address?: string | null, lat?: number | null, lng?: number | null) {
-  if (lat != null && lng != null) {
-    return `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(name)})`;
-  }
+// Namens-/Adress-Freitextsuche statt Koordinate — siehe gleichnamige
+// Funktion in VenueListScreen.tsx: der Koordinaten+Label-Versuch zeigte in
+// aktuellem Google Maps nur noch die nackte Koordinate ohne Namen an und
+// wurde zurückgenommen.
+function googleMapsUrl(name: string, address?: string | null) {
   const query = address ? `${name}, ${address}` : `${name}, München`;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
@@ -294,7 +291,7 @@ const VenueLeafletView = forwardRef<
                       <Text style={styles.popupLink}>{t('venues.dinnerMenu')}</Text>
                     </Pressable>
                   )}
-                  <Pressable onPress={() => window.open(googleMapsUrl(venue.name, venue.address, venue.latitude, venue.longitude), '_blank')}>
+                  <Pressable onPress={() => window.open(googleMapsUrl(venue.name, venue.address), '_blank')}>
                     <Text style={styles.popupMapsButton}>{t('venues.googleMapsOpen')}</Text>
                   </Pressable>
                 </View>
