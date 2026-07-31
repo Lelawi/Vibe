@@ -1,0 +1,12 @@
+-- Preis für 0,5l Helles (Münchner Standardmaß) für Bars, von der eigenen
+-- Website gescrapt (siehe extractBeerPrice in collectors/core/venues.ts).
+-- Nur ein Best-effort-Signal: die meisten Bar-Getränkekarten sind PDFs
+-- (nicht textdurchsuchbar ohne PDF-Parser), daher niedrigere Trefferquote
+-- als beim Mittagslunch-Feature für Restaurants zu erwarten.
+--
+-- real statt numeric(4,2): PostgREST serialisiert numeric/decimal als
+-- JSON-STRING (nicht als Zahl), um Präzisionsverlust zu vermeiden — hätte
+-- clientseitig .toFixed() auf einen String treffen lassen und wäre
+-- gecrasht. Bei einem Bierpreis mit 2 Nachkommastellen ist der
+-- Genauigkeitsverlust von real (float4) irrelevant.
+alter table venues add column if not exists beer_price_eur real;

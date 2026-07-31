@@ -53,7 +53,19 @@ export default function MapNative() {
       // unabhängigen Filterdurchlaufs. Kein Eintrag (Direktaufruf der Karte,
       // oder Kategorie-Wechsel per MapCategorySwitcher) -> alles ungefiltert
       // laden, wie bisher.
-      const cached = getFilteredEventsForMap();
+      //
+      // Ist dagegen ein konkretes Ziel (lat/lng) angefragt — z.B. der
+      // "Wo"-Link auf der Event-Detailseite —, den Cache NICHT verwenden:
+      // diese Navigation kommt oft von woanders als der zuletzt gefilterten
+      // Liste (Favoriten, "Empfohlen für dich"-Karussell, ein Programm-Link
+      // auf einer Venue-Karte, ein geteilter Link...) und das konkrete Event
+      // könnte in der zwischengespeicherten gefilterten Auswahl gar nicht
+      // (mehr) enthalten sein — die Karte zeigte dann zwar den richtigen
+      // Kartenausschnitt, aber keinen Marker darin (per Nutzer-Feedback als
+      // "der Link geht nicht" gemeldet). Ein konkretes Ziel muss immer
+      // sichtbar sein, unabhängig von irgendwelchen Listenfiltern.
+      const hasTarget = Boolean(params.lat && params.lng);
+      const cached = hasTarget ? null : getFilteredEventsForMap();
       if (cached) {
         setEvents(cached as RawEvent[]);
         setLoading(false);

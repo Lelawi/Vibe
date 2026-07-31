@@ -24,6 +24,9 @@ export type MapVenueEntry = {
   open: boolean | null;
   website: string | null;
   image_url: string | null;
+  lunch_available: boolean;
+  lunch_menu_url: string | null;
+  beer_price_eur: number | null;
 };
 
 export type MapEventEntry = {

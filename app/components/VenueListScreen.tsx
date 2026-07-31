@@ -51,12 +51,53 @@ type Venue = {
   cuisine: string | null;
   lunch_available: boolean;
   lunch_menu_url: string | null;
+  beer_price_eur: number | null;
 };
 
 const VENUE_BASE_COLUMNS =
   'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,phone,image_url';
 
 type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
+
+// Lädt Venues mit optionalen Spalten, die in aufeinanderfolgenden Migrationen
+// dazukamen (cuisine: 0016, lunch_*: 0017, beer_price_eur: 0018) — schlägt
+// die volle Spaltenliste fehl, weil eine Migration in dieser Supabase-
+// Instanz noch nicht angewendet wurde, wird mit jeweils einer Spaltengruppe
+// weniger erneut versucht, statt die ganze Liste leer zu lassen. Ersetzt die
+// zuvor manuell verschachtelten .catch()-Ketten, die mit jeder neuen
+// optionalen Spalte eine Ebene tiefer wurden.
+async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
+  const attempts: { columns: string; fill: (v: Record<string, unknown>) => Venue }[] = [
+    {
+      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,beer_price_eur`,
+      fill: (v) => v as unknown as Venue,
+    },
+    {
+      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url`,
+      fill: (v) => ({ ...v, beer_price_eur: null } as unknown as Venue),
+    },
+    {
+      columns: `${VENUE_BASE_COLUMNS},cuisine`,
+      fill: (v) => ({ ...v, lunch_available: false, lunch_menu_url: null, beer_price_eur: null } as unknown as Venue),
+    },
+    {
+      columns: VENUE_BASE_COLUMNS,
+      fill: (v) =>
+        ({ ...v, cuisine: null, lunch_available: false, lunch_menu_url: null, beer_price_eur: null } as unknown as Venue),
+    },
+  ];
+
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      const data = await fetchAllVenues<Record<string, unknown>>(type, attempts[i].columns);
+      return data.map(attempts[i].fill);
+    } catch (err) {
+      if (i === attempts.length - 1) throw err;
+      console.warn(`[VenueListScreen] retrying with fewer columns (attempt ${i + 2}/${attempts.length})`, err);
+    }
+  }
+  return [];
+}
 
 type NearbyEvent = {
   id: string;
@@ -204,33 +245,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         // Supabase deckelt eine einzelne Abfrage hart bei 1000 Zeilen — bei
         // 2263 Restaurants hätte ein einfaches .select() über die Hälfte
         // verschluckt (siehe app/lib/fetchAllVenues.ts).
-        fetchAllVenues<Venue>(
-          type,
-          `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url`
-        ).catch(async (err) => {
-          // lunch_available/lunch_menu_url kamen erst mit 0017_venues_lunch.sql
-          // dazu — falls diese Migration noch nicht angewendet wurde, soll die
-          // Liste trotzdem funktionieren (nur ohne Mittagslunch-Filter) statt
-          // komplett leer zu bleiben.
-          console.warn('[VenueListScreen] retrying without lunch columns', err);
-          return fetchAllVenues<Omit<Venue, 'lunch_available' | 'lunch_menu_url'>>(
-            type,
-            `${VENUE_BASE_COLUMNS},cuisine`
-          )
-            .then((list) => list.map((v) => ({ ...v, lunch_available: false, lunch_menu_url: null })))
-            .catch(async (err2) => {
-              // cuisine kam erst mit 0016_venues_cuisine.sql dazu — falls diese
-              // Migration noch nicht angewendet wurde, soll die Liste trotzdem
-              // funktionieren (nur ohne Küchen-Badge/Filter) statt komplett leer
-              // zu bleiben.
-              console.warn('[VenueListScreen] retrying without cuisine column', err2);
-              const fallback = await fetchAllVenues<Omit<Venue, 'cuisine' | 'lunch_available' | 'lunch_menu_url'>>(
-                type,
-                VENUE_BASE_COLUMNS
-              );
-              return fallback.map((v) => ({ ...v, cuisine: null, lunch_available: false, lunch_menu_url: null }));
-            });
-        }),
+        fetchVenuesResilient(type),
         supabase
           .from('events')
           .select('id,title,location_name,start_date,start_time')
@@ -407,6 +422,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           open: v.open,
           website: v.website,
           image_url: v.image_url,
+          lunch_available: v.lunch_available,
+          lunch_menu_url: v.lunch_menu_url,
+          beer_price_eur: v.beer_price_eur,
         }))
     );
   }, [type, filteredVenues, loading]);
@@ -713,40 +731,49 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
 
           const footerNode = (
             <View style={styles.cardFooterRow}>
-              <View style={styles.cardFooterLinks}>
-                {item.website && (
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      Linking.openURL(item.website!);
-                    }}
-                  >
-                    <Text style={styles.websiteLink}>Website öffnen</Text>
-                  </TouchableOpacity>
-                )}
-                {item.phone && (
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      Linking.openURL(`tel:${item.phone}`);
-                    }}
-                  >
-                    <Text style={styles.websiteLink}>Anrufen</Text>
-                  </TouchableOpacity>
-                )}
-                {item.lunch_menu_url && (
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      Linking.openURL(item.lunch_menu_url!);
-                    }}
-                  >
-                    <Text style={styles.websiteLink}>Mittagskarte</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              {(item.website || item.phone || item.lunch_menu_url) && (
+                <View style={styles.cardFooterLinks}>
+                  {item.website && (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        Linking.openURL(item.website!);
+                      }}
+                    >
+                      <Text style={styles.websiteLink}>Website öffnen</Text>
+                    </TouchableOpacity>
+                  )}
+                  {item.phone && (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        Linking.openURL(`tel:${item.phone}`);
+                      }}
+                    >
+                      <Text style={styles.websiteLink}>Anrufen</Text>
+                    </TouchableOpacity>
+                  )}
+                  {item.lunch_menu_url && (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        Linking.openURL(item.lunch_menu_url!);
+                      }}
+                    >
+                      <Text style={styles.websiteLink}>Mittagskarte</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+              {/* Eigene Zeile statt neben den Links (space-between): auf dem
+                  Handy reichte die Breite oft nicht für Website+Anrufen+
+                  Mittagskarte UND diesen Link nebeneinander — sie klebten
+                  ohne jeden Abstand aneinander (per Nutzer-Screenshot
+                  gemeldet). Als eigene Zeile ist das unabhängig davon, wie
+                  viele Links links stehen, immer lesbar. */}
               {item.closureStatus !== 'pending' && (
                 <TouchableOpacity
+                  style={styles.reportLinkRow}
                   onPress={(e) => {
                     e.stopPropagation();
                     confirmReportClosed(item.id, item.name);
@@ -777,6 +804,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           const cuisineLabel = item.cuisine?.split(';')[0]?.trim();
           const lunchNode = item.lunch_available && (
             <Text style={styles.lunchBadge}>🍽️ Mittagslunch</Text>
+          );
+          const beerPriceNode = item.beer_price_eur != null && (
+            <Text style={styles.lunchBadge}>🍺 0,5l Helles: {item.beer_price_eur.toFixed(2).replace('.', ',')} €</Text>
           );
 
           const image = item.image_url ? (
@@ -813,6 +843,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   )}
                   {hoursNode}
                   {lunchNode}
+                  {beerPriceNode}
                   {programNode}
                   {item.closureStatus === 'pending' && (
                     <Text style={styles.pendingBadge}>⏳ Als geschlossen gemeldet — wird geprüft</Text>
@@ -845,6 +876,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 )}
                 {hoursNode}
                 {lunchNode}
+                {beerPriceNode}
                 {programNode}
                 {item.closureStatus === 'pending' && (
                   <Text style={styles.pendingBadge}>⏳ Als geschlossen gemeldet — wird geprüft</Text>
@@ -1052,9 +1084,10 @@ const styles = StyleSheet.create({
   lunchBadge: { color: '#f2c94c', fontSize: 12, fontWeight: '600', marginTop: 4 },
   programWrap: { marginTop: 8, gap: 4 },
   programText: { color: '#5fd4ff', fontSize: 13 },
-  cardFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  cardFooterLinks: { flexDirection: 'row', gap: 14 },
+  cardFooterRow: { marginTop: 8 },
+  cardFooterLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   websiteLink: { color: '#0af', fontSize: 13 },
+  reportLinkRow: { alignSelf: 'flex-start', marginTop: 6 },
   reportLink: { color: '#555', fontSize: 12 },
   pendingBadge: { color: '#f2c94c', fontSize: 12, fontWeight: '600', marginTop: 8 },
 });

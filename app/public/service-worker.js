@@ -62,7 +62,17 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   event.respondWith(
-    fetch(request)
+    // { cache: 'no-store' } zwingt fetch() hier, die reguläre HTTP-Cache-
+    // Ebene des Browsers zu ignorieren und wirklich das Netzwerk zu fragen.
+    // Ohne das war "network-first" nicht verlässlich network-first: ein
+    // plain fetch(request) darf laut Spec ganz legal aus dem normalen
+    // Browser-HTTP-Cache beantwortet werden, wenn GitHub Pages' Cache-
+    // Control-Header das erlauben — dann holt sich sogar dieser Service
+    // Worker nur veraltete Bytes und cacht sie brav weiter, statt wirklich
+    // den neuesten Deploy zu sehen (per Nutzer-Feedback wiederholt als
+    // "sehe die Änderung nicht" aufgefallen, obwohl der Deploy längst
+    // erfolgreich durchgelaufen war).
+    fetch(request, { cache: 'no-store' })
       .then((response) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});

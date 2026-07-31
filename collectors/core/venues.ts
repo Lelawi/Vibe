@@ -1,5 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import * as cheerio from 'cheerio';
+// Deep-Import statt `import pdf from 'pdf-parse'`: das Paket-Root (index.js)
+// prüft `module.parent`, um "als Bibliothek benutzt" vs. "direkt ausgeführt"
+// zu unterscheiden — unter tsx/ESM ist module.parent immer undefined, das
+// Paket denkt dann fälschlich, es liefe im Debug-Modus, und crasht beim
+// Versuch, eine hartcodierte Test-PDF (test/data/05-versions-space.pdf) zu
+// lesen, die hier nicht existiert. lib/pdf-parse.js ist die eigentliche
+// Implementierung ohne diesen Check — ein bekannter, seit Jahren stabiler
+// Workaround für dieses (unmaintained) Paket.
+import pdf from 'pdf-parse/lib/pdf-parse.js';
 
 // Gemeinsame Grundlage für Bars UND Restaurants (sources/bars,
 // sources/restaurants): beide sind OSM/Overpass-basierte Orte mit regulären
@@ -258,21 +267,198 @@ function extractLunchSignal($: cheerio.CheerioAPI, baseUrl: string): { available
   return { available: false, menuUrl: null };
 }
 
+// Preis für 0,5l Helles (Münchner Standardmaß, siehe Nutzer-Anfrage) — reine
+// Bar-Kennzahl, aber unschädlich auch für Restaurants mitzuprüfen (liefert
+// dort einfach meist nichts). Erfasst JEDE angegebene Gebindegröße (0,3l,
+// 0,33l, 0,4l, 1,0l/Maß, ...) und rechnet linear auf den 0,5l-Preis um
+// (price * 0,5/volumeL) — sonst wären zwei Drittel der überhaupt online
+// auffindbaren Preise verloren gegangen, weil viele Bars ihr Helles gar
+// nicht in 0,5l ausschenken. Bewusst weiterhin konservativ: nur akzeptiert,
+// wenn "hell..." und eine Gebindegröße nah beieinander stehen — eine
+// falsche Zahl wäre hier schädlicher als beim Mittagslunch-Badge (Nutzer
+// könnte sich auf einen falschen Preis verlassen), daher lieber niedrige
+// Trefferquote als geraten.
+//
+// Die Lücke zwischen "hell"/Volumen/Preis darf kurze Klammer-Fußnoten
+// ("(a2)", "(1, 3)" — Allergen-/Zusatzstoff-Kennzeichnung) und ABV-Angaben
+// ("5,3%") überspringen, bleibt aber sonst ziffernfrei — sonst könnte über
+// einen echten anderen Preis hinweg zu einem falschen Treffer gebrückt
+// werden. Ohne diese Ausnahmen wurden reale Treffer wie "Tegernseer Hell
+// (a2) /0,5l vom Fass 4,50 €" und "HB Pure Hell 5,3% / 0,33l 5,50 EUR"
+// verpasst, weil die Ziffern in "(a2)"/"5,3%" die ursprüngliche
+// [^\d€]-Zeichenklasse blockierten (per Direktabruf an ~20 echten
+// Getränkekarten verifiziert, 2026-07).
+const BEER_GAP = '(?:[^\\d€()%]|\\([^)€]{0,10}\\)|\\d{1,2}(?:[.,]\\d{1,2})?%){0,35}';
+// Kein \w* nach "hell": bei fehlendem Trenner zwischen Namen und Volumen
+// ("Hell0.5l6.9", per Direktabruf beobachtet) frisst \w* sonst gierig die
+// führende Ziffer des Volumens mit, da Ziffern zu \w gehören.
+// [lLI] statt nur l: Großbuchstabe L ist die reguläre Einheit-Schreibweise
+// ("0,4L"), I kommt als Font-/Ligatur-Verwechslung mit kleinem l vor (an
+// einer echten Karte beobachtet). Preis mit 1-2 Nachkommastellen statt fest
+// 2: englischsprachige Karten schreiben Preise gelegentlich verkürzt ("6.9"
+// statt "6.90").
+const BEER_VOLUME_PRICE_ROW = new RegExp(
+  `hell${BEER_GAP}(\\d(?:[.,]\\d{1,2})?)\\s*[lLI]${BEER_GAP}(\\d{1,2}[.,]\\d{1,2})\\s*€` +
+    `|(\\d(?:[.,]\\d{1,2})?)\\s*[lLI]${BEER_GAP}hell${BEER_GAP}(\\d{1,2}[.,]\\d{1,2})\\s*€`
+);
+// € nicht zwingend direkt am Preis (anders als im HTML-Fall): PDF-
+// Preislisten drucken die Währung oft nur einmal als Spaltenüberschrift statt
+// bei jeder einzelnen Zeile (per Direktabruf an mehreren echten
+// Getränkekarten verifiziert). Ersatz-Absicherung: "€"/"EUR" muss
+// wenigstens irgendwo im PDF vorkommen (siehe extractBeerPriceFromPdf),
+// sonst ist es vermutlich gar keine Preisliste.
+const BEER_VOLUME_PRICE_PDF = new RegExp(
+  `hell${BEER_GAP}(\\d(?:[.,]\\d{1,2})?)\\s*[lLI]${BEER_GAP}(\\d{1,2}[.,]\\d{1,2})` +
+    `|(\\d(?:[.,]\\d{1,2})?)\\s*[lLI]${BEER_GAP}hell${BEER_GAP}(\\d{1,2}[.,]\\d{1,2})`
+);
+// "Hell alkoholfrei" (alkoholfreies Weizen/Helles) und "Radler"/"Shandy"
+// (Bier-Limo-Mix) sind andere Produkte als normales Helles vom Fass — ein
+// Treffer, dessen Fundstelle eines dieser Wörter enthält, wird verworfen
+// statt fälschlich als Standard-Helles-Preis übernommen zu werden (an
+// echten Karten als reales Risiko beobachtet: "Maxlrainer Engerl Hell
+// alkoholfrei / 0,50 l 6,50" und "Helles | Radler (a) 0,40 l 5.20"). Nur der
+// tatsächlich gematchte Text (nicht zusätzlicher Kontext davor/danach)
+// zählt — ein Ausschlusswort in einem GANZ ANDEREN, vorangehenden
+// Menüpunkt (z.B. "Gösser Shandy" vor "Tegernseer Hell" in einer separaten
+// Zeile) soll den folgenden, unabhängigen Treffer nicht fälschlich blockieren.
+// Restaurants (anders als Bars) führen oft auch importierte Lagerbiere, und
+// manche (mehrsprachige) Speisekarten benutzen "hell"/"hells" als lockere
+// Stilbeschreibung für JEDES helle Lagerbier statt spezifisch für Münchner
+// Helles (an einer echten Karte beobachtet: "0.25l Bier Hells Asahi 4,80" —
+// ein japanisches Importbier, kein Münchner Helles). Für die hier gefragte
+// Kennzahl ("was kostet ein Münchner Helles") zählt das nicht, auch wenn der
+// Treffer technisch korrekt ist.
+const EXCLUDE_OTHER_DRINK =
+  /alkoholfrei|alcohol-free|alcoholfree|radler|shandy|asahi|corona|heineken|peroni|desperados|tsingtao|san miguel|sol\b|budweiser|carlsberg|kirin|sapporo/i;
+
+// Nur für den HTML-Zeilen-Fall (nicht PDF, siehe extractBeerPrice): eine
+// ganze Zeile/Absatz mit Wochentag oder Rabatt-Sprache signalisiert eine
+// zeitlich begrenzte Sonderaktion statt des regulären Standardpreises (an
+// einer echten Website beobachtet: "Sonntag: FETISCH Day... bekommt das
+// 0,4l Helle für 4,00 €" — ein Event-Rabatt, kein Alltagspreis). Auf den
+// HTML-Fall beschränkt, weil dort jede Zeile bereits durch die DOM-Struktur
+// isoliert ist (kein Risiko, versehentlich einen unrelated vorangehenden
+// Satz zu erwischen, wie es beim PDF-Fließtext ohne Zeilengrenzen passieren
+// könnte — siehe EXCLUDE_OTHER_DRINK-Kommentar oben).
+const PROMOTIONAL_CONTEXT =
+  /montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|happy\s*hour|angebot|aktion|rabatt/i;
+
+// Sucht mit einer globalen Kopie des übergebenen Patterns nach dem ersten
+// Treffer, der NICHT auf ein anderes Getränk verweist (überspringt sonst
+// weitere Kandidaten im selben Text), rechnet die gefundene Gebindegröße auf
+// den 0,5l-Preis um und prüft das Ergebnis auf Plausibilität.
+function findNormalizedBeerPrice(text: string, pattern: RegExp): number | null {
+  const re = new RegExp(pattern.source, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (EXCLUDE_OTHER_DRINK.test(m[0])) continue;
+    const volumeL = parseFloat((m[1] ?? m[3]).replace(',', '.'));
+    const price = parseFloat((m[2] ?? m[4]).replace(',', '.'));
+    if (Number.isNaN(volumeL) || Number.isNaN(price)) continue;
+    if (volumeL < 0.2 || volumeL > 1.2) continue; // unplausible Gebindegröße für Bier
+    if (price <= 1 || price > 20) continue;
+    const normalized = Math.round((price * 0.5 / volumeL) * 100) / 100;
+    // Untergrenze bewusst bei 3€ statt 2€: der günstigste über alle bisher
+    // verifizierten echten Treffer (Bars + Restaurants) beobachtete Preis lag
+    // bei 3,20€ — alles darunter war bislang immer ein Extraktionsfehler,
+    // z.B. PDF-Spalten, die durch pdf-parses nicht-visuelle Textreihenfolge
+    // durcheinandergeraten sind (an einer echten Karte beobachtet: "1,0l
+    // Spaten München Hell I 5,2% Vol. 5,50" ergab normalisiert 2,75€ für
+    // einen vollen Liter Maß — 2026 unmöglich billig, während dieselbe Karte
+    // an anderer Stelle einen plausiblen 0,3l/3,90€-Treffer hatte).
+    if (normalized < 3 || normalized > 12) continue; // Sanity-Range für einen 0,5l-Preis
+    return normalized;
+  }
+  return null;
+}
+
+function extractBeerPrice($: cheerio.CheerioAPI): number | null {
+  let price: number | null = null;
+  $('tr, li, p, div').each((_, el) => {
+    if (price !== null) return;
+    const rowText = $(el).text();
+    // Nur die riesigen Seiten-Wrapper-Divs (ganze Seite/ganzer Screenbereich)
+    // überspringen, nicht einzelne Menülisten — manche Websites packen eine
+    // ganze Getränkekategorie in ein einziges <div> statt einzelner <li>
+    // (an einer echten Website beobachtet: die komplette "Softdrink e
+    // Birra"-Liste als ein 595-Zeichen-Div, das der frühere 300-Zeichen-
+    // Deckel fälschlich überspringen ließ). Der eigentliche Schutz gegen
+    // falsches Verbrücken zu einem unrelated Preis kommt ohnehin von der
+    // engen BEER_GAP-Begrenzung selbst, nicht von der Zeilenlänge — 300 war
+    // unnötig konservativ.
+    if (rowText.length > 3000) return;
+    if (PROMOTIONAL_CONTEXT.test(rowText)) return;
+    price = findNormalizedBeerPrice(rowText, BEER_VOLUME_PRICE_ROW);
+  });
+  return price;
+}
+
+// Bar-Getränkekarten sind auf der Website selbst praktisch nie als HTML-Text
+// hinterlegt (per Direktabruf verifiziert, 2026-07: 0 von 204 Bar-Websites
+// mit Preis im HTML-Text) — fast immer ein verlinktes PDF.
+const MENU_PDF_KEYWORDS = /karte|men[üu]|getr[äa]nk|getraenk|drinks|preis|bar/i;
+
+// Sammelt PDF-Links von der Seite, Kandidaten mit Karten-typischen Begriffen
+// im Link/Linktext zuerst — eine Website verlinkt oft mehrere PDFs
+// (Datenschutz, Bankettmappe, Eventflyer...), von denen meist nur eins die
+// eigentliche Getränkekarte ist. Auf 4 begrenzt, um die Laufzeit pro Venue
+// nicht ausufern zu lassen.
+function findMenuPdfLinks($: cheerio.CheerioAPI, baseUrl: string): string[] {
+  const all = new Set<string>();
+  const prioritized = new Set<string>();
+  $('a[href]').each((_, el) => {
+    const href = $(el).attr('href') ?? '';
+    if (!/\.pdf(\?|$)/i.test(href)) return;
+    let url: string;
+    try {
+      url = new URL(href, baseUrl).toString();
+    } catch {
+      return;
+    }
+    all.add(url);
+    const text = $(el).text();
+    if (MENU_PDF_KEYWORDS.test(href) || MENU_PDF_KEYWORDS.test(text)) prioritized.add(url);
+  });
+  return (prioritized.size > 0 ? [...prioritized] : [...all]).slice(0, 4);
+}
+
+async function extractBeerPriceFromPdf(url: string): Promise<number | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const parsed = await pdf(buffer);
+    if (!/€|EUR/i.test(parsed.text)) return null;
+    return findNormalizedBeerPrice(parsed.text, BEER_VOLUME_PRICE_PDF);
+  } catch {
+    return null;
+  }
+}
+
 // OSM selbst pflegt so gut wie nie ein "image"-Tag, aber viele Venues haben
 // eine eigene Website mit og:image (dieselbe Quelle nutzen z.B.
 // sources/auer_dult, sources/milla). Ein Abruf liefert best effort Bild,
-// (falls vorhanden) genauere Öffnungszeiten und einen Mittagslunch-Hinweis
-// mit — schlägt alles fehl, bleiben die Felder einfach null/false, kein
-// Venue fällt deswegen aus dem Lauf raus.
+// (falls vorhanden) genauere Öffnungszeiten, einen Mittagslunch-Hinweis und
+// einen Bierpreis mit — schlägt alles fehl, bleiben die Felder einfach
+// null/false, kein Venue fällt deswegen aus dem Lauf raus.
 async function fetchWebsiteEnrichment(
   website: string
-): Promise<{ image: string | null; hours: string | null; lunchAvailable: boolean; lunchMenuUrl: string | null }> {
+): Promise<{
+  image: string | null;
+  hours: string | null;
+  lunchAvailable: boolean;
+  lunchMenuUrl: string | null;
+  beerPriceEur: number | null;
+}> {
   try {
     const res = await fetch(website, {
       headers: { 'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)' },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null };
+    if (!res.ok) return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null, beerPriceEur: null };
     const html = await res.text();
     const metaMatch = html.match(/<meta[^>]+property=["'](?:og|twitter):image["'][^>]+content=["']([^"']+)["']/i)
       ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["'](?:og|twitter):image["']/i)
@@ -284,9 +470,20 @@ async function fetchWebsiteEnrichment(
     const $ = cheerio.load(html);
     const hours = extractOpeningHoursOverride($);
     const lunch = extractLunchSignal($, website);
-    return { image, hours, lunchAvailable: lunch.available, lunchMenuUrl: lunch.menuUrl };
+    let beerPriceEur = extractBeerPrice($);
+    // Kein Preis im HTML-Text gefunden — bei Bars (anders als Restaurants
+    // für den Mittagslunch) fast immer der Fall, da Getränkekarten praktisch
+    // nie als HTML-Text veröffentlicht werden. Verlinkte PDFs als Fallback
+    // durchsuchen, statt hier schon aufzugeben.
+    if (beerPriceEur === null) {
+      for (const pdfLink of findMenuPdfLinks($, website)) {
+        beerPriceEur = await extractBeerPriceFromPdf(pdfLink);
+        if (beerPriceEur !== null) break;
+      }
+    }
+    return { image, hours, lunchAvailable: lunch.available, lunchMenuUrl: lunch.menuUrl, beerPriceEur };
   } catch {
-    return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null };
+    return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null, beerPriceEur: null };
   }
 }
 
@@ -357,7 +554,7 @@ out body;
     // eins davon fehlt, wird neu gefetcht.
     const { data: existing } = await supabase
       .from('venues')
-      .select('osm_id,image_url,opening_hours_override,lunch_available,lunch_menu_url')
+      .select('osm_id,image_url,opening_hours_override,lunch_available,lunch_menu_url,beer_price_eur')
       .eq('type', type);
     const existingByOsmId = new Map(
       (existing ?? []).map((v) => [
@@ -367,18 +564,19 @@ out body;
           hours: v.opening_hours_override as string | null,
           lunchAvailable: (v.lunch_available as boolean | null) ?? false,
           lunchMenuUrl: v.lunch_menu_url as string | null,
+          beerPriceEur: v.beer_price_eur as number | null,
         },
       ])
     );
 
     const toFetch = rawVenues.filter((v) => {
       const cached = existingByOsmId.get(v.osm_id);
-      return v.website && (!cached || !cached.image || !cached.hours || !cached.lunchAvailable);
+      return v.website && (!cached || !cached.image || !cached.hours || !cached.lunchAvailable || !cached.beerPriceEur);
     });
-    console.log(`[${label}] fetching website enrichment for`, toFetch.length, 'venues missing an image, opening-hours override or lunch info');
+    console.log(`[${label}] fetching website enrichment for`, toFetch.length, 'venues missing an image, opening-hours override, lunch info or beer price');
     const enrichmentByOsmId = new Map<
       number,
-      { image: string | null; hours: string | null; lunchAvailable: boolean; lunchMenuUrl: string | null }
+      { image: string | null; hours: string | null; lunchAvailable: boolean; lunchMenuUrl: string | null; beerPriceEur: number | null }
     >();
     const CONCURRENCY = 6;
     let cursor = 0;
@@ -399,6 +597,7 @@ out body;
         opening_hours_override: fetched?.hours ?? cached?.hours ?? null,
         lunch_available: fetched?.lunchAvailable ?? cached?.lunchAvailable ?? false,
         lunch_menu_url: fetched?.lunchMenuUrl ?? cached?.lunchMenuUrl ?? null,
+        beer_price_eur: fetched?.beerPriceEur ?? cached?.beerPriceEur ?? null,
       };
     });
 

@@ -34,6 +34,9 @@ export type VenueMarker = {
   open: boolean | null;
   website: string | null;
   image_url: string | null;
+  lunch_available?: boolean;
+  lunch_menu_url?: string | null;
+  beer_price_eur?: number | null;
 };
 
 // Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff — z.B.
@@ -197,9 +200,20 @@ export default function VenueLeafletView({
                   </View>
                   {venue.address && <Text style={styles.popupAddress}>{venue.address}</Text>}
                   {hoursToday && <Text style={styles.popupHours}>Heute: {hoursToday}</Text>}
+                  {venue.lunch_available && <Text style={styles.popupLunchBadge}>🍽️ Mittagslunch</Text>}
+                  {venue.beer_price_eur != null && (
+                    <Text style={styles.popupLunchBadge}>
+                      🍺 0,5l Helles: {venue.beer_price_eur.toFixed(2).replace('.', ',')} €
+                    </Text>
+                  )}
                   {venue.website && (
                     <Pressable onPress={() => window.open(venue.website!, '_blank')}>
                       <Text style={styles.popupLink}>Website öffnen</Text>
+                    </Pressable>
+                  )}
+                  {venue.lunch_menu_url && (
+                    <Pressable onPress={() => window.open(venue.lunch_menu_url!, '_blank')}>
+                      <Text style={styles.popupLink}>Mittagskarte</Text>
                     </Pressable>
                   )}
                   <Pressable onPress={() => window.open(googleMapsUrl(venue.latitude, venue.longitude, venue.name, venue.address), '_blank')}>
@@ -246,6 +260,7 @@ const styles = StyleSheet.create({
   closedBadge: { fontSize: 10, fontWeight: '700', color: '#b3261e', backgroundColor: '#ff6b6b33', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   popupAddress: { fontSize: 12, color: '#444' },
   popupHours: { fontSize: 12, color: '#444', marginTop: 2 },
+  popupLunchBadge: { fontSize: 12, color: '#a8730a', fontWeight: '600', marginTop: 4 },
   popupLink: { fontSize: 12, color: '#0af', fontWeight: '600', marginTop: 6 },
   popupMapsButton: { fontSize: 12, color: '#0af', fontWeight: '600', marginTop: 4 },
 });
