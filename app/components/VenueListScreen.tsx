@@ -25,6 +25,7 @@ import { distanceKm, formatDistance } from '../lib/geo';
 import { fetchAllVenues } from '../lib/fetchAllVenues';
 import { useVenueFavorites } from '../lib/venueFavorites';
 import { setFilteredVenuesForMap } from '../lib/mapFilterCache';
+import { openExternalUrl } from '../lib/openExternalUrl';
 import BottomTabBar, { type BottomTab } from './BottomTabBar';
 import LanguageToggle from './LanguageToggle';
 import { registerStrings, useTranslation } from '../lib/strings';
@@ -995,7 +996,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                       style={[styles.actionChip, styles.actionChipMenu]}
                       onPress={(e) => {
                         e.stopPropagation();
-                        Linking.openURL(item.lunch_menu_url!);
+                        openExternalUrl(item.lunch_menu_url!);
                       }}
                     >
                       <Ionicons name="sunny-outline" size={13} color="#f2c94c" />
@@ -1007,7 +1008,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                       style={[styles.actionChip, styles.actionChipMenu]}
                       onPress={(e) => {
                         e.stopPropagation();
-                        Linking.openURL(item.dinner_menu_url!);
+                        openExternalUrl(item.dinner_menu_url!);
                       }}
                     >
                       <Ionicons name="moon-outline" size={13} color="#f2c94c" />
@@ -1022,7 +1023,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     style={[styles.actionChip, styles.actionChipWebsite]}
                     onPress={(e) => {
                       e.stopPropagation();
-                      Linking.openURL(item.website!);
+                      openExternalUrl(item.website!);
                     }}
                   >
                     <Ionicons name="globe-outline" size={13} color="#0af" />
@@ -1045,7 +1046,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   style={[styles.actionChip, styles.actionChipMaps]}
                   onPress={(e) => {
                     e.stopPropagation();
-                    Linking.openURL(googleMapsUrl(item.name, item.address));
+                    openExternalUrl(googleMapsUrl(item.name, item.address));
                   }}
                 >
                   <Ionicons name="map-outline" size={13} color="#c084fc" />

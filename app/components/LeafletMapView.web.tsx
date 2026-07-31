@@ -11,6 +11,7 @@ import MarkerClusterGroup from 'react-leaflet-cluster';
 import { createClusterIcon } from '../lib/leafletCluster';
 import { registerStrings, useTranslation } from '../lib/strings';
 import type { Language } from '../lib/language';
+import { openExternalUrl } from '../lib/openExternalUrl';
 
 registerStrings({
   'eventMap.more': { de: 'weitere', en: 'more' },
@@ -231,7 +232,7 @@ const LeafletMapView = forwardRef<
                   )}
                   <Pressable
                     style={styles.popupMapsButton}
-                    onPress={() => window.open(googleMapsUrl(v.latitude, v.longitude, venueTitle(v.names, t)), '_blank')}
+                    onPress={() => openExternalUrl(googleMapsUrl(v.latitude, v.longitude, venueTitle(v.names, t)))}
                   >
                     <Text style={styles.popupMapsButtonText}>{t('eventMap.openInGoogleMaps')}</Text>
                   </Pressable>

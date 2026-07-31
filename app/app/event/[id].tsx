@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +22,7 @@ import { useFollowedOrganizers } from '../../lib/followedOrganizers';
 import { isPushSupported } from '../../lib/pushNotifications';
 import { registerStrings, useTranslation } from '../../lib/strings';
 import { categoryLabel } from '../../lib/eventCategories';
+import { openExternalUrl } from '../../lib/openExternalUrl';
 import type { Language } from '../../lib/language';
 
 registerStrings({
@@ -193,7 +193,7 @@ export default function EventDetailScreen() {
   // (z.B. um den doppelten "In Google Maps öffnen"-Sekundärbutton zu
   // vermeiden, wenn Maps schon die primäre Aktion ist).
   const primaryAction: { key: 'ticket' | 'maps'; onPress: () => void } | null = event.source_url
-    ? { key: 'ticket', onPress: () => Linking.openURL(event.source_url!) }
+    ? { key: 'ticket', onPress: () => openExternalUrl(event.source_url!) }
     : hasCoords
     ? { key: 'maps', onPress: () => openInGoogleMaps() }
     : null;
@@ -207,7 +207,7 @@ export default function EventDetailScreen() {
     const url = query
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
       : `https://www.google.com/maps/search/?api=1&query=${event!.latitude},${event!.longitude}`;
-    Linking.openURL(url);
+    openExternalUrl(url);
   }
 
   async function handleShare() {

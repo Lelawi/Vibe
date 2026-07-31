@@ -24,6 +24,7 @@ import MarkerClusterGroup from 'react-leaflet-cluster';
 import { todayLabel } from '../lib/openingHours';
 import { createClusterIcon, type VenueStatusMarker } from '../lib/leafletCluster';
 import { registerStrings, useTranslation } from '../lib/strings';
+import { openExternalUrl } from '../lib/openExternalUrl';
 
 // Dieselben Keys wie in VenueListScreen.tsx (Object.assign ist idempotent) —
 // hier zusätzlich registriert, damit diese Komponente nicht von der
@@ -280,21 +281,21 @@ const VenueLeafletView = forwardRef<
                   )}
                   {venue.wifi === true && <Text style={styles.popupLunchBadge}>📶 {t('venues.wifi')}</Text>}
                   {venue.website && (
-                    <Pressable onPress={() => window.open(venue.website!, '_blank')}>
+                    <Pressable onPress={() => openExternalUrl(venue.website!)}>
                       <Text style={styles.popupLink}>{t('venueMap.openWebsite')}</Text>
                     </Pressable>
                   )}
                   {venue.lunch_menu_url && (
-                    <Pressable onPress={() => window.open(venue.lunch_menu_url!, '_blank')}>
+                    <Pressable onPress={() => openExternalUrl(venue.lunch_menu_url!)}>
                       <Text style={styles.popupLink}>{t('venues.lunchMenu')}</Text>
                     </Pressable>
                   )}
                   {venue.dinner_menu_url && (
-                    <Pressable onPress={() => window.open(venue.dinner_menu_url!, '_blank')}>
+                    <Pressable onPress={() => openExternalUrl(venue.dinner_menu_url!)}>
                       <Text style={styles.popupLink}>{t('venues.dinnerMenu')}</Text>
                     </Pressable>
                   )}
-                  <Pressable onPress={() => window.open(googleMapsUrl(venue.name, venue.address), '_blank')}>
+                  <Pressable onPress={() => openExternalUrl(googleMapsUrl(venue.name, venue.address))}>
                     <Text style={styles.popupMapsButton}>{t('venues.googleMapsOpen')}</Text>
                   </Pressable>
                 </View>
