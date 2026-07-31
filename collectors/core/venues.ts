@@ -53,6 +53,30 @@ function buildAddress(tags: Record<string, string>): string | null {
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
+// Fallback für OSM-Knoten ohne addr:street-Tag: die Koordinate kennen wir
+// über Overpass immer, Nominatims Reverse-Geocoding kann daraus meist trotzdem
+// eine Straße+Hausnummer ermitteln (gleiche kostenlose Quelle wie die
+// Vorwärts-Geocodierung in core/geocode.ts).
+async function reverseGeocodeAddress(lat: number, lon: number): Promise<string | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1&zoom=18`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)' },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { address?: Record<string, string> };
+    const a = json.address;
+    if (!a) return null;
+    const streetLine = [a.road, a.house_number].filter(Boolean).join(' ');
+    const cityLine = [a.postcode, a.city ?? a.town ?? a.village].filter(Boolean).join(' ');
+    const parts = [streetLine, cityLine].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : null;
+  } catch (err) {
+    console.warn('reverse geocode failed for', lat, lon, err);
+    return null;
+  }
+}
+
 // OSM-opening_hours-Tags sind gelegentlich ungenau/veraltet (per Nutzer-
 // Stichprobe verifiziert, 2026-07: Alter Simpl steht in OSM mit "Mo-We
 // 11:00-00:00...", das tatsächliche Türschild sagt "Mo-Mi 11:30-00:00...").
@@ -689,6 +713,27 @@ function findMenuPdfLinks($: cheerio.CheerioAPI, baseUrl: string): string[] {
   return (prioritized.size > 0 ? [...prioritized] : [...all]).slice(0, 4);
 }
 
+// pdf-parse/pdf.js loggen bei jeder etwas ungewöhnlichen PDF (kaputte
+// Font-Tabellen, gescannte Speisekarten, verschlüsselte PDFs...) massenhaft
+// "Warning: ..."-Zeilen über console.warn/console.log — bei den ~2000
+// Restaurant-Websites kamen so über 100.000 Log-Zeilen zusammen, die eine
+// echte Fehlermeldung (z.B. den Overpass-Timeout weiter unten) komplett
+// zugeschüttet haben (per Nutzer-Log gemeldet). Das sind pdf.js-interne
+// Diagnosemeldungen, keine echten Fehler unseres Codes — für die Dauer des
+// Parsens stumm geschaltet statt jede einzelne Aufrufstelle zu patchen.
+async function parsePdfQuietly(buffer: Buffer) {
+  const originalWarn = console.warn;
+  const originalLog = console.log;
+  console.warn = () => {};
+  console.log = () => {};
+  try {
+    return await pdf(buffer);
+  } finally {
+    console.warn = originalWarn;
+    console.log = originalLog;
+  }
+}
+
 async function extractBeerPriceFromPdf(url: string): Promise<number | null> {
   try {
     const res = await fetch(url, {
@@ -697,7 +742,7 @@ async function extractBeerPriceFromPdf(url: string): Promise<number | null> {
     });
     if (!res.ok) return null;
     const buffer = Buffer.from(await res.arrayBuffer());
-    const parsed = await pdf(buffer);
+    const parsed = await parsePdfQuietly(buffer);
     if (!/€|EUR/i.test(parsed.text)) return null;
     return findNormalizedBeerPrice(parsed.text, BEER_VOLUME_PRICE_PDF);
   } catch {
@@ -787,17 +832,32 @@ out body;
 `;
 
   try {
-    const res = await fetch(OVERPASS_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain',
-        'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)',
-      },
-      body: 'data=' + encodeURIComponent(overpassQuery),
-    });
-    if (!res.ok) { console.warn(`[${label}] overpass fetch failed`, res.status); return; }
-
-    const data = (await res.json()) as { elements: OverpassElement[] };
+    // overpass.kumi.systems ist ein kostenloser, best-effort betriebener
+    // Mirror ohne Uptime-Garantie — ein einzelner HeadersTimeoutError (per
+    // Nutzer-Log gemeldet: Bars-Lauf brach komplett ohne ein einziges
+    // aktualisiertes Venue ab) sollte den ganzen Lauf nicht scheitern lassen,
+    // wenn ein zweiter Versuch eine Chance hat durchzukommen.
+    let data: { elements: OverpassElement[] } | null = null;
+    const OVERPASS_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= OVERPASS_ATTEMPTS; attempt++) {
+      try {
+        const res = await fetch(OVERPASS_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain',
+            'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)',
+          },
+          body: 'data=' + encodeURIComponent(overpassQuery),
+        });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        data = (await res.json()) as { elements: OverpassElement[] };
+        break;
+      } catch (err) {
+        console.warn(`[${label}] overpass attempt ${attempt}/${OVERPASS_ATTEMPTS} failed`, err);
+        if (attempt < OVERPASS_ATTEMPTS) await new Promise((r) => setTimeout(r, 5000 * attempt));
+      }
+    }
+    if (!data) { console.warn(`[${label}] overpass fetch failed after ${OVERPASS_ATTEMPTS} attempts — skipping this run`); return; }
     const rawVenues = data.elements
       .filter((el) => el.tags?.name && !EXCLUDED_VENUE_OSM_IDS.has(el.id))
       .map((el) => {
@@ -806,6 +866,11 @@ out body;
           osm_id: el.id,
           name: tags.name,
           address: buildAddress(tags),
+          // Nur ein Verarbeitungs-Flag, nicht Teil der venues-Zeile (wird vor
+          // dem Upsert wieder entfernt) — merkt sich, ob der OSM-Knoten
+          // überhaupt eine Straße kennt, damit unten gezielt nur die
+          // Venues ohne Straße per Reverse-Geocoding nachgeschärft werden.
+          hasStreetTag: Boolean(tags['addr:street']),
           latitude: el.lat,
           longitude: el.lon,
           opening_hours_raw: tags.opening_hours ?? null,
@@ -840,12 +905,13 @@ out body;
     // eins davon fehlt, wird neu gefetcht.
     const { data: existing } = await supabase
       .from('venues')
-      .select('osm_id,image_url,opening_hours_override,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur')
+      .select('osm_id,address,image_url,opening_hours_override,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur')
       .eq('type', type);
     const existingByOsmId = new Map(
       (existing ?? []).map((v) => [
         v.osm_id as number,
         {
+          address: v.address as string | null,
           image: v.image_url as string | null,
           hours: v.opening_hours_override as string | null,
           lunchAvailable: (v.lunch_available as boolean | null) ?? false,
@@ -855,6 +921,22 @@ out body;
         },
       ])
     );
+
+    // Manche OSM-Knoten haben keinen addr:street-Tag (bei Spätis/Kiosken
+    // häufiger als bei Restaurants) — ohne Straße liefert die Google-Maps-
+    // Freitextsuche bei Filialketten (z.B. "REWE To Go") mehrere Treffer
+    // statt direkt zur richtigen Filiale zu springen (per Nutzer-Feedback).
+    // Die Koordinate kennen wir aber immer, also per Nominatim-Reverse-
+    // Geocoding einmalig eine Adresse nachschlagen — nur für Venues, die
+    // weder jetzt noch beim letzten Lauf schon eine hatten, und strikt
+    // sequenziell mit 1s Abstand (Nominatim erlaubt max. 1 Anfrage/Sekunde).
+    const needsReverseGeocode = rawVenues.filter((v) => !v.hasStreetTag && !existingByOsmId.get(v.osm_id)?.address);
+    console.log(`[${label}] reverse-geocoding`, needsReverseGeocode.length, 'venues with no street address in OSM');
+    const reverseGeocodedByOsmId = new Map<number, string | null>();
+    for (const v of needsReverseGeocode) {
+      reverseGeocodedByOsmId.set(v.osm_id, await reverseGeocodeAddress(v.latitude, v.longitude));
+      await new Promise((r) => setTimeout(r, 1100));
+    }
 
     const toFetch = rawVenues.filter((v) => {
       const cached = existingByOsmId.get(v.osm_id);
@@ -876,10 +958,12 @@ out body;
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
     const venues = rawVenues.map((v) => {
+      const { hasStreetTag, ...row } = v;
       const fetched = enrichmentByOsmId.get(v.osm_id);
       const cached = existingByOsmId.get(v.osm_id);
       return {
-        ...v,
+        ...row,
+        address: v.address ?? cached?.address ?? reverseGeocodedByOsmId.get(v.osm_id) ?? null,
         image_url: fetched?.image ?? cached?.image ?? null,
         opening_hours_override: fetched?.hours ?? cached?.hours ?? null,
         lunch_available: fetched?.lunchAvailable ?? cached?.lunchAvailable ?? false,
