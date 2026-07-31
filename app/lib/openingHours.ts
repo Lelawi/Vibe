@@ -30,13 +30,26 @@ function parseTimeToMinutes(time: string): number | null {
   if (!match) return null;
   const hours = Number(match[1]);
   const minutes = Number(match[2]);
-  // OSM erlaubt "24:00" als Tagesende — regulär ungültig für new Date(), hier
-  // aber ein legitimer Wert (Mitternacht als Ende, nicht als nächster Tag).
-  if (hours > 24 || minutes > 59) return null;
+  // OSM erlaubt Werte >24:00 für sehr späte Über-Mitternacht-Enden (z.B.
+  // "25:00" = 01:00 am Folgetag, real bei "Landsberger Kiosk" beobachtet),
+  // bis zu einer großzügigen, aber plausiblen Grenze.
+  if (hours > 32 || minutes > 59) return null;
   return hours * 60 + minutes;
 }
 
+// "PH" (Feiertag) ist keine Wochentags-Selektion, sondern eine orthogonale
+// Kalender-Dimension, die diese App (ohne Feiertagskalender-Datenquelle)
+// nicht abbilden kann. Bisher brach ein "PH"-Token das Parsen der GESAMTEN
+// Zeile ab — bei einer Live-Auswertung aller Spätis/Bars/Restaurants war das
+// mit Abstand die häufigste Ursache für "unbekannte Öffnungszeiten" trotz
+// vorhandener Daten (103 von 423 Spätis, 826 von 2353 Bars/Restaurants
+// betroffen, 2026-07 verifiziert). Jetzt wird "PH" als bekannt, aber
+// wochentagslos (leeres Array) behandelt: die umgebende Regel bleibt für
+// ihre echten Wochentage gültig, nur der zusätzliche Feiertags-Sonderfall
+// wird (mangels Datenquelle) ignoriert. Das ist an ca. 10 Tagen im Jahr
+// potenziell ungenau, aber weit besser als an 365 Tagen "unbekannt" zu zeigen.
 function parseDayToken(token: string): number[] | null {
+  if (/^ph$/i.test(token)) return [];
   const rangeMatch = token.match(/^([A-Za-z]{2})-([A-Za-z]{2})$/);
   if (rangeMatch) {
     const start = DAY_INDEX[rangeMatch[1]];
@@ -58,13 +71,19 @@ function parseDayToken(token: string): number[] | null {
 }
 
 function parseTimeRangeToken(token: string): TimeRange | null {
-  const match = token.match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
+  // Leerzeichen um den Bindestrich toleriert ("6:00 - 25:00", real bei
+  // "Landsberger Kiosk" beobachtet).
+  const match = token.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
   if (!match) return null;
   const start = parseTimeToMinutes(match[1]);
   const end = parseTimeToMinutes(match[2]);
   if (start === null || end === null) return null;
   // Ende <= Start heißt: Bereich geht über Mitternacht hinaus (z.B. 17:00-05:00).
   return { startMinutes: start, endMinutes: end <= start ? end + 24 * 60 : end };
+}
+
+function isClosedKeyword(rest: string): boolean {
+  return /^(off|closed)$/i.test(rest);
 }
 
 export function parseOpeningHours(raw: string | null | undefined): DayRule[] | null {
@@ -86,13 +105,14 @@ export function parseOpeningHours(raw: string | null | undefined): DayRule[] | n
     // Liste von Tagen, die sich erst den ZeitBEREICH des nächsten Teilstücks
     // teilen ("Tu-Fr" und "Su" teilen sich "09:00-23:00"). Ein Teilstück ganz
     // ohne eigene Zeit sammelt seine Tage deshalb in pendingDays, bis ein
-    // Teilstück MIT Zeit sie einlöst (per Nutzer-Feedback: Tu-Fr/Fr wurden
-    // dadurch fälschlich als durchgehend geschlossen behandelt, weil sie nie
-    // eine eigene Zeit bekamen). Weiterhin unterstützt: mehrere komplett
-    // eigenständige "Tage Zeit"-Teilstücke, kommagetrennt, z.B.
-    // "Mo-Th 17:00-24:00, Fr 17:00-01:00" — hier hat jedes Teilstück direkt
-    // seine eigene Zeit, pendingDays bleibt in dem Fall stets leer.
+    // Teilstück MIT Zeit sie einlöst. Umgekehrt kann ein Teilstück OHNE
+    // eigenen Tages-Token am Anfang ein weiterer Zeitbereich für dieselbe,
+    // gerade zuvor aufgelöste Tagesgruppe sein (Mittagspause-Muster, z.B.
+    // "Mo-Fr 07:00-12:30,14:00-18:00" — real sehr häufig bei Spätis/Kiosken)
+    // — dafür merkt sich lastRule die zuletzt erzeugte offene Regel dieses
+    // Blocks, an die weitere Zeitbereiche angehängt werden.
     let pendingDays: number[] = [];
+    let lastRule: DayRule | null = null;
     for (const part of segment.split(',')) {
       const piece = part.trim();
       if (!piece) continue;
@@ -100,31 +120,57 @@ export function parseOpeningHours(raw: string | null | undefined): DayRule[] | n
       if (tokens.length < 1) continue;
 
       const days = parseDayToken(tokens[0]);
-      if (!days) return null; // unbekanntes Muster -> lieber ganz abbrechen als falsch parsen
 
-      const rest = tokens.slice(1).join(' ');
+      if (days === null) {
+        // Kein Tages-Token am Anfang dieses Teilstücks.
+        const bareRange = parseTimeRangeToken(piece);
+        if (bareRange && !lastRule && pendingDays.length === 0 && rules.length === 0) {
+          // Nirgends im gesamten String bisher ein Tages-Selektor gesehen ->
+          // OSM-Kurzform für "jeden Tag" (z.B. reines "07:00-24:00").
+          lastRule = { days: [0, 1, 2, 3, 4, 5, 6], ranges: [bareRange], closed: false };
+          rules.push(lastRule);
+          continue;
+        }
+        if (!lastRule || lastRule.closed) return null;
+        // Zusätzlicher Zeitbereich für die vorherige Tagesgruppe (Mittagspause).
+        let range = bareRange;
+        if (!range) {
+          // Angehängten Freitext-Kommentar in Anführungszeichen abschneiden,
+          // bevor endgültig aufgegeben wird.
+          const stripped = piece.replace(/\s*"[^"]*"\s*$/, '').trim();
+          range = stripped ? parseTimeRangeToken(stripped) : null;
+        }
+        if (!range) return null; // unbekanntes Muster -> lieber ganz abbrechen als falsch parsen
+        lastRule.ranges.push(range);
+        continue;
+      }
+
+      // Gültiger Tages-Token (inkl. "PH" -> leeres Array) am Anfang.
+      let rest = tokens.slice(1).join(' ');
+      // Angehängten Freitext-Kommentar in Anführungszeichen ignorieren (z.B.
+      // 'Mo off "nur bei schlechtem Wetter"').
+      rest = rest.replace(/\s*"[^"]*"\s*$/, '').trim();
+
       if (rest === '') {
         // Nur Tage, keine Zeit -> für das nächste Teilstück mit Zeit vormerken.
         pendingDays.push(...days);
+        lastRule = null;
         continue;
       }
 
       const allDays = [...new Set([...pendingDays, ...days])];
       pendingDays = [];
 
-      if (rest === 'off') {
-        rules.push({ days: allDays, ranges: [], closed: true });
+      if (isClosedKeyword(rest)) {
+        lastRule = { days: allDays, ranges: [], closed: true };
+        rules.push(lastRule);
         continue;
       }
 
-      const ranges: TimeRange[] = [];
-      for (const timeToken of rest.split(/[,;]/).map((t) => t.trim()).filter(Boolean)) {
-        const range = parseTimeRangeToken(timeToken);
-        if (!range) return null;
-        ranges.push(range);
-      }
-      if (ranges.length === 0) return null;
-      rules.push({ days: allDays, ranges, closed: false });
+      const range = parseTimeRangeToken(rest);
+      if (!range) return null;
+      lastRule = { days: allDays, ranges: [range], closed: false };
+      rules.push(lastRule);
     }
     // Tage ohne je eine zugeordnete Zeit übrig (Block endet mitten in einer
     // Tagesliste) -> unbekanntes Muster, lieber abbrechen als falsch parsen.
