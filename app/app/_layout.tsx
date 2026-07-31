@@ -42,6 +42,12 @@ export default function Layout() {
             bei event/[id] — kein natives Header nötig. */}
         <Stack.Screen name="bars" options={{ title: 'Bars', headerShown: false }} />
         <Stack.Screen name="bars-map" options={{ title: 'Bars-Karte' }} />
+        {/* Fehlte hier komplett -> Expo Router griff auf einen ungestylten
+            Default-Header mit nativem Zurück-Pfeil zurück (per Screenshot
+            gemeldet), obwohl VenueListScreen bereits die BottomTabBar für
+            die Navigation hat — gleiches Muster wie "bars" oben. */}
+        <Stack.Screen name="restaurants" options={{ title: 'Restaurants', headerShown: false }} />
+        <Stack.Screen name="restaurants-map" options={{ title: 'Restaurants-Karte' }} />
       </Stack>
     </>
   );
