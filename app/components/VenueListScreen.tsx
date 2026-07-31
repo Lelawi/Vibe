@@ -24,6 +24,7 @@ import { fuzzyMatch } from '../lib/fuzzySearch';
 import { distanceKm, formatDistance } from '../lib/geo';
 import { fetchAllVenues } from '../lib/fetchAllVenues';
 import { useVenueFavorites } from '../lib/venueFavorites';
+import { setFilteredVenuesForMap } from '../lib/mapFilterCache';
 import BottomTabBar from './BottomTabBar';
 
 // Web-only <input type="range">-Styling für den Umkreis-Slider (siehe
@@ -82,6 +83,22 @@ type EnrichedVenue = Venue & {
 // Banner-Zeile enthält.
 type ListRow = { kind: 'banner' } | { kind: 'empty' } | { kind: 'venue'; venue: EnrichedVenue };
 
+// Modul-level statt useState-Default: bleibt über einen Tab-Wechsel hinweg
+// erhalten, obwohl der Screen (Stack.Screen pro Tab, kein Tabs-Navigator)
+// bei jedem Wechsel komplett neu gemountet wird. Ohne das flackerte bei
+// jedem Zurückwechseln zu Bars/Restaurants wieder das Lade-Skeleton auf und
+// alle 581/2270 Venues wurden erneut über mehrere Seiten von Supabase
+// geholt — spürbar lange Wartezeit beim Tab-Switching (gleiches Problem wie
+// bei den Events, siehe eventsCache in app/index.tsx). Mit Cache: sofort
+// der zuletzt geladene Stand sichtbar, im Hintergrund läuft trotzdem ein
+// stiller Refresh (siehe load()).
+type VenueScreenCache = {
+  venues: Venue[];
+  nearbyEvents: NearbyEvent[];
+  closureStatusByVenue: Map<string, ClosureStatus>;
+};
+const venueScreenCache = new Map<VenueType, VenueScreenCache>();
+
 const OPEN_PRIORITY: Record<'open' | 'unknown' | 'closed', number> = { open: 0, unknown: 1, closed: 2 };
 
 function openState(open: boolean | null): 'open' | 'unknown' | 'closed' {
@@ -121,13 +138,15 @@ const CONFIG: Record<VenueType, {
 export default function VenueListScreen({ type }: { type: VenueType }) {
   const config = CONFIG[type];
   const router = useRouter();
-  const [venues, setVenues] = useState<Venue[]>([]);
-  const [nearbyEvents, setNearbyEvents] = useState<NearbyEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [venues, setVenues] = useState<Venue[]>(() => venueScreenCache.get(type)?.venues ?? []);
+  const [nearbyEvents, setNearbyEvents] = useState<NearbyEvent[]>(() => venueScreenCache.get(type)?.nearbyEvents ?? []);
+  const [loading, setLoading] = useState(() => !venueScreenCache.has(type));
   const [search, setSearch] = useState('');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
-  const [closureStatusByVenue, setClosureStatusByVenue] = useState<Map<string, ClosureStatus>>(new Map());
+  const [closureStatusByVenue, setClosureStatusByVenue] = useState<Map<string, ClosureStatus>>(
+    () => venueScreenCache.get(type)?.closureStatusByVenue ?? new Map()
+  );
   // "compact" (kleine Vorschau links, viel auf einen Blick) ist der Default,
   // exakt wie die normale Event-Liste in index.tsx — "cards" (großes Bild
   // oben) bleibt für alle erreichbar, die die Bild-Vorschau lieber größer
@@ -222,11 +241,15 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           .limit(1000),
         supabase.from('venue_closure_reports').select('venue_id,status'),
       ]);
-      setVenues(venuesData.sort((a, b) => a.name.localeCompare(b.name, 'de')));
-      setNearbyEvents(eventsRes.data ?? []);
-      setClosureStatusByVenue(
-        new Map((reportsRes.data ?? []).map((r) => [r.venue_id as string, r.status as ClosureStatus]))
+      const sortedVenues = venuesData.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+      const nearby = eventsRes.data ?? [];
+      const closureMap = new Map(
+        (reportsRes.data ?? []).map((r) => [r.venue_id as string, r.status as ClosureStatus])
       );
+      setVenues(sortedVenues);
+      setNearbyEvents(nearby);
+      setClosureStatusByVenue(closureMap);
+      venueScreenCache.set(type, { venues: sortedVenues, nearbyEvents: nearby, closureStatusByVenue: closureMap });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -359,6 +382,34 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         return a.name.localeCompare(b.name, 'de');
       });
   }, [enrichedVenues, search, onlyOpen, cuisineFilter, lunchOnly, showFavoritesOnly, favorites, userLocation, nearbyRadiusKm]);
+
+  // Damit die Karte (VenueMapNative.web.tsx) exakt dieselben Treffer zeigen
+  // kann wie die gerade aktive Filterkombination hier, ohne die komplette
+  // Filterlogik (Suche/Öffnungszeiten/Küche/Mittagslunch/Favoriten/Nähe) ein
+  // zweites Mal zu implementieren — siehe mapFilterCache.ts. Nicht während
+  // loading publizieren: sonst würde ein Wechsel zur Karte mitten im
+  // allerersten Ladevorgang (bevor überhaupt Daten da sind) ein leeres
+  // Zwischenergebnis cachen, das die Karte dann fälschlich als "wirklich
+  // null Treffer" statt als "noch kein Filterkontext vorhanden" läse.
+  useEffect(() => {
+    if (loading) return;
+    setFilteredVenuesForMap(
+      type,
+      filteredVenues
+        .filter((v) => v.latitude != null && v.longitude != null)
+        .map((v) => ({
+          id: v.id,
+          name: v.name,
+          address: v.address,
+          latitude: v.latitude!,
+          longitude: v.longitude!,
+          opening_hours_raw: v.effectiveHours,
+          open: v.open,
+          website: v.website,
+          image_url: v.image_url,
+        }))
+    );
+  }, [type, filteredVenues, loading]);
 
   const openCount = useMemo(() => filteredVenues.filter((v) => v.open === true).length, [filteredVenues]);
   const switcherActive = type === 'bar' ? 'bars' : 'restaurants';

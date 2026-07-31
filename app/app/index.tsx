@@ -20,6 +20,7 @@ import BottomTabBar from '../components/BottomTabBar';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
+import { setFilteredEventsForMap } from '../lib/mapFilterCache';
 import { fuzzyMatch } from '../lib/fuzzySearch';
 import { addEventsToCalendar } from '../lib/calendar';
 import { useFavorites } from '../lib/favorites';
@@ -63,6 +64,17 @@ type ListRow =
   | { kind: 'banner' }
   | { kind: 'featured'; events: Event[] }
   | { kind: 'group'; group: Event[] };
+
+// Modul-level statt useState-Default: bleibt über einen Tab-Wechsel hinweg
+// erhalten, obwohl der Screen bei jedem Wechsel zwischen Events/Bars/
+// Restaurants komplett neu gemountet wird (eigener Stack.Screen pro Tab,
+// kein Tabs-Navigator, der Screens am Leben hält). Ohne das flackerte bei
+// jedem Zurückwechseln zu Events wieder das Lade-Skeleton auf und alle
+// 6000+ Events wurden erneut über mehrere Seiten von Supabase geholt, obwohl
+// sie Sekunden zuvor schon da waren — spürbar lange Wartezeit beim
+// Tab-Switching. Mit Cache: sofort der zuletzt geladene Stand sichtbar,
+// im Hintergrund läuft trotzdem ein stiller Refresh (siehe loadEvents).
+let eventsCache: Event[] | null = null;
 
 // Haversine-Formel für die Distanz zweier Koordinaten in km.
 function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -276,8 +288,8 @@ function toggleInSet(current: string[], value: string): string[] {
 export default function EventListScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ locations?: string; search?: string }>();
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState<Event[]>(() => eventsCache ?? []);
+  const [loading, setLoading] = useState(() => eventsCache === null);
   const [refreshing, setRefreshing] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const listRef = useRef<FlatList<ListRow>>(null);
@@ -444,7 +456,9 @@ export default function EventListScreen() {
       if (firstError) {
         console.error('Fehler beim Laden:', firstError);
       } else {
-        setEvents(pages.flatMap((p) => p.data ?? []));
+        const loaded = pages.flatMap((p) => p.data ?? []);
+        eventsCache = loaded;
+        setEvents(loaded);
       }
     } finally {
       setLoading(false);
@@ -590,6 +604,31 @@ export default function EventListScreen() {
       return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate && matchesFavorite && matchesFree && matchesMultiDay;
     });
   }, [enrichedEvents, debouncedSearch, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites, showFreeOnly, showMultiDayOnly]);
+
+  // Damit die Karte (MapNative.web.tsx) exakt dieselben Treffer zeigen kann
+  // wie die gerade aktive Filterkombination hier, ohne die komplette
+  // Filterlogik (Suche/Kategorie/Genre/Ort/Datum/Favoriten/Kostenlos/
+  // Mehrtägig) ein zweites Mal zu implementieren — siehe mapFilterCache.ts.
+  // Nicht während loading publizieren: sonst würde ein Wechsel zur Karte
+  // mitten im allerersten Ladevorgang ein leeres Zwischenergebnis cachen,
+  // das die Karte fälschlich als "wirklich null Treffer" statt als "noch
+  // kein Filterkontext vorhanden" läse.
+  useEffect(() => {
+    if (loading) return;
+    setFilteredEventsForMap(
+      filteredEvents
+        .filter((e) => e.latitude != null && e.longitude != null)
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          location_name: e.location_name,
+          latitude: e.latitude!,
+          longitude: e.longitude!,
+          start_date: e.start_date,
+          start_time: e.start_time,
+        }))
+    );
+  }, [filteredEvents, loading]);
 
   // Bündelt wiederkehrende Events (gleicher Titel + gleicher Ort, z.B. eine
   // wöchentliche Partyreihe) zu einer Gruppe. In der Liste wird nur der

@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { isOpenNow } from '../lib/openingHours';
 import { fetchAllVenues } from '../lib/fetchAllVenues';
+import { getFilteredVenuesForMap } from '../lib/mapFilterCache';
+import MapCategorySwitcher from './MapCategorySwitcher';
 import type { VenueMarker } from './VenueLeafletView.web';
 import type { VenueType } from './VenueListScreen';
 
@@ -39,6 +41,13 @@ export default function VenueMapNative({
   targetLng?: number | null;
 }) {
   const [venues, setVenues] = useState<RawVenue[]>([]);
+  // Von der Listenansicht bereits gefilterte Treffer (siehe mapFilterCache.ts)
+  // — vorhanden, wenn man von dort zur Karte navigiert ist, dann zeigt die
+  // Karte exakt dieselbe Auswahl statt eines zweiten, unabhängigen
+  // Filterdurchlaufs. null = kein Filterkontext, unten wird stattdessen
+  // ungefiltert geladen (Direktaufruf der Karte oder Kategorie-Wechsel per
+  // MapCategorySwitcher, ohne vorherigen Listenbesuch für diesen Typ).
+  const [cachedMarkers, setCachedMarkers] = useState<VenueMarker[] | null>(null);
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -55,6 +64,13 @@ export default function VenueMapNative({
 
   useEffect(() => {
     async function load() {
+      const cached = getFilteredVenuesForMap(type);
+      if (cached) {
+        setCachedMarkers(cached);
+        setLoading(false);
+        return;
+      }
+      setCachedMarkers(null);
       // Supabase deckelt eine einzelne Abfrage hart bei 1000 Zeilen — bei
       // 2263 Restaurants hätte ein einfaches .select() über die Hälfte
       // verschluckt (siehe app/lib/fetchAllVenues.ts).
@@ -74,28 +90,27 @@ export default function VenueMapNative({
     load();
   }, [type]);
 
-  const markers: VenueMarker[] = useMemo(
-    () =>
-      venues
-        .filter((v) => !closedIds.has(v.id))
-        .map((v) => {
-          // Vom Betreiber gepflegte Öffnungszeiten (Website) sind
-          // zuverlässiger als der oft ungenaue/veraltete OSM-Tag.
-          const effectiveHours = v.opening_hours_override ?? v.opening_hours_raw;
-          return {
-            id: v.id,
-            name: v.name,
-            address: v.address,
-            latitude: v.latitude!,
-            longitude: v.longitude!,
-            opening_hours_raw: effectiveHours,
-            open: isOpenNow(effectiveHours),
-            website: v.website,
-            image_url: v.image_url,
-          };
-        }),
-    [venues, closedIds]
-  );
+  const markers: VenueMarker[] = useMemo(() => {
+    if (cachedMarkers) return cachedMarkers;
+    return venues
+      .filter((v) => !closedIds.has(v.id))
+      .map((v) => {
+        // Vom Betreiber gepflegte Öffnungszeiten (Website) sind
+        // zuverlässiger als der oft ungenaue/veraltete OSM-Tag.
+        const effectiveHours = v.opening_hours_override ?? v.opening_hours_raw;
+        return {
+          id: v.id,
+          name: v.name,
+          address: v.address,
+          latitude: v.latitude!,
+          longitude: v.longitude!,
+          opening_hours_raw: effectiveHours,
+          open: isOpenNow(effectiveHours),
+          website: v.website,
+          image_url: v.image_url,
+        };
+      });
+  }, [cachedMarkers, venues, closedIds]);
 
   const hasTarget = targetLat != null && targetLng != null && !Number.isNaN(targetLat) && !Number.isNaN(targetLng);
 
@@ -133,6 +148,7 @@ export default function VenueMapNative({
           targetId={hasTarget ? targetId ?? null : null}
         />
       </Suspense>
+      <MapCategorySwitcher active={type === 'bar' ? 'bars' : 'restaurants'} />
       <TouchableOpacity
         style={[styles.filterButton, onlyOpen && styles.filterButtonActive]}
         onPress={() => setOnlyOpen((v) => !v)}
@@ -151,7 +167,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
   filterButton: {
     position: 'absolute',
-    top: 12,
+    top: 60,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',

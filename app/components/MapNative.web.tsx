@@ -3,6 +3,8 @@ import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
+import { getFilteredEventsForMap } from '../lib/mapFilterCache';
+import MapCategorySwitcher from './MapCategorySwitcher';
 import type { VenueMarker } from './LeafletMapView.web';
 
 // Lädt die eigentliche Leaflet-Karte erst zur Laufzeit im Browser (siehe
@@ -44,6 +46,19 @@ export default function MapNative() {
 
   useEffect(() => {
     async function loadEvents() {
+      // Von der Listenansicht bereits gefilterte Treffer (siehe
+      // mapFilterCache.ts) — vorhanden, wenn man von dort zur Karte
+      // navigiert ist, dann zeigt die Karte exakt dieselbe Auswahl (Suche/
+      // Kategorie/Genre/Ort/Datum/Favoriten/...) statt eines zweiten,
+      // unabhängigen Filterdurchlaufs. Kein Eintrag (Direktaufruf der Karte,
+      // oder Kategorie-Wechsel per MapCategorySwitcher) -> alles ungefiltert
+      // laden, wie bisher.
+      const cached = getFilteredEventsForMap();
+      if (cached) {
+        setEvents(cached as RawEvent[]);
+        setLoading(false);
+        return;
+      }
       const today = new Date().toISOString().slice(0, 10);
       const { data, error } = await supabase
         .from('events')
@@ -92,33 +107,37 @@ export default function MapNative() {
   }
 
   return (
-    <Suspense
-      fallback={
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#fff" />
-        </View>
-      }
-    >
-      <LeafletMapView
-        venues={venues}
-        centerLat={centerLat}
-        centerLng={centerLng}
-        zoom={hasTarget ? 16 : 13}
-        targetKey={targetKey}
-        userLocation={userLocation}
-        onOpenEvent={(id) => router.push(`/event/${id}`)}
-        onOpenList={(names) => {
-          // Die Ortsfilter auf der Startseite matchen gegen canonicalizeVenue(location_name),
-          // nicht gegen die rohen, hier fürs Popup genutzten Namen ("Backstage Halle" vs.
-          // "Backstage") — sonst kommt "Keine Events gefunden" trotz gültiger Auswahl raus.
-          const canonical = Array.from(new Set(names.map((n) => canonicalizeVenue(n))));
-          router.push({ pathname: '/', params: { locations: canonical.join(',') } });
-        }}
-      />
-    </Suspense>
+    <View style={styles.wrap}>
+      <Suspense
+        fallback={
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#fff" />
+          </View>
+        }
+      >
+        <LeafletMapView
+          venues={venues}
+          centerLat={centerLat}
+          centerLng={centerLng}
+          zoom={hasTarget ? 16 : 13}
+          targetKey={targetKey}
+          userLocation={userLocation}
+          onOpenEvent={(id) => router.push(`/event/${id}`)}
+          onOpenList={(names) => {
+            // Die Ortsfilter auf der Startseite matchen gegen canonicalizeVenue(location_name),
+            // nicht gegen die rohen, hier fürs Popup genutzten Namen ("Backstage Halle" vs.
+            // "Backstage") — sonst kommt "Keine Events gefunden" trotz gültiger Auswahl raus.
+            const canonical = Array.from(new Set(names.map((n) => canonicalizeVenue(n))));
+            router.push({ pathname: '/', params: { locations: canonical.join(',') } });
+          }}
+        />
+      </Suspense>
+      <MapCategorySwitcher active="events" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
 });
