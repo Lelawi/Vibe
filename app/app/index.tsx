@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -278,6 +278,9 @@ export default function EventListScreen() {
   const params = useLocalSearchParams<{ locations?: string; search?: string }>();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const listRef = useRef<FlatList<ListRow>>(null);
   const [isOffline, setIsOffline] = useState(
     Platform.OS === 'web' && typeof navigator !== 'undefined' ? !navigator.onLine : false
   );
@@ -384,8 +387,14 @@ export default function EventListScreen() {
     );
   }
 
-  useEffect(() => {
-    async function loadEvents() {
+  // Eigenständige Funktion statt reiner useEffect-Closure, damit sie auch vom
+  // manuellen Aktualisieren-Button erneut aufgerufen werden kann — echtes
+  // Pull-to-refresh via RefreshControl ist auf react-native-web ein reiner
+  // No-op-Stub (rendert nur eine leere View, ignoriert refreshing/onRefresh
+  // komplett), also nutzlos auf dem PWA-Hauptkanal dieser App.
+  async function loadEvents(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    try {
       const today = new Date().toISOString().slice(0, 10);
       const columns =
         'id, title, category, subcategory, organizer, address, description, source_url, image_url, price_info, sold_out, start_date, start_time, end_date, location_name, latitude, longitude';
@@ -414,7 +423,6 @@ export default function EventListScreen() {
 
       if (countError || count == null) {
         console.error('Fehler beim Zählen:', countError);
-        setLoading(false);
         return;
       }
 
@@ -438,9 +446,13 @@ export default function EventListScreen() {
       } else {
         setEvents(pages.flatMap((p) => p.data ?? []));
       }
+    } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  }
 
+  useEffect(() => {
     loadEvents();
   }, []);
 
@@ -1023,6 +1035,17 @@ export default function EventListScreen() {
             </Text>
           </TouchableOpacity>
         )}
+
+        {/* Ersetzt echtes Pull-to-refresh, das auf react-native-web nicht
+            funktioniert (RefreshControl ist dort ein reiner No-op-Stub). */}
+        <TouchableOpacity style={styles.filterButton} onPress={() => loadEvents(true)} disabled={refreshing}>
+          {refreshing ? (
+            <ActivityIndicator size="small" color="#999" />
+          ) : (
+            <Ionicons name="refresh-outline" size={16} color="#999" />
+          )}
+          <Text style={styles.filterButtonText}>Aktualisieren</Text>
+        </TouchableOpacity>
       </ScrollView>
       <LinearGradient
         pointerEvents="none"
@@ -1222,9 +1245,12 @@ export default function EventListScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
+        ref={listRef}
         data={listData}
         keyExtractor={(row) => (row.kind === 'group' ? row.group[0].id : row.kind)}
         contentContainerStyle={styles.list}
+        onScroll={(e) => setShowBackToTop(e.nativeEvent.contentOffset.y > 600)}
+        scrollEventThrottle={150}
         ListHeaderComponent={listHeader}
         // RN/RNW's eigener Sticky-Mechanismus statt manuellem CSS
         // position:"sticky" auf einem verschachtelten View — letzteres griff
@@ -1581,6 +1607,14 @@ export default function EventListScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      {showBackToTop && (
+        <TouchableOpacity
+          style={styles.backToTopBtn}
+          onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+        >
+          <Ionicons name="arrow-up" size={20} color="#000" />
+        </TouchableOpacity>
+      )}
       <BottomTabBar active="events" mapRoute="/map" />
     </SafeAreaView>
   );
@@ -1865,6 +1899,21 @@ const styles = StyleSheet.create({
   // paddingBottom deckt die fixe BottomTabBar ab, sonst wäre die letzte Karte
   // dahinter verdeckt.
   list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 90 },
+  backToTopBtn: {
+    position: 'absolute',
+    right: 16,
+    bottom: 90,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#0af',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
   empty: { color: '#666', textAlign: 'center', marginTop: 40 },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 32, gap: 6 },
   emptyTitle: { color: '#ccc', fontSize: 16, fontWeight: '700', marginTop: 12 },

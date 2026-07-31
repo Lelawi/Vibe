@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -134,6 +134,10 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   // Fehlte bisher hier komplett, obwohl der Nähe-Button bei Events dieselbe
   // Zusatzauswahl aufklappt (Umkreis-Slider, null = "Alle").
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const listRef = useRef<FlatList<ListRow>>(null);
   const { favorites, isFavorite, toggleFavorite } = useVenueFavorites();
 
   function toggleNearby() {
@@ -157,8 +161,14 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     );
   }
 
-  useEffect(() => {
-    async function load() {
+  // Eigenständige Funktion statt reiner useEffect-Closure, damit sie auch vom
+  // manuellen Aktualisieren-Button erneut aufgerufen werden kann — echtes
+  // Pull-to-refresh via RefreshControl ist auf react-native-web ein reiner
+  // No-op-Stub (rendert nur eine leere View, ignoriert refreshing/onRefresh
+  // komplett), also nutzlos auf dem PWA-Hauptkanal dieser App.
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    try {
       const today = new Date().toISOString().slice(0, 10);
       // Nur die nächsten 2 Tage statt aller künftigen Events laden: der
       // Anwendungsfall ist "was ist JETZT/heute Abend los", nicht
@@ -199,9 +209,15 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       setClosureStatusByVenue(
         new Map((reportsRes.data ?? []).map((r) => [r.venue_id as string, r.status as ClosureStatus]))
       );
+    } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  }
+
+  useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
 
   // Ein einzelner Tap (z.B. versehentlich beim Scrollen) darf einen Eintrag
@@ -300,6 +316,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       .filter((v) => fuzzyMatch([v.name, v.address, v.cuisine].filter(Boolean).join(' '), search))
       .filter((v) => !onlyOpen || v.open === true)
       .filter((v) => !cuisineFilter || v.cuisine?.split(';').map((c) => c.trim()).includes(cuisineFilter))
+      .filter((v) => !showFavoritesOnly || isFavorite(v.id))
       .filter((v) => {
         // Nur bei aktivem Umkreis-Slider einschränken — Orte ohne Koordinaten
         // (distanceKm null) fallen dann automatisch raus, da ihre Entfernung
@@ -322,16 +339,17 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         if (priorityDiff !== 0) return priorityDiff;
         return a.name.localeCompare(b.name, 'de');
       });
-  }, [enrichedVenues, search, onlyOpen, cuisineFilter, favorites, userLocation, nearbyRadiusKm]);
+  }, [enrichedVenues, search, onlyOpen, cuisineFilter, showFavoritesOnly, favorites, userLocation, nearbyRadiusKm]);
 
   const openCount = useMemo(() => filteredVenues.filter((v) => v.open === true).length, [filteredVenues]);
   const switcherActive = type === 'bar' ? 'bars' : 'restaurants';
-  const hasAnyActiveFilter = search.trim() !== '' || onlyOpen || cuisineFilter !== null;
+  const hasAnyActiveFilter = search.trim() !== '' || onlyOpen || cuisineFilter !== null || showFavoritesOnly;
 
   function resetAllFilters() {
     setSearch('');
     setOnlyOpen(false);
     setCuisineFilter(null);
+    setShowFavoritesOnly(false);
   }
 
   const listData: ListRow[] = useMemo(() => {
@@ -438,6 +456,20 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               <Text style={[styles.filterButtonText, onlyOpen && styles.filterChipTextActive]}>Nur geöffnet</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity
+              style={[styles.filterButton, showFavoritesOnly && styles.filterChipActive]}
+              onPress={() => setShowFavoritesOnly((v) => !v)}
+            >
+              <Ionicons
+                name={showFavoritesOnly ? 'heart' : 'heart-outline'}
+                size={16}
+                color={showFavoritesOnly ? '#000' : '#999'}
+              />
+              <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
+                Favoriten
+              </Text>
+            </TouchableOpacity>
+
             {Platform.OS === 'web' && (
               <TouchableOpacity
                 style={[styles.filterButton, userLocation && styles.filterChipActive]}
@@ -461,6 +493,17 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             >
               <Ionicons name={viewMode === 'compact' ? 'image-outline' : 'list-outline'} size={16} color="#999" />
               <Text style={styles.filterButtonText}>{viewMode === 'compact' ? 'Bild-Karten' : 'Kompakt'}</Text>
+            </TouchableOpacity>
+
+            {/* Ersetzt echtes Pull-to-refresh, das auf react-native-web nicht
+                funktioniert (RefreshControl ist dort ein reiner No-op-Stub). */}
+            <TouchableOpacity style={styles.filterButton} onPress={() => load(true)} disabled={refreshing}>
+              {refreshing ? (
+                <ActivityIndicator size="small" color="#999" />
+              ) : (
+                <Ionicons name="refresh-outline" size={16} color="#999" />
+              )}
+              <Text style={styles.filterButtonText}>Aktualisieren</Text>
             </TouchableOpacity>
           </ScrollView>
           <LinearGradient
@@ -521,12 +564,15 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
+        ref={listRef}
         data={listData}
         keyExtractor={(row) => (row.kind === 'venue' ? row.venue.id : row.kind)}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={listHeader}
         stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
+        onScroll={(e) => setShowBackToTop(e.nativeEvent.contentOffset.y > 600)}
+        scrollEventThrottle={150}
         renderItem={({ item: row }) => {
           if (row.kind === 'banner') return bannerSection;
 
@@ -713,6 +759,14 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           );
         }}
       />
+      {showBackToTop && (
+        <TouchableOpacity
+          style={styles.backToTopBtn}
+          onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+        >
+          <Ionicons name="arrow-up" size={20} color="#000" />
+        </TouchableOpacity>
+      )}
       <BottomTabBar active={switcherActive} mapRoute={config.mapRoute} />
     </SafeAreaView>
   );
@@ -823,6 +877,21 @@ const styles = StyleSheet.create({
   // paddingBottom deckt die fixe BottomTabBar ab, sonst wäre die letzte Karte
   // dahinter verdeckt.
   listContent: { paddingHorizontal: 16, paddingBottom: 90 },
+  backToTopBtn: {
+    position: 'absolute',
+    right: 16,
+    bottom: 90,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#0af',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
   // Kompakte Ansicht: kleine Vorschau, mehr Einträge auf einen Blick — der
   // Standard, exakt wie die normale Event-Liste in index.tsx.
   compactCard: {
