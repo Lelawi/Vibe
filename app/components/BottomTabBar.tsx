@@ -31,14 +31,24 @@ export default function BottomTabBar({ active, mapRoute }: { active: BottomTab; 
           <TouchableOpacity
             key={tab.key}
             style={styles.tab}
-            onPress={() => !isActive && router.replace(tab.route)}
+            // onPressIn (feuert beim Touch-Start) statt onPress (feuert erst
+            // beim Touch-Ende) — war die Suchleiste gerade fokussiert, verlor
+            // sie den Fokus beim ersten Antippen der Tab-Leiste, was auf
+            // mobilen Browsern (v.a. iOS Safari) das eigentliche onPress-
+            // Ereignis des angetippten Buttons oft schluckt. Der erste Tap
+            // schloss dann nur die Tastatur, ohne den Reiter zu wechseln,
+            // ein zweiter Tap landete durch das Reflow beim Tastatur-
+            // Einklappen daneben (per Nutzer-Feedback: landete auf "Events").
+            // onPressIn feuert im selben Moment wie der Fokusverlust, bevor
+            // das Reflow etwas verschiebt.
+            onPressIn={() => !isActive && router.replace(tab.route)}
           >
             <Ionicons name={isActive ? tab.activeIcon : tab.icon} size={22} color={isActive ? '#0af' : '#888'} />
             <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
           </TouchableOpacity>
         );
       })}
-      <TouchableOpacity style={styles.tab} onPress={() => router.push(mapRoute)}>
+      <TouchableOpacity style={styles.tab} onPressIn={() => router.push(mapRoute)}>
         <Ionicons name="map-outline" size={22} color="#888" />
         <Text style={styles.label}>Karte</Text>
       </TouchableOpacity>

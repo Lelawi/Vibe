@@ -12,6 +12,31 @@ export default function Layout() {
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/Vibe/service-worker.js').catch(() => {});
     }
+
+    // Als installierte PWA (manifest.json: display "standalone") öffnet
+    // Linking.openURL(...) externe Links (Ticket-Links, Websites, Google
+    // Maps) über window.open(url, '_blank') — react-native-web setzt das
+    // beim Web-Build so per Default. Ohne eigenes Tab-UI kann das Standalone-
+    // Fenster den "neuen Tab" nicht selbst öffnen und übergibt stattdessen an
+    // den System-Browser, während das Vibe-Fenster im Hintergrund
+    // eingefroren hängen bleibt — ein bekannter WebKit/Chromium-Bug bei
+    // Standalone-PWAs. Beim Zurückwechseln bleibt es dadurch bis zum
+    // nächsten Tap leer weiß (per Nutzer-Feedback: "eine leere weiße Seite,
+    // die ich erst wegklicken muss"). Ein erzwungener Reflow beim
+    // Sichtbarwerden ist der gängige Workaround dafür.
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState !== 'visible') return;
+        const body = document.body;
+        const previousDisplay = body.style.display;
+        body.style.display = 'none';
+        // Layout-Neuberechnung erzwingen, bevor display wieder hergestellt wird.
+        void body.offsetHeight;
+        body.style.display = previousDisplay;
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
   }, []);
 
   return (
