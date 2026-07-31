@@ -56,18 +56,74 @@ function googleMapsUrl(lat: number, lng: number, label?: string) {
     : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
+// Zoom-Stufe, auf die beim Anwählen eines konkreten Eintrags reingezoomt
+// wird — tief genug, dass sich auch dicht beieinanderliegende Marker in der
+// Münchner Innenstadt sicher auflösen, aber innerhalb dessen, was die
+// OSM-Tiles noch scharf abbilden.
+const FOCUS_ZOOM = 18;
+
 // Öffnet beim Laden automatisch das Popup eines Markers, wenn von der
 // Kartenansicht per lat/lng-Param dorthin navigiert wurde (Pendant zu
 // markerRefs.current.get(key)?.showCallout() in der nativen Karte).
-function AutoOpenPopup({ targetKey, markerRefs }: { targetKey: string | null; markerRefs: React.MutableRefObject<Map<string, L.Marker>> }) {
+//
+// Zwei Bugs statt einem, beide mussten weg:
+// 1) Ein einfaches marker.openPopup() reicht nicht: liegt der Ziel-Marker
+//    gerade in einem Cluster, ist nur das Cluster-Icon auf der Karte, der
+//    Marker selbst nicht — das Popup blieb lautlos zu.
+// 2) Leaflet.markerclusters eigener "offizieller" Weg dafür, zoomToShowLayer,
+//    hat selbst einen bekannten Bug: er wartet auf ein moveend/zoomend/
+//    animationend-Event, feuert das aber NICHT, wenn die Zielansicht zufällig
+//    schon nah genug am gewünschten Zustand war — genau der beobachtete Fall
+//    "klappt nur, wenn kein anderes Venue in der Nähe ist" (siehe
+//    node_modules/leaflet.markercluster/example/old-bugs/
+//    zoomtoshowlayer-doesnt-need-to-zoom.html). Deshalb hier bewusst manuell
+//    statt über zoomToShowLayer: map.setView(..., {animate:false}) wirkt
+//    synchron (Leaflet berechnet die Cluster-Gruppierung dabei sofort neu,
+//    kein Warten auf Events nötig), danach direkt prüfen ob der Marker jetzt
+//    einzeln auf der Karte liegt und sonst seinen Cluster auffächern.
+function FocusTarget({
+  targetKey,
+  targetLat,
+  targetLng,
+  markerRefs,
+}: {
+  targetKey: string | null;
+  targetLat: number | null;
+  targetLng: number | null;
+  markerRefs: React.MutableRefObject<Map<string, L.Marker>>;
+}) {
   const map = useMap();
   useEffect(() => {
-    if (!targetKey) return;
-    const timeout = setTimeout(() => {
-      markerRefs.current.get(targetKey)?.openPopup();
-    }, 400);
-    return () => clearTimeout(timeout);
-  }, [targetKey, map, markerRefs]);
+    if (!targetKey || targetLat == null || targetLng == null) return;
+    let cancelled = false;
+    let attempts = 0;
+    function tryFocus() {
+      if (cancelled) return;
+      const marker = markerRefs.current.get(targetKey!);
+      if (!marker) {
+        if (attempts++ < 20) setTimeout(tryFocus, 100);
+        return;
+      }
+      map.setView([targetLat!, targetLng!], Math.max(map.getZoom(), FOCUS_ZOOM), { animate: false });
+      if (map.hasLayer(marker)) {
+        marker.openPopup();
+        return;
+      }
+      // Noch immer geclustert (z.B. mehrere Venues mit (fast) identischen
+      // Koordinaten, auch bei maximalem Zoom nicht auflösbar) — __parent ist
+      // internes Leaflet.markercluster-API, nicht in den Typings, aber der
+      // einzige Weg an den umschließenden Cluster zu kommen.
+      const parent = (marker as unknown as { __parent?: L.MarkerCluster }).__parent;
+      if (parent) {
+        parent.spiderfy();
+        setTimeout(() => marker.openPopup(), 50);
+      }
+    }
+    tryFocus();
+    return () => {
+      cancelled = true;
+    };
+  }, [targetKey, targetLat, targetLng, map, markerRefs]);
   return null;
 }
 
@@ -166,7 +222,12 @@ export default function LeafletMapView({
           />
         </>
       )}
-      <AutoOpenPopup targetKey={targetKey} markerRefs={markerRefs} />
+      <FocusTarget
+        targetKey={targetKey}
+        targetLat={targetKey ? centerLat : null}
+        targetLng={targetKey ? centerLng : null}
+        markerRefs={markerRefs}
+      />
     </MapContainer>
   );
 }

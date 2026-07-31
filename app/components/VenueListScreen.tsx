@@ -48,7 +48,12 @@ type Venue = {
   phone: string | null;
   image_url: string | null;
   cuisine: string | null;
+  lunch_available: boolean;
+  lunch_menu_url: string | null;
 };
+
+const VENUE_BASE_COLUMNS =
+  'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,phone,image_url';
 
 type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
 
@@ -131,6 +136,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   const [viewMode, setViewMode] = useState<'compact' | 'cards'>('compact');
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [cuisineFilter, setCuisineFilter] = useState<string | null>(null);
+  const [lunchOnly, setLunchOnly] = useState(false);
   // Fehlte bisher hier komplett, obwohl der Nähe-Button bei Events dieselbe
   // Zusatzauswahl aufklappt (Umkreis-Slider, null = "Alle").
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
@@ -181,18 +187,30 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         // verschluckt (siehe app/lib/fetchAllVenues.ts).
         fetchAllVenues<Venue>(
           type,
-          'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,phone,image_url,cuisine'
+          `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url`
         ).catch(async (err) => {
-          // cuisine kam erst mit 0016_venues_cuisine.sql dazu — falls diese
-          // Migration noch nicht angewendet wurde, soll die Liste trotzdem
-          // funktionieren (nur ohne Küchen-Badge/Filter) statt komplett leer
-          // zu bleiben.
-          console.warn('[VenueListScreen] retrying without cuisine column', err);
-          const fallback = await fetchAllVenues<Omit<Venue, 'cuisine'>>(
+          // lunch_available/lunch_menu_url kamen erst mit 0017_venues_lunch.sql
+          // dazu — falls diese Migration noch nicht angewendet wurde, soll die
+          // Liste trotzdem funktionieren (nur ohne Mittagslunch-Filter) statt
+          // komplett leer zu bleiben.
+          console.warn('[VenueListScreen] retrying without lunch columns', err);
+          return fetchAllVenues<Omit<Venue, 'lunch_available' | 'lunch_menu_url'>>(
             type,
-            'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,phone,image_url'
-          );
-          return fallback.map((v) => ({ ...v, cuisine: null }));
+            `${VENUE_BASE_COLUMNS},cuisine`
+          )
+            .then((list) => list.map((v) => ({ ...v, lunch_available: false, lunch_menu_url: null })))
+            .catch(async (err2) => {
+              // cuisine kam erst mit 0016_venues_cuisine.sql dazu — falls diese
+              // Migration noch nicht angewendet wurde, soll die Liste trotzdem
+              // funktionieren (nur ohne Küchen-Badge/Filter) statt komplett leer
+              // zu bleiben.
+              console.warn('[VenueListScreen] retrying without cuisine column', err2);
+              const fallback = await fetchAllVenues<Omit<Venue, 'cuisine' | 'lunch_available' | 'lunch_menu_url'>>(
+                type,
+                VENUE_BASE_COLUMNS
+              );
+              return fallback.map((v) => ({ ...v, cuisine: null, lunch_available: false, lunch_menu_url: null }));
+            });
         }),
         supabase
           .from('events')
@@ -316,6 +334,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       .filter((v) => fuzzyMatch([v.name, v.address, v.cuisine].filter(Boolean).join(' '), search))
       .filter((v) => !onlyOpen || v.open === true)
       .filter((v) => !cuisineFilter || v.cuisine?.split(';').map((c) => c.trim()).includes(cuisineFilter))
+      .filter((v) => !lunchOnly || v.lunch_available)
       .filter((v) => !showFavoritesOnly || isFavorite(v.id))
       .filter((v) => {
         // Nur bei aktivem Umkreis-Slider einschränken — Orte ohne Koordinaten
@@ -339,16 +358,17 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         if (priorityDiff !== 0) return priorityDiff;
         return a.name.localeCompare(b.name, 'de');
       });
-  }, [enrichedVenues, search, onlyOpen, cuisineFilter, showFavoritesOnly, favorites, userLocation, nearbyRadiusKm]);
+  }, [enrichedVenues, search, onlyOpen, cuisineFilter, lunchOnly, showFavoritesOnly, favorites, userLocation, nearbyRadiusKm]);
 
   const openCount = useMemo(() => filteredVenues.filter((v) => v.open === true).length, [filteredVenues]);
   const switcherActive = type === 'bar' ? 'bars' : 'restaurants';
-  const hasAnyActiveFilter = search.trim() !== '' || onlyOpen || cuisineFilter !== null || showFavoritesOnly;
+  const hasAnyActiveFilter = search.trim() !== '' || onlyOpen || cuisineFilter !== null || lunchOnly || showFavoritesOnly;
 
   function resetAllFilters() {
     setSearch('');
     setOnlyOpen(false);
     setCuisineFilter(null);
+    setLunchOnly(false);
     setShowFavoritesOnly(false);
   }
 
@@ -455,6 +475,16 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               <Ionicons name="time-outline" size={16} color={onlyOpen ? '#000' : '#999'} />
               <Text style={[styles.filterButtonText, onlyOpen && styles.filterChipTextActive]}>Nur geöffnet</Text>
             </TouchableOpacity>
+
+            {type === 'restaurant' && (
+              <TouchableOpacity
+                style={[styles.filterButton, lunchOnly && styles.filterChipActive]}
+                onPress={() => setLunchOnly((v) => !v)}
+              >
+                <Ionicons name="sunny-outline" size={16} color={lunchOnly ? '#000' : '#999'} />
+                <Text style={[styles.filterButtonText, lunchOnly && styles.filterChipTextActive]}>Mittagslunch</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={[styles.filterButton, showFavoritesOnly && styles.filterChipActive]}
@@ -653,6 +683,16 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     <Text style={styles.websiteLink}>Anrufen</Text>
                   </TouchableOpacity>
                 )}
+                {item.lunch_menu_url && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Linking.openURL(item.lunch_menu_url!);
+                    }}
+                  >
+                    <Text style={styles.websiteLink}>Mittagskarte</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               {item.closureStatus !== 'pending' && (
                 <TouchableOpacity
@@ -684,6 +724,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           );
 
           const cuisineLabel = item.cuisine?.split(';')[0]?.trim();
+          const lunchNode = item.lunch_available && (
+            <Text style={styles.lunchBadge}>🍽️ Mittagslunch</Text>
+          );
 
           const image = item.image_url ? (
             <Image source={{ uri: item.image_url }} style={viewMode === 'cards' ? styles.cardsImage : styles.compactThumb} />
@@ -718,6 +761,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     </Text>
                   )}
                   {hoursNode}
+                  {lunchNode}
                   {programNode}
                   {item.closureStatus === 'pending' && (
                     <Text style={styles.pendingBadge}>⏳ Als geschlossen gemeldet — wird geprüft</Text>
@@ -749,6 +793,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   </Text>
                 )}
                 {hoursNode}
+                {lunchNode}
                 {programNode}
                 {item.closureStatus === 'pending' && (
                   <Text style={styles.pendingBadge}>⏳ Als geschlossen gemeldet — wird geprüft</Text>
@@ -812,7 +857,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   header: { fontSize: 30, fontWeight: '800', color: '#fff' },
-  subheader: { fontSize: 14, color: '#cbb8f0', marginTop: 2 },
+  subheader: { fontSize: 14, color: '#cbb8f0' },
   search: {
     backgroundColor: '#141414',
     borderRadius: 14,
@@ -822,7 +867,7 @@ const styles = StyleSheet.create({
     // Mind. 16px, sonst zoomt iOS Safari beim Fokussieren automatisch rein.
     fontSize: 16,
   },
-  searchWrap: { marginHorizontal: 16, marginTop: 4, marginBottom: 10, position: 'relative', justifyContent: 'center' },
+  searchWrap: { marginHorizontal: 16, marginTop: 16, marginBottom: 14, position: 'relative', justifyContent: 'center' },
   searchInput: { paddingRight: 38 },
   searchClearBtn: {
     position: 'absolute',
@@ -832,7 +877,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
-  searchClearBtnText: { color: '#666', fontSize: 14 },
+  searchClearBtnText: { color: '#888', fontSize: 15, fontWeight: '700' },
   controlRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16, marginBottom: 8 },
   cuisineScroll: { flex: 1 },
   cuisineScrollContent: { paddingRight: 8, alignItems: 'center' },
@@ -953,6 +998,7 @@ const styles = StyleSheet.create({
   venueAddress: { color: '#999', fontSize: 13, marginTop: 4 },
   venueHours: { color: '#999', fontSize: 13, marginTop: 4 },
   venueHoursUnknown: { color: '#555', fontSize: 13, marginTop: 4, fontStyle: 'italic' },
+  lunchBadge: { color: '#f2c94c', fontSize: 12, fontWeight: '600', marginTop: 4 },
   programWrap: { marginTop: 8, gap: 4 },
   programText: { color: '#5fd4ff', fontSize: 13 },
   cardFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },

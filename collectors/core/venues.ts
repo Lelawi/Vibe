@@ -207,19 +207,72 @@ function findBestImage(html: string, baseUrl: string): string | null {
   }
 }
 
+// Mittagskarten sind auf Restaurant-Websites nicht einheitlich verlinkt —
+// mal ein eigener Menüpunkt/PDF-Link ("Mittagskarte", "Lunch Menu"), mal nur
+// ein Satz im Fließtext ("Unser Mittagstisch: Mo-Fr 11:30-14:30"). Bewusst
+// KEINE Google-Reviews/Kommentare als Quelle (dort erwähnen Gäste das oft
+// auch) — dafür gäbe es keine freie, ToS-konforme API, nur Scraping von
+// Google Maps, was hier nicht gemacht wird (siehe Store-Kommentar zu
+// Bar-Bildern weiter oben im Projekt).
+const LUNCH_KEYWORDS = /mittagskarte|mittagsmen[üu]|mittagstisch|lunch[\s-]?menu|lunchkarte|business[\s-]?lunch/i;
+
+function extractLunchSignal($: cheerio.CheerioAPI, baseUrl: string): { available: boolean; menuUrl: string | null } {
+  // Links zuerst prüfen: sowohl Linktext ("Mittagskarte") als auch die
+  // URL selbst (z.B. eine PDF "speisekarte-mittags.pdf" ohne aussagekräftigen
+  // Linktext) können den Hinweis tragen.
+  let menuUrl: string | null = null;
+  $('a[href]').each((_, el) => {
+    if (menuUrl) return;
+    const href = $(el).attr('href') ?? '';
+    const text = $(el).text();
+    if (LUNCH_KEYWORDS.test(href) || LUNCH_KEYWORDS.test(text)) {
+      try {
+        menuUrl = new URL(href, baseUrl).toString();
+      } catch {
+        menuUrl = null;
+      }
+    }
+  });
+  if (menuUrl) return { available: true, menuUrl };
+  // Kein eigener Link/keine eigene Karte, aber der Begriff taucht im
+  // Seitentext auf — schwächeres, aber immer noch brauchbares Signal ohne
+  // verlinkbare Karte. $('body').text() allein reicht nicht: das zieht auch
+  // <script>-Inhalte mit ein, und viele Websites betten Page-Builder-/
+  // Analytics-JSON ein, das rein zufällig "Mittagstisch" als Teil eines
+  // völlig unrelated Feldnamens enthält (per Direktabruf verifiziert,
+  // 2026-07: mona-john.de bettet einen Reservierungs-Widget-Konfigblock mit
+  // "location":{"name":"Mittagstisch - Coup de Coeur",...} ein — ein Konzert-
+  // /Event-Name, keine Aussage über eigenes Mittagsangebot). Script/Style
+  // vor der Textsuche entfernen, und einen kurzen Negations-Check davor
+  // ("kein Mittagstisch") als zusätzliche Absicherung.
+  const bodyClone = $('body').clone();
+  bodyClone.find('script, style, noscript').remove();
+  const bodyText = bodyClone.text();
+  const match = LUNCH_KEYWORDS.exec(bodyText);
+  if (match) {
+    const precedingText = bodyText.slice(Math.max(0, match.index - 30), match.index);
+    if (!/\b(kein|keine|nicht|ohne)\b/i.test(precedingText)) {
+      return { available: true, menuUrl: null };
+    }
+  }
+  return { available: false, menuUrl: null };
+}
+
 // OSM selbst pflegt so gut wie nie ein "image"-Tag, aber viele Venues haben
 // eine eigene Website mit og:image (dieselbe Quelle nutzen z.B.
-// sources/auer_dult, sources/milla). Ein Abruf liefert best effort sowohl
-// Bild als auch (falls vorhanden) die genaueren Öffnungszeiten mit — schlägt
-// beides fehl, bleiben die Felder einfach null, kein Venue fällt deswegen
-// aus dem Lauf raus.
-async function fetchWebsiteEnrichment(website: string): Promise<{ image: string | null; hours: string | null }> {
+// sources/auer_dult, sources/milla). Ein Abruf liefert best effort Bild,
+// (falls vorhanden) genauere Öffnungszeiten und einen Mittagslunch-Hinweis
+// mit — schlägt alles fehl, bleiben die Felder einfach null/false, kein
+// Venue fällt deswegen aus dem Lauf raus.
+async function fetchWebsiteEnrichment(
+  website: string
+): Promise<{ image: string | null; hours: string | null; lunchAvailable: boolean; lunchMenuUrl: string | null }> {
   try {
     const res = await fetch(website, {
       headers: { 'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)' },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return { image: null, hours: null };
+    if (!res.ok) return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null };
     const html = await res.text();
     const metaMatch = html.match(/<meta[^>]+property=["'](?:og|twitter):image["'][^>]+content=["']([^"']+)["']/i)
       ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["'](?:og|twitter):image["']/i)
@@ -230,9 +283,10 @@ async function fetchWebsiteEnrichment(website: string): Promise<{ image: string 
     const image = metaMatch ? new URL(metaMatch[1], website).toString() : findBestImage(html, website);
     const $ = cheerio.load(html);
     const hours = extractOpeningHoursOverride($);
-    return { image, hours };
+    const lunch = extractLunchSignal($, website);
+    return { image, hours, lunchAvailable: lunch.available, lunchMenuUrl: lunch.menuUrl };
   } catch {
-    return { image: null, hours: null };
+    return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null };
   }
 }
 
@@ -297,21 +351,35 @@ out body;
 
     if (rawVenues.length === 0) { console.log(`[${label}] no venues parsed`); return; }
 
-    // Bereits vorhandene image_url/opening_hours_override je osm_id
-    // wiederverwenden statt bei jedem (wöchentlichen) Lauf alle Websites
-    // erneut abzuklappern — nur für Venues, denen noch mindestens eins von
-    // beiden fehlt, wird neu gefetcht.
-    const { data: existing } = await supabase.from('venues').select('osm_id,image_url,opening_hours_override').eq('type', type);
+    // Bereits vorhandene image_url/opening_hours_override/lunch-Infos je
+    // osm_id wiederverwenden statt bei jedem (wöchentlichen) Lauf alle
+    // Websites erneut abzuklappern — nur für Venues, denen noch mindestens
+    // eins davon fehlt, wird neu gefetcht.
+    const { data: existing } = await supabase
+      .from('venues')
+      .select('osm_id,image_url,opening_hours_override,lunch_available,lunch_menu_url')
+      .eq('type', type);
     const existingByOsmId = new Map(
-      (existing ?? []).map((v) => [v.osm_id as number, { image: v.image_url as string | null, hours: v.opening_hours_override as string | null }])
+      (existing ?? []).map((v) => [
+        v.osm_id as number,
+        {
+          image: v.image_url as string | null,
+          hours: v.opening_hours_override as string | null,
+          lunchAvailable: (v.lunch_available as boolean | null) ?? false,
+          lunchMenuUrl: v.lunch_menu_url as string | null,
+        },
+      ])
     );
 
     const toFetch = rawVenues.filter((v) => {
       const cached = existingByOsmId.get(v.osm_id);
-      return v.website && (!cached || !cached.image || !cached.hours);
+      return v.website && (!cached || !cached.image || !cached.hours || !cached.lunchAvailable);
     });
-    console.log(`[${label}] fetching website enrichment for`, toFetch.length, 'venues missing an image or opening-hours override');
-    const enrichmentByOsmId = new Map<number, { image: string | null; hours: string | null }>();
+    console.log(`[${label}] fetching website enrichment for`, toFetch.length, 'venues missing an image, opening-hours override or lunch info');
+    const enrichmentByOsmId = new Map<
+      number,
+      { image: string | null; hours: string | null; lunchAvailable: boolean; lunchMenuUrl: string | null }
+    >();
     const CONCURRENCY = 6;
     let cursor = 0;
     async function worker() {
@@ -329,6 +397,8 @@ out body;
         ...v,
         image_url: fetched?.image ?? cached?.image ?? null,
         opening_hours_override: fetched?.hours ?? cached?.hours ?? null,
+        lunch_available: fetched?.lunchAvailable ?? cached?.lunchAvailable ?? false,
+        lunch_menu_url: fetched?.lunchMenuUrl ?? cached?.lunchMenuUrl ?? null,
       };
     });
 
