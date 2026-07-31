@@ -220,6 +220,14 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   // Zusatzauswahl aufklappt (Umkreis-Slider, null = "Alle").
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  // Manche gespeicherten image_url-Werte sind zwischenzeitlich tot (Website
+  // hat das Bild umbenannt/entfernt, seit die Collector-Heuristik es
+  // gefunden hat) — ohne Fallback zeigte das nur ein leeres schwarzes
+  // Rechteck statt des sonst üblichen Farbverlauf-Platzhalters (per Nutzer-
+  // Screenshot gemeldet: "Alter Simpel hat nur ein schwarzes Rechteck").
+  // Merkt sich fehlgeschlagene IDs, um beim nächsten Render auf den
+  // Platzhalter umzuschalten.
+  const [brokenImageIds, setBrokenImageIds] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const listRef = useRef<FlatList<ListRow>>(null);
@@ -857,14 +865,23 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             <Text style={styles.lunchBadge}>🍺 0,5l Helles: {item.beer_price_eur.toFixed(2).replace('.', ',')} €</Text>
           );
 
+          // Nicht nur auf image_url != null prüfen, sondern auch, ob genau
+          // dieses Bild schon mal beim Laden fehlgeschlagen ist (siehe
+          // brokenImageIds oben) — sonst bliebe ein toter Link ein leeres
+          // schwarzes Rechteck statt auf den Platzhalter umzuschalten.
+          const hasUsableImage = Boolean(item.image_url) && !brokenImageIds.has(item.id);
           // Die große Bild-Karten-Größe nur ansetzen, wenn dieser Eintrag
           // tatsächlich den großen Karten-Zweig unten erreicht (Bild-Karten-
-          // Modus UND echtes Foto vorhanden) — sonst würde ein Eintrag ohne
-          // Foto im Bild-Karten-Modus fälschlich mit der großen Boxgröße in
-          // die kompakte Zeile durchfallen.
-          const useCardsLayout = viewMode === 'cards' && Boolean(item.image_url);
-          const image = item.image_url ? (
-            <Image source={{ uri: item.image_url }} style={useCardsLayout ? styles.cardsImage : styles.compactThumb} />
+          // Modus UND echtes, ladbares Foto vorhanden) — sonst würde ein
+          // Eintrag ohne Foto im Bild-Karten-Modus fälschlich mit der großen
+          // Boxgröße in die kompakte Zeile durchfallen.
+          const useCardsLayout = viewMode === 'cards' && hasUsableImage;
+          const image = hasUsableImage ? (
+            <Image
+              source={{ uri: item.image_url! }}
+              style={useCardsLayout ? styles.cardsImage : styles.compactThumb}
+              onError={() => setBrokenImageIds((prev) => new Set(prev).add(item.id))}
+            />
           ) : (
             <LinearGradient
               colors={['#2a0a4a', '#12082e']}

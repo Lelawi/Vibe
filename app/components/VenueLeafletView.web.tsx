@@ -16,7 +16,7 @@
 // bzw. 2263 Restaurants wären ungruppierte Marker beim Herauszoomen ein
 // unlesbarer Fleckenteppich, und dicht beieinanderliegende Marker konnten
 // sich gegenseitig am Anklicken hindern.
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, View, Text, Pressable, Image } from 'react-native';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
@@ -184,6 +184,12 @@ const VenueLeafletView = forwardRef<
 >(function VenueLeafletView({ venues, centerLat, centerLng, zoom, userLocation, targetId = null }, ref) {
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
   const mapInstanceRef = useRef<L.Map | null>(null);
+  // Manche gespeicherten image_url-Werte sind zwischenzeitlich tot (Website
+  // hat das Bild umbenannt/entfernt) — ohne Fallback bliebe im Popup eine
+  // leere Fläche statt das Bild einfach wegzulassen (gleicher Fix wie in
+  // VenueListScreen.tsx, dort per Nutzer-Screenshot als "schwarzes
+  // Rechteck" gemeldet).
+  const [brokenImageIds, setBrokenImageIds] = useState<Set<string>>(new Set());
 
   useImperativeHandle(
     ref,
@@ -228,7 +234,13 @@ const VenueLeafletView = forwardRef<
             >
               <Popup minWidth={200}>
                 <View style={styles.popup}>
-                  {venue.image_url && <Image source={{ uri: venue.image_url }} style={styles.popupImage} />}
+                  {venue.image_url && !brokenImageIds.has(venue.id) && (
+                    <Image
+                      source={{ uri: venue.image_url }}
+                      style={styles.popupImage}
+                      onError={() => setBrokenImageIds((prev) => new Set(prev).add(venue.id))}
+                    />
+                  )}
                   <View style={styles.popupHeaderRow}>
                     <Text style={styles.popupTitle}>{venue.name}</Text>
                     {venue.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
