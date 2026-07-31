@@ -38,6 +38,7 @@
     "oktoberfest-events": "tsx sources/oktoberfest_events/index.ts",
     "eintrittfrei-muenchen": "tsx sources/eintrittfrei_muenchen/index.ts",
     "eventim": "tsx sources/eventim/index.ts",
+    "wannda": "tsx sources/wannda/index.ts",
     "bars": "tsx sources/bars/index.ts",
     "restaurants": "tsx sources/restaurants/index.ts",
     "spaetis": "tsx sources/spaetis/index.ts",
