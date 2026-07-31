@@ -48,6 +48,8 @@ export default function Layout() {
             die Navigation hat — gleiches Muster wie "bars" oben. */}
         <Stack.Screen name="restaurants" options={{ title: 'Restaurants', headerShown: false }} />
         <Stack.Screen name="restaurants-map" options={{ title: 'Restaurants-Karte' }} />
+        <Stack.Screen name="spaetis" options={{ title: 'Spätis', headerShown: false }} />
+        <Stack.Screen name="spaetis-map" options={{ title: 'Spätis-Karte' }} />
       </Stack>
     </>
   );

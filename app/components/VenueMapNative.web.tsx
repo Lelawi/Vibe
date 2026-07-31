@@ -5,9 +5,11 @@ import { supabase } from '../lib/supabase';
 import { isOpenNow } from '../lib/openingHours';
 import { fetchAllVenues } from '../lib/fetchAllVenues';
 import { getFilteredVenuesForMap } from '../lib/mapFilterCache';
-import MapCategorySwitcher from './MapCategorySwitcher';
+import MapCategorySwitcher, { type MapCategory } from './MapCategorySwitcher';
 import type { VenueMarker } from './VenueLeafletView.web';
 import type { VenueType } from './VenueListScreen';
+
+const MAP_CATEGORY: Record<VenueType, MapCategory> = { bar: 'bars', restaurant: 'restaurants', spaeti: 'spaetis' };
 
 // Lädt die eigentliche Leaflet-Karte erst zur Laufzeit im Browser — gleicher
 // Grund wie bei MapNative.web.tsx: Leaflet greift beim Modul-Import direkt
@@ -176,7 +178,7 @@ export default function VenueMapNative({
           targetId={hasTarget ? targetId ?? null : null}
         />
       </Suspense>
-      <MapCategorySwitcher active={type === 'bar' ? 'bars' : 'restaurants'} />
+      <MapCategorySwitcher active={MAP_CATEGORY[type]} />
       <View style={styles.filterRow}>
         <TouchableOpacity
           style={[styles.filterButton, onlyOpen && styles.filterButtonActive]}

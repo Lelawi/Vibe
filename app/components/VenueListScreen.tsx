@@ -25,7 +25,7 @@ import { distanceKm, formatDistance } from '../lib/geo';
 import { fetchAllVenues } from '../lib/fetchAllVenues';
 import { useVenueFavorites } from '../lib/venueFavorites';
 import { setFilteredVenuesForMap } from '../lib/mapFilterCache';
-import BottomTabBar from './BottomTabBar';
+import BottomTabBar, { type BottomTab } from './BottomTabBar';
 
 // Web-only <input type="range">-Styling für den Umkreis-Slider (siehe
 // index.tsx) — reines HTML-Element statt @react-native-community/slider,
@@ -35,7 +35,7 @@ const radiusSliderStyle = {
   accentColor: '#0af',
 };
 
-export type VenueType = 'bar' | 'restaurant';
+export type VenueType = 'bar' | 'restaurant' | 'spaeti';
 
 type Venue = {
   id: string;
@@ -174,7 +174,17 @@ const CONFIG: Record<VenueType, {
     emptyText: 'Keine Restaurants gefunden.',
     reportPrompt: (name) => `"${name}" als "gibt's nicht mehr" melden? Das Restaurant wird dann zur Prüfung markiert.`,
   },
+  spaeti: {
+    title: 'Spätis',
+    icon: 'storefront-outline',
+    mapRoute: '/spaetis-map',
+    searchPlaceholder: 'Späti oder Adresse suchen...',
+    emptyText: 'Keine Spätis gefunden.',
+    reportPrompt: (name) => `"${name}" als "gibt's nicht mehr" melden? Der Späti wird dann zur Prüfung markiert.`,
+  },
 };
+
+const SWITCHER_TAB: Record<VenueType, BottomTab> = { bar: 'bars', restaurant: 'restaurants', spaeti: 'spaetis' };
 
 export default function VenueListScreen({ type }: { type: VenueType }) {
   const config = CONFIG[type];
@@ -430,7 +440,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   }, [type, filteredVenues, loading]);
 
   const openCount = useMemo(() => filteredVenues.filter((v) => v.open === true).length, [filteredVenues]);
-  const switcherActive = type === 'bar' ? 'bars' : 'restaurants';
+  const switcherActive = SWITCHER_TAB[type];
   const hasAnyActiveFilter = search.trim() !== '' || onlyOpen || cuisineFilter !== null || lunchOnly || showFavoritesOnly;
 
   function resetAllFilters() {

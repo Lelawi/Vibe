@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export type BottomTab = 'events' | 'bars' | 'restaurants';
+export type BottomTab = 'events' | 'bars' | 'restaurants' | 'spaetis';
 
 // Ersetzt den bisherigen ViewSwitcher-Pill oben im Banner: jede professionelle
 // Vergleichs-App (Instagram, Yelp, DICE) navigiert über eine untere Tab-Leiste
@@ -16,6 +16,7 @@ const TABS: { key: BottomTab; label: string; icon: keyof typeof Ionicons.glyphMa
   { key: 'events', label: 'Events', icon: 'calendar-outline', activeIcon: 'calendar', route: '/' },
   { key: 'bars', label: 'Bars', icon: 'beer-outline', activeIcon: 'beer', route: '/bars' },
   { key: 'restaurants', label: 'Restaurants', icon: 'restaurant-outline', activeIcon: 'restaurant', route: '/restaurants' },
+  { key: 'spaetis', label: 'Spätis', icon: 'storefront-outline', activeIcon: 'storefront', route: '/spaetis' },
 ];
 
 export default function BottomTabBar({ active, mapRoute }: { active: BottomTab; mapRoute: string }) {

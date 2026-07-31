@@ -10,13 +10,14 @@ import * as cheerio from 'cheerio';
 // Workaround für dieses (unmaintained) Paket.
 import pdf from 'pdf-parse/lib/pdf-parse.js';
 
-// Gemeinsame Grundlage für Bars UND Restaurants (sources/bars,
-// sources/restaurants): beide sind OSM/Overpass-basierte Orte mit regulären
-// Öffnungszeiten statt Einzelterminen, geteilt über die generische
-// venues-Tabelle (0015_venues_generalize_for_restaurants.sql) mit einer
-// type-Spalte ('bar' | 'restaurant'). Extrahiert aus dem ursprünglichen
+// Gemeinsame Grundlage für Bars, Restaurants UND Spätis (sources/bars,
+// sources/restaurants, sources/spaetis): alle drei sind OSM/Overpass-
+// basierte Orte mit regulären Öffnungszeiten statt Einzelterminen, geteilt
+// über die generische venues-Tabelle (0015_venues_generalize_for_
+// restaurants.sql, 0019_venues_spaeti_type.sql) mit einer type-Spalte
+// ('bar' | 'restaurant' | 'spaeti'). Extrahiert aus dem ursprünglichen
 // Bars-Collector, damit Öffnungszeiten-Parsing, Bild-Scraping etc. nicht
-// zweimal gepflegt werden müssen.
+// mehrfach gepflegt werden müssen.
 const OVERPASS_URL = 'https://overpass.kumi.systems/api/interpreter';
 // Bounding Box um München (Stadtgebiet + etwas Umland) statt Namens-Lookup
 // (area["name"="München"]["admin_level"=...] ist je nach OSM-Relation
@@ -489,11 +490,15 @@ async function fetchWebsiteEnrichment(
 
 export interface CollectVenuesOptions {
   label: string;
-  type: 'bar' | 'restaurant';
+  type: 'bar' | 'restaurant' | 'spaeti';
+  // Spätis/Kioske sind in OSM über shop=kiosk|convenience|alcohol getaggt,
+  // nicht über amenity= wie Bars/Restaurants — der Tag-Schlüssel muss daher
+  // konfigurierbar sein statt hart auf "amenity" verdrahtet.
+  tagKey?: 'amenity' | 'shop';
   amenityValues: string[];
 }
 
-export async function collectVenues({ label, type, amenityValues }: CollectVenuesOptions): Promise<void> {
+export async function collectVenues({ label, type, tagKey = 'amenity', amenityValues }: CollectVenuesOptions): Promise<void> {
   console.log(`[${label}] starting`);
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -506,7 +511,7 @@ export async function collectVenues({ label, type, amenityValues }: CollectVenue
   const overpassQuery = `
 [out:json][timeout:60];
 (
-  ${amenityValues.map((a) => `node["amenity"="${a}"](${MUNICH_BBOX});`).join('\n  ')}
+  ${amenityValues.map((a) => `node["${tagKey}"="${a}"](${MUNICH_BBOX});`).join('\n  ')}
 );
 out body;
 `;

@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 
-export type MapCategory = 'events' | 'bars' | 'restaurants';
+export type MapCategory = 'events' | 'bars' | 'restaurants' | 'spaetis';
 
 // Direktes Umschalten zwischen den drei Karten, ohne vorher zurück auf eine
 // Listenansicht wechseln zu müssen (Nutzer-Feedback: der bisherige Weg über
@@ -15,6 +15,7 @@ const CATEGORIES: { key: MapCategory; label: string; route: string }[] = [
   { key: 'events', label: 'Events', route: '/map' },
   { key: 'bars', label: 'Bars', route: '/bars-map' },
   { key: 'restaurants', label: 'Restaurants', route: '/restaurants-map' },
+  { key: 'spaetis', label: 'Spätis', route: '/spaetis-map' },
 ];
 
 export default function MapCategorySwitcher({ active }: { active: MapCategory }) {
