@@ -816,6 +816,17 @@ out body;
           // gepflegt, aber unschädlich, das Feld trotzdem generisch
           // mitzunehmen.
           cuisine: tags.cuisine ?? null,
+          // OSM kennt bei internet_access neben yes/no auch "wlan"
+          // (ausdrücklich WLAN), "terminal" (nur ein Publikums-PC) und
+          // "wired" (nur Kabel) — nur die ersten beiden zählen hier als
+          // "hat WLAN", der Rest bleibt unbekannt (null) statt fälschlich
+          // als "kein WLAN" gewertet zu werden.
+          wifi:
+            tags.internet_access === 'wlan' || tags.internet_access === 'yes'
+              ? true
+              : tags.internet_access === 'no'
+              ? false
+              : null,
           type,
           updated_at: new Date().toISOString(),
         };

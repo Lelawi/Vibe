@@ -38,6 +38,7 @@ registerStrings({
   'venues.lunchMenu': { de: 'Mittagskarte', en: 'Lunch menu' },
   'venues.dinnerMenu': { de: 'Abendkarte', en: 'Dinner menu' },
   'venues.googleMapsOpen': { de: 'In Google Maps öffnen', en: 'Open in Google Maps' },
+  'venues.wifi': { de: 'WLAN', en: 'WiFi' },
 });
 
 export type VenueMarker = {
@@ -54,6 +55,7 @@ export type VenueMarker = {
   lunch_menu_url?: string | null;
   dinner_menu_url?: string | null;
   beer_price_eur?: number | null;
+  wifi?: boolean | null;
 };
 
 // Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff — z.B.
@@ -276,6 +278,7 @@ const VenueLeafletView = forwardRef<
                       🍺 {t('venues.beerPrice')}: {venue.beer_price_eur.toFixed(2).replace('.', ',')} €
                     </Text>
                   )}
+                  {venue.wifi === true && <Text style={styles.popupLunchBadge}>📶 {t('venues.wifi')}</Text>}
                   {venue.website && (
                     <Pressable onPress={() => window.open(venue.website!, '_blank')}>
                       <Text style={styles.popupLink}>{t('venueMap.openWebsite')}</Text>

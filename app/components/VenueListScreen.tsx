@@ -55,6 +55,7 @@ type Venue = {
   lunch_menu_url: string | null;
   dinner_menu_url: string | null;
   beer_price_eur: number | null;
+  wifi: boolean | null;
 };
 
 const VENUE_BASE_COLUMNS =
@@ -72,21 +73,32 @@ type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
 async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
   const attempts: { columns: string; fill: (v: Record<string, unknown>) => Venue }[] = [
     {
-      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur`,
+      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi`,
       fill: (v) => v as unknown as Venue,
     },
     {
+      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur`,
+      fill: (v) => ({ ...v, wifi: null } as unknown as Venue),
+    },
+    {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,beer_price_eur`,
-      fill: (v) => ({ ...v, dinner_menu_url: null } as unknown as Venue),
+      fill: (v) => ({ ...v, dinner_menu_url: null, wifi: null } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url`,
-      fill: (v) => ({ ...v, dinner_menu_url: null, beer_price_eur: null } as unknown as Venue),
+      fill: (v) => ({ ...v, dinner_menu_url: null, beer_price_eur: null, wifi: null } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine`,
       fill: (v) =>
-        ({ ...v, lunch_available: false, lunch_menu_url: null, dinner_menu_url: null, beer_price_eur: null } as unknown as Venue),
+        ({
+          ...v,
+          lunch_available: false,
+          lunch_menu_url: null,
+          dinner_menu_url: null,
+          beer_price_eur: null,
+          wifi: null,
+        } as unknown as Venue),
     },
     {
       columns: VENUE_BASE_COLUMNS,
@@ -98,6 +110,7 @@ async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
           lunch_menu_url: null,
           dinner_menu_url: null,
           beer_price_eur: null,
+          wifi: null,
         } as unknown as Venue),
     },
   ];
@@ -208,6 +221,7 @@ registerStrings({
   'venues.reportLink': { de: "Gibt's nicht mehr?", en: 'No longer exists?' },
   'venues.pendingReview': { de: '⏳ Als geschlossen gemeldet — wird geprüft', en: '⏳ Reported as closed — under review' },
   'venues.beerPrice': { de: '0,5l Helles', en: '0.5L Helles' },
+  'venues.wifi': { de: 'WLAN', en: 'WiFi' },
 });
 
 // reportPrompt bleibt eine Funktion statt eines flachen Übersetzungs-Keys —
@@ -655,6 +669,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           lunch_menu_url: v.lunch_menu_url,
           dinner_menu_url: v.dinner_menu_url,
           beer_price_eur: v.beer_price_eur,
+          wifi: v.wifi,
         }))
     );
   }, [type, filteredVenues, loading]);
@@ -1089,6 +1104,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           const beerPriceNode = item.beer_price_eur != null && (
             <Text style={styles.lunchBadge}>🍺 {t('venues.beerPrice')}: {item.beer_price_eur.toFixed(2).replace('.', ',')} €</Text>
           );
+          const wifiNode = item.wifi === true && <Text style={styles.lunchBadge}>📶 {t('venues.wifi')}</Text>;
 
           // Nicht nur auf image_url != null prüfen, sondern auch, ob genau
           // dieses Bild schon mal beim Laden fehlgeschlagen ist (siehe
@@ -1155,6 +1171,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   {hoursNode}
                   {lunchNode}
                   {beerPriceNode}
+                  {wifiNode}
                   {programNode}
                   {item.closureStatus === 'pending' && (
                     <Text style={styles.pendingBadge}>{t('venues.pendingReview')}</Text>
@@ -1188,6 +1205,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 {hoursNode}
                 {lunchNode}
                 {beerPriceNode}
+                {wifiNode}
                 {programNode}
                 {item.closureStatus === 'pending' && (
                   <Text style={styles.pendingBadge}>{t('venues.pendingReview')}</Text>
