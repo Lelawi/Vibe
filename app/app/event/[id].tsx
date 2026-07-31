@@ -22,6 +22,7 @@ import { useFavorites } from '../../lib/favorites';
 import { useFollowedOrganizers } from '../../lib/followedOrganizers';
 import { isPushSupported } from '../../lib/pushNotifications';
 import { registerStrings, useTranslation } from '../../lib/strings';
+import { categoryLabel } from '../../lib/eventCategories';
 import type { Language } from '../../lib/language';
 
 registerStrings({
@@ -197,14 +198,15 @@ export default function EventDetailScreen() {
     ? { key: 'maps', onPress: () => openInGoogleMaps() }
     : null;
 
+  // Koordinaten+Label statt Namens-/Adress-Freitextsuche: gleicher Grund wie
+  // googleMapsUrl in VenueListScreen.tsx/VenueLeafletView.web.tsx — bei
+  // Veranstaltungsorten, die auch Filialketten sind, lieferte die
+  // Freitextsuche mehrere Treffer statt direkt zum richtigen Ort zu springen.
   function openInGoogleMaps() {
     if (!hasCoords) return;
-    const query = [event!.location_name, event!.address]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
-    const url = query
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+    const label = [event!.location_name, event!.address].filter(Boolean).join(', ').trim();
+    const url = label
+      ? `https://www.google.com/maps?q=${event!.latitude},${event!.longitude}(${encodeURIComponent(label)})`
       : `https://www.google.com/maps/search/?api=1&query=${event!.latitude},${event!.longitude}`;
     Linking.openURL(url);
   }
@@ -260,7 +262,7 @@ export default function EventDetailScreen() {
 
         <View style={styles.content}>
           <View style={styles.titleRow}>
-            {event.category && <Text style={styles.badge}>{event.category}</Text>}
+            {event.category && <Text style={styles.badge}>{categoryLabel(event.category, language)}</Text>}
             <TouchableOpacity
               style={styles.favoriteBtn}
               onPress={() => toggleFavorite(event.id)}

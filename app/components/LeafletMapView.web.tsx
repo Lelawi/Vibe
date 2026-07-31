@@ -57,10 +57,14 @@ function formatShort(dateStr: string, timeStr: string | null, lang: Language) {
   return timeStr ? `${formatted} · ${timeStr.slice(0, 5)}` : formatted;
 }
 
+// Koordinaten+Label statt Namens-Freitextsuche — gleicher Grund wie
+// googleMapsUrl in VenueListScreen.tsx: bei Veranstaltungsorten, die auch
+// Filialketten sind, lieferte die Freitextsuche mehrere Treffer statt direkt
+// zum richtigen Ort zu springen.
 function googleMapsUrl(lat: number, lng: number, label?: string) {
-  const query = label?.trim();
-  return query
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+  const trimmed = label?.trim();
+  return trimmed
+    ? `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(trimmed)})`
     : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 

@@ -1,3 +1,5 @@
+import type { Language } from './language';
+
 // Pragmatischer Parser für einen praxisrelevanten Teil der OSM-
 // opening_hours-Syntax (https://wiki.openstreetmap.org/wiki/Key:opening_hours) —
 // nicht die volle Spezifikation (die deckt u.a. Feiertage, Wochennummern,
@@ -212,14 +214,18 @@ export function isOpenNow(raw: string | null | undefined, at: Date = new Date())
 // Kurzer, menschenlesbarer Hinweis für "heute" — z.B. "10:00-24:00" oder
 // "geschlossen". Zeigt bei mehreren Zeitfenstern (Sperrzeit am Nachmittag)
 // alle an.
-export function todayLabel(raw: string | null | undefined, at: Date = new Date()): string | null {
-  if (raw?.trim() === '24/7') return 'Durchgehend geöffnet';
+export function todayLabel(
+  raw: string | null | undefined,
+  at: Date = new Date(),
+  language: Language = 'de'
+): string | null {
+  if (raw?.trim() === '24/7') return language === 'de' ? 'Durchgehend geöffnet' : 'Open 24/7';
   const rules = parseOpeningHours(raw);
   if (!rules) return null;
   const weekday = at.getDay();
   const todayRules = rules.filter((r) => r.days.includes(weekday));
   if (todayRules.length === 0) return null;
-  if (todayRules.every((r) => r.closed)) return 'Geschlossen';
+  if (todayRules.every((r) => r.closed)) return language === 'de' ? 'Geschlossen' : 'Closed';
 
   const formatMinutes = (m: number) => {
     // Exakt 24:00 (Tagesende) bewusst nicht auf "00:00" zurückwickeln — das

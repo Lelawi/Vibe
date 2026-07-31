@@ -66,7 +66,14 @@ export type VenueMarker = {
 // einen anonymen Pin ohne Namen/Infos in Google Maps (per Nutzer-Feedback
 // gemeldet: "zeigt die Koordinate statt den Shop"). "München" als Ortszusatz
 // grenzt die Freitextsuche ausreichend ein, ohne den Namen ganz wegzulassen.
-function googleMapsUrl(name: string, address?: string | null) {
+// Koordinaten+Label statt Namens-/Adress-Freitextsuche, wenn vorhanden —
+// siehe gleichnamige Funktion in VenueListScreen.tsx für den Grund (Ketten
+// wie "REWE To Go" lieferten sonst mehrere Filialen als Sucher-Treffer statt
+// direkt zur richtigen zu springen).
+function googleMapsUrl(name: string, address?: string | null, lat?: number | null, lng?: number | null) {
+  if (lat != null && lng != null) {
+    return `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(name)})`;
+  }
   const query = address ? `${name}, ${address}` : `${name}, München`;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
@@ -199,7 +206,7 @@ const VenueLeafletView = forwardRef<
     targetId?: string | null;
   }
 >(function VenueLeafletView({ venues, centerLat, centerLng, zoom, userLocation, targetId = null }, ref) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
   const mapInstanceRef = useRef<L.Map | null>(null);
   // Manche gespeicherten image_url-Werte sind zwischenzeitlich tot (Website
@@ -233,7 +240,7 @@ const VenueLeafletView = forwardRef<
         maxClusterRadius={60}
       >
         {venues.map((venue) => {
-          const hoursToday = todayLabel(venue.opening_hours_raw);
+          const hoursToday = todayLabel(venue.opening_hours_raw, new Date(), language);
           const color = markerColor(venue.open);
           return (
             <Marker
@@ -287,7 +294,7 @@ const VenueLeafletView = forwardRef<
                       <Text style={styles.popupLink}>{t('venues.dinnerMenu')}</Text>
                     </Pressable>
                   )}
-                  <Pressable onPress={() => window.open(googleMapsUrl(venue.name, venue.address), '_blank')}>
+                  <Pressable onPress={() => window.open(googleMapsUrl(venue.name, venue.address, venue.latitude, venue.longitude), '_blank')}>
                     <Text style={styles.popupMapsButton}>{t('venues.googleMapsOpen')}</Text>
                   </Pressable>
                 </View>

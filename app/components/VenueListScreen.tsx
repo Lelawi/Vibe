@@ -360,7 +360,16 @@ function cuisineLabel(raw: string, language: Language): string {
 // Adresse ist die Anfrage eindeutig, "München" als Ortszusatz grenzt die
 // Freitextsuche ausreichend ein, wenn keine Adresse gepflegt ist (bei
 // kleinen Kiosken/Spätis in OSM häufig).
-function googleMapsUrl(name: string, address?: string | null) {
+// Koordinaten+Label statt Namens-/Adress-Freitextsuche, wenn vorhanden: bei
+// Ketten (z.B. "REWE To Go") mit mehreren Filialen in München lieferte die
+// Freitextsuche mehrere Treffer statt direkt zur richtigen Filiale zu
+// springen (per Nutzer-Feedback). Das alte Format "q=lat,lng(Label)" zeigt
+// trotzdem den Namen als Pin-Beschriftung an, im Gegensatz zu einer reinen
+// "query=lat,lng"-Koordinatensuche ohne Namen/Infos.
+function googleMapsUrl(name: string, address?: string | null, lat?: number | null, lng?: number | null) {
+  if (lat != null && lng != null) {
+    return `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(name)})`;
+  }
   const query = address ? `${name}, ${address}` : `${name}, München`;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
@@ -548,7 +557,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           ...v,
           effectiveHours,
           open: isOpenNow(effectiveHours, now),
-          hoursToday: todayLabel(effectiveHours, now),
+          hoursToday: todayLabel(effectiveHours, now, language),
           program: eventsByVenue.get(canonicalizeVenue(v.name)) ?? [],
           closureStatus: closureStatusByVenue.get(v.id) ?? null,
           distanceKm:
@@ -557,7 +566,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               : null,
         };
       });
-  }, [venues, eventsByVenue, userLocation, closureStatusByVenue]);
+  }, [venues, eventsByVenue, userLocation, closureStatusByVenue, language]);
 
   // Top-Küchen für den Schnellfilter (nur bei Restaurants sinnvoll — Bars
   // pflegen den OSM-cuisine-Tag praktisch nie). Nach Häufigkeit sortiert,
@@ -1022,7 +1031,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   style={[styles.actionChip, styles.actionChipMaps]}
                   onPress={(e) => {
                     e.stopPropagation();
-                    Linking.openURL(googleMapsUrl(item.name, item.address));
+                    Linking.openURL(googleMapsUrl(item.name, item.address, item.latitude, item.longitude));
                   }}
                 >
                   <Ionicons name="map-outline" size={13} color="#c084fc" />
@@ -1406,11 +1415,10 @@ const styles = StyleSheet.create({
   programText: { color: '#5fd4ff', fontSize: 13 },
   cardFooterRow: { marginTop: 8 },
   cardFooterLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  // Column statt Row: fällt bei nur einer vorhandenen Karte automatisch auf
-  // eine einzelne Zeile zusammen, stapelt Mittags- und Abendkarte bei
-  // beiden vorhandenen übereinander (per Nutzer-Wunsch) statt nebeneinander
-  // in derselben Reihe wie Website/Anrufen/Google Maps.
-  menuLinksColumn: { flexDirection: 'column', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
+  // Row statt Column: Mittags- und Abendkarte nebeneinander statt
+  // übereinander (per Nutzer-Wunsch, spart vertikalen Platz), bleiben aber
+  // eine eigene Zeile getrennt von Website/Anrufen/Google Maps.
+  menuLinksColumn: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
   // Vorher alle vier Aktionen (Website/Anrufen/Mittagskarte/Google Maps) als
   // identisch aussehende blaue Textlinks — kaum auseinanderzuhalten, welcher
   // Link zu welcher Aktion gehört (per Nutzer-Feedback: "sehen sich zu

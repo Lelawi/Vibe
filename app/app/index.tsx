@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import BottomTabBar from '../components/BottomTabBar';
 import LanguageToggle from '../components/LanguageToggle';
 import { registerStrings, useTranslation } from '../lib/strings';
+import { categoryLabel } from '../lib/eventCategories';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
@@ -1453,7 +1454,7 @@ export default function EventListScreen() {
               )}
               <View style={styles.cardBody}>
                 <View style={styles.badgeRow}>
-                  {item.category && <Text style={styles.badge}>{item.category}</Text>}
+                  {item.category && <Text style={styles.badge}>{categoryLabel(item.category, language)}</Text>}
                   {hasMore && (
                     <View style={styles.seriesBadgeRow}>
                       <Ionicons name="repeat-outline" size={11} color="#999" />
@@ -1553,7 +1554,7 @@ export default function EventListScreen() {
                   >
                     <Text style={[styles.modalRowText, isActive && styles.modalRowTextActive]}>
                       {isActive ? '✓ ' : ''}
-                      {item}
+                      {filterTab === 'category' ? categoryLabel(item, language) : item}
                     </Text>
                   </TouchableOpacity>
                 );
