@@ -263,6 +263,98 @@ const CONFIG: Record<VenueType, {
 
 const SWITCHER_TAB: Record<VenueType, BottomTab> = { bar: 'bars', restaurant: 'restaurants', spaeti: 'spaetis' };
 
+// OSM-cuisine-Tag-Werte sind rohe, meist englische Kleinschreib-Codes
+// ("italian", "steak_house") — dienen als STABILER Filter-/Vergleichswert
+// (siehe cuisineFilter-State und v.cuisine-Abgleich weiter unten) und
+// dürfen deshalb selbst nicht übersetzt werden, nur ihre ANZEIGE. Deckt die
+// in der echten Datenbank häufigsten ~50 Werte ab (per Direktabruf
+// verifiziert, 2026-07); unbekannte Werte fallen auf eine simple
+// Großschreibung mit "_" -> Leerzeichen zurück statt nichts anzuzeigen.
+const CUISINE_LABELS: Record<string, { de: string; en: string }> = {
+  italian: { de: 'Italienisch', en: 'Italian' },
+  pizza: { de: 'Pizza', en: 'Pizza' },
+  vietnamese: { de: 'Vietnamesisch', en: 'Vietnamese' },
+  asian: { de: 'Asiatisch', en: 'Asian' },
+  regional: { de: 'Regional', en: 'Regional' },
+  indian: { de: 'Indisch', en: 'Indian' },
+  bavarian: { de: 'Bayerisch', en: 'Bavarian' },
+  greek: { de: 'Griechisch', en: 'Greek' },
+  sushi: { de: 'Sushi', en: 'Sushi' },
+  burger: { de: 'Burger', en: 'Burger' },
+  chinese: { de: 'Chinesisch', en: 'Chinese' },
+  japanese: { de: 'Japanisch', en: 'Japanese' },
+  international: { de: 'International', en: 'International' },
+  german: { de: 'Deutsch', en: 'German' },
+  thai: { de: 'Thailändisch', en: 'Thai' },
+  mediterranean: { de: 'Mediterran', en: 'Mediterranean' },
+  turkish: { de: 'Türkisch', en: 'Turkish' },
+  korean: { de: 'Koreanisch', en: 'Korean' },
+  mexican: { de: 'Mexikanisch', en: 'Mexican' },
+  french: { de: 'Französisch', en: 'French' },
+  spanish: { de: 'Spanisch', en: 'Spanish' },
+  balkan: { de: 'Balkan', en: 'Balkan' },
+  steak_house: { de: 'Steakhaus', en: 'Steakhouse' },
+  kebab: { de: 'Kebab', en: 'Kebab' },
+  afghan: { de: 'Afghanisch', en: 'Afghan' },
+  italian_pizza: { de: 'Italienisch/Pizza', en: 'Italian/Pizza' },
+  pasta: { de: 'Pasta', en: 'Pasta' },
+  noodle: { de: 'Nudeln', en: 'Noodles' },
+  austrian: { de: 'Österreichisch', en: 'Austrian' },
+  tapas: { de: 'Tapas', en: 'Tapas' },
+  croatian: { de: 'Kroatisch', en: 'Croatian' },
+  lebanese: { de: 'Libanesisch', en: 'Lebanese' },
+  arab: { de: 'Arabisch', en: 'Arabic' },
+  persian: { de: 'Persisch', en: 'Persian' },
+  fish: { de: 'Fisch', en: 'Fish' },
+  seafood: { de: 'Meeresfrüchte', en: 'Seafood' },
+  barbecue: { de: 'Grill/BBQ', en: 'Barbecue' },
+  american: { de: 'Amerikanisch', en: 'American' },
+  ramen: { de: 'Ramen', en: 'Ramen' },
+  salad: { de: 'Salat', en: 'Salad' },
+  oriental: { de: 'Orientalisch', en: 'Oriental' },
+  vegan: { de: 'Vegan', en: 'Vegan' },
+  vegetarian: { de: 'Vegetarisch', en: 'Vegetarian' },
+  steak: { de: 'Steak', en: 'Steak' },
+  chicken: { de: 'Hähnchen', en: 'Chicken' },
+  coffee_shop: { de: 'Café', en: 'Coffee shop' },
+  ice_cream: { de: 'Eis', en: 'Ice cream' },
+  bakery: { de: 'Bäckerei', en: 'Bakery' },
+  breakfast: { de: 'Frühstück', en: 'Breakfast' },
+  fine_dining: { de: 'Gehoben', en: 'Fine dining' },
+  fusion: { de: 'Fusion', en: 'Fusion' },
+  polish: { de: 'Polnisch', en: 'Polish' },
+  russian: { de: 'Russisch', en: 'Russian' },
+  ukrainian: { de: 'Ukrainisch', en: 'Ukrainian' },
+  syrian: { de: 'Syrisch', en: 'Syrian' },
+  moroccan: { de: 'Marokkanisch', en: 'Moroccan' },
+  ethiopian: { de: 'Äthiopisch', en: 'Ethiopian' },
+  brazilian: { de: 'Brasilianisch', en: 'Brazilian' },
+  peruvian: { de: 'Peruanisch', en: 'Peruvian' },
+  argentinian: { de: 'Argentinisch', en: 'Argentinian' },
+  filipino: { de: 'Philippinisch', en: 'Filipino' },
+  indonesian: { de: 'Indonesisch', en: 'Indonesian' },
+  malaysian: { de: 'Malaysisch', en: 'Malaysian' },
+  singaporean: { de: 'Singapurisch', en: 'Singaporean' },
+  nepalese: { de: 'Nepalesisch', en: 'Nepalese' },
+  sri_lankan: { de: 'Sri-lankisch', en: 'Sri Lankan' },
+  georgian: { de: 'Georgisch', en: 'Georgian' },
+  armenian: { de: 'Armenisch', en: 'Armenian' },
+  israeli: { de: 'Israelisch', en: 'Israeli' },
+  portuguese: { de: 'Portugiesisch', en: 'Portuguese' },
+  dumpling: { de: 'Dumplings', en: 'Dumplings' },
+  curry: { de: 'Curry', en: 'Curry' },
+  sandwich: { de: 'Sandwich', en: 'Sandwich' },
+  deli: { de: 'Feinkost', en: 'Deli' },
+};
+
+function cuisineLabel(raw: string, language: Language): string {
+  const entry = CUISINE_LABELS[raw];
+  if (entry) return entry[language];
+  // Unbekannter Wert: "steak_house" -> "Steak House" statt der rohen
+  // OSM-Schreibweise, immerhin lesbar statt kryptisch.
+  return raw.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 // Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff (siehe
 // gleiche Funktion in VenueLeafletView.web.tsx/VenueMapNative.tsx) — mit
 // Adresse ist die Anfrage eindeutig, "München" als Ortszusatz grenzt die
@@ -658,7 +750,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     style={[styles.filterChip, active && styles.filterChipActive]}
                     onPress={() => setCuisineFilter(isAllChip || cuisineFilter === cuisine ? null : cuisine)}
                   >
-                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{cuisine}</Text>
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                      {isAllChip ? cuisine : cuisineLabel(cuisine, language)}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -979,7 +1073,8 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           }
           const favoriteButton = renderFavoriteButton(false);
 
-          const cuisineLabel = item.cuisine?.split(';')[0]?.trim();
+          const primaryCuisine = item.cuisine?.split(';')[0]?.trim();
+          const primaryCuisineLabel = primaryCuisine ? cuisineLabel(primaryCuisine, language) : undefined;
           const lunchNode = item.lunch_available && (
             <Text style={styles.lunchBadge}>🍽️ {t('venues.lunch')}</Text>
           );
@@ -1041,9 +1136,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 </View>
                 <View style={styles.cardsBody}>
                   <Text style={styles.venueName}>{item.name}</Text>
-                  {(item.address || item.distanceKm != null || cuisineLabel) && (
+                  {(item.address || item.distanceKm != null || primaryCuisineLabel) && (
                     <Text style={styles.venueAddress}>
-                      {cuisineLabel ? `${cuisineLabel} · ` : ''}
+                      {primaryCuisineLabel ? `${primaryCuisineLabel} · ` : ''}
                       {item.address}
                       {item.address && item.distanceKm != null ? ' · ' : ''}
                       {item.distanceKm != null ? formatDistance(item.distanceKm) : ''}
@@ -1074,9 +1169,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     {favoriteButton}
                   </View>
                 </View>
-                {(item.address || item.distanceKm != null || cuisineLabel) && (
+                {(item.address || item.distanceKm != null || primaryCuisineLabel) && (
                   <Text style={styles.venueAddress}>
-                    {cuisineLabel ? `${cuisineLabel} · ` : ''}
+                    {primaryCuisineLabel ? `${primaryCuisineLabel} · ` : ''}
                     {item.address}
                     {item.address && item.distanceKm != null ? ' · ' : ''}
                     {item.distanceKm != null ? formatDistance(item.distanceKm) : ''}
@@ -1087,7 +1182,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 {beerPriceNode}
                 {programNode}
                 {item.closureStatus === 'pending' && (
-                  <Text style={styles.pendingBadge}>⏳ Als geschlossen gemeldet — wird geprüft</Text>
+                  <Text style={styles.pendingBadge}>{t('venues.pendingReview')}</Text>
                 )}
                 {footerNode}
               </View>

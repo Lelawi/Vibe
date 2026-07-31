@@ -256,6 +256,8 @@ registerStrings({
   'events.dateFilter.tomorrow': { de: 'Morgen', en: 'Tomorrow' },
   'events.dateFilter.week': { de: 'Diese Woche', en: 'This week' },
   'events.dateFilter.weekend': { de: 'Wochenende', en: 'Weekend' },
+  'events.chooseDate': { de: 'Datum wählen', en: 'Choose date' },
+  'events.daysCount': { de: 'Tage', en: 'days' },
   'events.filter': { de: 'Filter', en: 'Filter' },
   'events.favorites': { de: 'Favoriten', en: 'Favorites' },
   'events.free': { de: 'Kostenlos', en: 'Free' },
@@ -839,7 +841,7 @@ export default function EventListScreen() {
   }
 
   function customDateLabel() {
-    if (selectedDates.length === 0) return 'Datum wählen';
+    if (selectedDates.length === 0) return t('events.chooseDate');
     if (selectedDates.length === 1) {
       const [y, m, d] = selectedDates[0].split('-');
       return `${d}.${m}.${y}`;
@@ -851,7 +853,7 @@ export default function EventListScreen() {
       const [, m2, d2] = sorted[sorted.length - 1].split('-');
       return `${d1}.${m1}.–${d2}.${m2}.`;
     }
-    return `${selectedDates.length} Tage`;
+    return `${selectedDates.length} ${t('events.daysCount')}`;
   }
 
   const contentFilterCount = selectedCategories.length + selectedGenres.length + selectedLocations.length;
