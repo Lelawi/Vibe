@@ -1,7 +1,20 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
+import { registerStrings, useTranslation } from '../lib/strings';
 
 export type MapCategory = 'events' | 'bars' | 'restaurants' | 'spaetis';
+
+// Dieselben Werte wie in BottomTabBar.tsx unter demselben "tabs.*"-
+// Namespace registriert — hier zusätzlich noch einmal registriert (Object.
+// assign ist idempotent), damit diese Komponente nicht von der Lade-
+// Reihenfolge der Module abhängt, falls sie mal unabhängig von BottomTabBar
+// gerendert wird.
+registerStrings({
+  'tabs.events': { de: 'Events', en: 'Events' },
+  'tabs.bars': { de: 'Bars', en: 'Bars' },
+  'tabs.restaurants': { de: 'Restaurants', en: 'Restaurants' },
+  'tabs.spaetis': { de: 'Spätis', en: 'Kiosks' },
+});
 
 // Direktes Umschalten zwischen den drei Karten, ohne vorher zurück auf eine
 // Listenansicht wechseln zu müssen (Nutzer-Feedback: der bisherige Weg über
@@ -11,14 +24,18 @@ export type MapCategory = 'events' | 'bars' | 'restaurants' | 'spaetis';
 // Hin-und-Herschalten unnötig Navigationshistorie an. Ziel-Koordinaten
 // (falls von einem Karteneintrag angewählt) werden dabei bewusst NICHT
 // mitgenommen — ein Ziel in einer anderen Kategorie ergibt keinen Sinn.
-const CATEGORIES: { key: MapCategory; label: string; route: string }[] = [
-  { key: 'events', label: 'Events', route: '/map' },
-  { key: 'bars', label: 'Bars', route: '/bars-map' },
-  { key: 'restaurants', label: 'Restaurants', route: '/restaurants-map' },
-  { key: 'spaetis', label: 'Spätis', route: '/spaetis-map' },
+// labelKey verweist auf dieselben Strings wie BottomTabBar.tsx (registriert
+// dort unter demselben "tabs.*"-Namespace) — identische Bezeichnungen,
+// keine eigene Übersetzung nötig.
+const CATEGORIES: { key: MapCategory; labelKey: string; route: string }[] = [
+  { key: 'events', labelKey: 'tabs.events', route: '/map' },
+  { key: 'bars', labelKey: 'tabs.bars', route: '/bars-map' },
+  { key: 'restaurants', labelKey: 'tabs.restaurants', route: '/restaurants-map' },
+  { key: 'spaetis', labelKey: 'tabs.spaetis', route: '/spaetis-map' },
 ];
 
 export default function MapCategorySwitcher({ active }: { active: MapCategory }) {
+  const { t } = useTranslation();
   const router = useRouter();
 
   return (
@@ -31,7 +48,7 @@ export default function MapCategorySwitcher({ active }: { active: MapCategory })
             style={[styles.segment, isActive && styles.segmentActive]}
             onPress={() => !isActive && router.replace(cat.route)}
           >
-            <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>{cat.label}</Text>
+            <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>{t(cat.labelKey)}</Text>
           </TouchableOpacity>
         );
       })}

@@ -2,8 +2,17 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { registerStrings, useTranslation } from '../lib/strings';
 
 export type BottomTab = 'events' | 'bars' | 'restaurants' | 'spaetis';
+
+registerStrings({
+  'tabs.events': { de: 'Events', en: 'Events' },
+  'tabs.bars': { de: 'Bars', en: 'Bars' },
+  'tabs.restaurants': { de: 'Restaurants', en: 'Restaurants' },
+  'tabs.spaetis': { de: 'Spätis', en: 'Kiosks' },
+  'tabs.map': { de: 'Karte', en: 'Map' },
+});
 
 // Ersetzt den bisherigen ViewSwitcher-Pill oben im Banner: jede professionelle
 // Vergleichs-App (Instagram, Yelp, DICE) navigiert über eine untere Tab-Leiste
@@ -12,14 +21,15 @@ export type BottomTab = 'events' | 'bars' | 'restaurants' | 'spaetis';
 // Pill nur mit beiden Händen bequem erreichbar. "Karte" ist bewusst
 // kontextabhängig: von welchem Tab aus man sie öffnet, bestimmt, welche Karte
 // (Events/Bars/Restaurants) aufgeht, statt eine feste Route zu sein.
-const TABS: { key: BottomTab; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap; route: string }[] = [
-  { key: 'events', label: 'Events', icon: 'calendar-outline', activeIcon: 'calendar', route: '/' },
-  { key: 'bars', label: 'Bars', icon: 'beer-outline', activeIcon: 'beer', route: '/bars' },
-  { key: 'restaurants', label: 'Restaurants', icon: 'restaurant-outline', activeIcon: 'restaurant', route: '/restaurants' },
-  { key: 'spaetis', label: 'Spätis', icon: 'storefront-outline', activeIcon: 'storefront', route: '/spaetis' },
+const TABS: { key: BottomTab; labelKey: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap; route: string }[] = [
+  { key: 'events', labelKey: 'tabs.events', icon: 'calendar-outline', activeIcon: 'calendar', route: '/' },
+  { key: 'bars', labelKey: 'tabs.bars', icon: 'beer-outline', activeIcon: 'beer', route: '/bars' },
+  { key: 'restaurants', labelKey: 'tabs.restaurants', icon: 'restaurant-outline', activeIcon: 'restaurant', route: '/restaurants' },
+  { key: 'spaetis', labelKey: 'tabs.spaetis', icon: 'storefront-outline', activeIcon: 'storefront', route: '/spaetis' },
 ];
 
 export default function BottomTabBar({ active, mapRoute }: { active: BottomTab; mapRoute: string }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -44,13 +54,13 @@ export default function BottomTabBar({ active, mapRoute }: { active: BottomTab; 
             onPressIn={() => !isActive && router.replace(tab.route)}
           >
             <Ionicons name={isActive ? tab.activeIcon : tab.icon} size={22} color={isActive ? '#0af' : '#888'} />
-            <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
+            <Text style={[styles.label, isActive && styles.labelActive]}>{t(tab.labelKey)}</Text>
           </TouchableOpacity>
         );
       })}
       <TouchableOpacity style={styles.tab} onPressIn={() => router.push(mapRoute)}>
         <Ionicons name="map-outline" size={22} color="#888" />
-        <Text style={styles.label}>Karte</Text>
+        <Text style={styles.label}>{t('tabs.map')}</Text>
       </TouchableOpacity>
     </View>
   );

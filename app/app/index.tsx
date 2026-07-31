@@ -17,6 +17,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import BottomTabBar from '../components/BottomTabBar';
+import LanguageToggle from '../components/LanguageToggle';
+import { registerStrings, useTranslation } from '../lib/strings';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { computeSeriesKey } from '../lib/seriesKey';
@@ -142,11 +144,14 @@ function toLocalDateStr(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-const MONTH_LABELS = [
-  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
-];
+const WEEKDAY_LABELS_BY_LANG = {
+  de: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
+  en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+};
+const MONTH_LABELS_BY_LANG = {
+  de: ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'],
+  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+};
 
 // Baut ein 6x7-Raster für die Monatsansicht des Kalenders: führende/
 // nachfolgende Tage aus Nachbarmonaten werden mitgeliefert (inMonth: false),
@@ -233,13 +238,60 @@ function getDateRange(filter: DateFilter): { from: string; to: string | null } {
   return { from: todayStr, to: null };
 }
 
-const DATE_FILTERS: { key: DateFilter; label: string }[] = [
-  { key: 'all', label: 'Alle' },
-  { key: 'today', label: 'Heute' },
-  { key: 'tomorrow', label: 'Morgen' },
-  { key: 'week', label: 'Diese Woche' },
-  { key: 'weekend', label: 'Wochenende' },
+const DATE_FILTERS: { key: DateFilter; labelKey: string }[] = [
+  { key: 'all', labelKey: 'events.dateFilter.all' },
+  { key: 'today', labelKey: 'events.dateFilter.today' },
+  { key: 'tomorrow', labelKey: 'events.dateFilter.tomorrow' },
+  { key: 'week', labelKey: 'events.dateFilter.week' },
+  { key: 'weekend', labelKey: 'events.dateFilter.weekend' },
 ];
+
+registerStrings({
+  'events.title': { de: 'Vibe', en: 'Vibe' },
+  'events.subtitle': { de: 'Events in München', en: 'Events in Munich' },
+  'events.offline': { de: 'Offline — zeige zuletzt geladene Events', en: 'Offline — showing last loaded events' },
+  'events.searchPlaceholder': { de: 'Event, Ort, Genre oder Datum suchen...', en: 'Search event, venue, genre or date...' },
+  'events.dateFilter.all': { de: 'Alle', en: 'All' },
+  'events.dateFilter.today': { de: 'Heute', en: 'Today' },
+  'events.dateFilter.tomorrow': { de: 'Morgen', en: 'Tomorrow' },
+  'events.dateFilter.week': { de: 'Diese Woche', en: 'This week' },
+  'events.dateFilter.weekend': { de: 'Wochenende', en: 'Weekend' },
+  'events.filter': { de: 'Filter', en: 'Filter' },
+  'events.favorites': { de: 'Favoriten', en: 'Favorites' },
+  'events.free': { de: 'Kostenlos', en: 'Free' },
+  'events.multiDay': { de: 'Ausstellungen', en: 'Exhibitions' },
+  'events.nearby': { de: 'Nähe', en: 'Nearby' },
+  'events.loadingLocation': { de: 'Lädt Standort…', en: 'Loading location…' },
+  'events.notificationsOn': { de: 'Benachrichtigungen an', en: 'Notifications on' },
+  'events.notifications': { de: 'Benachrichtigungen', en: 'Notifications' },
+  'events.reminder': { de: 'Erinnerung', en: 'Reminder' },
+  'events.refresh': { de: 'Aktualisieren', en: 'Refresh' },
+  'events.resultsFoundOne': { de: 'Event gefunden', en: 'event found' },
+  'events.resultsFoundMany': { de: 'Events gefunden', en: 'events found' },
+  'events.resetAllFilters': { de: 'Alle Filter zurücksetzen', en: 'Reset all filters' },
+  'events.locationDenied': { de: 'Standort nicht verfügbar — bitte Standortzugriff im Browser erlauben.', en: 'Location unavailable — please allow location access in your browser.' },
+  'events.radiusAll': { de: 'Alle', en: 'All' },
+  'events.emptyTitle': { de: 'Keine Events gefunden', en: 'No events found' },
+  'events.emptyHintFiltered': { de: 'Mit den aktuellen Filtern gibt es nichts zu sehen.', en: "There's nothing to see with the current filters." },
+  'events.emptyHint': { de: 'Schau später nochmal vorbei.', en: 'Check back again later.' },
+  'events.featuredTitle': { de: 'Empfohlen für dich', en: 'Recommended for you' },
+  'events.soldOut': { de: 'Ausverkauft', en: 'Sold out' },
+  'events.calendarReset': { de: 'Zurücksetzen', en: 'Reset' },
+  'events.calendarDone': { de: 'Fertig', en: 'Done' },
+  'events.filterModalTitle': { de: 'Filter', en: 'Filter' },
+  'events.filterModalReset': { de: 'Zurücksetzen', en: 'Reset' },
+  'events.filterModalDone': { de: 'Fertig', en: 'Done' },
+  'events.filterCategory': { de: 'Kategorie', en: 'Category' },
+  'events.filterGenre': { de: 'Genre', en: 'Genre' },
+  'events.filterLocation': { de: 'Ort', en: 'Location' },
+  'events.locationSearchPlaceholder': { de: 'Ort suchen...', en: 'Search location...' },
+  'events.resetAll': { de: 'Alle zurücksetzen', en: 'Reset all' },
+  'events.reminderModalTitle': { de: 'Erinnerung bei Favoriten', en: 'Reminder for favorites' },
+  'events.close': { de: 'Schließen', en: 'Close' },
+  'events.dates': { de: 'Termine', en: 'dates' },
+  'events.moreDatesOnSource': { de: 'weitere Termine (auf der Quellseite sichtbar)', en: 'more dates (visible on the source page)' },
+  'events.reminderModalSubtitle': { de: 'Wann sollen wir dich an ein favorisiertes Event erinnern?', en: 'When should we remind you about a favorited event?' },
+});
 
 // Feste Auswahl-Chips statt eines <input type="range">-Sliders: ein
 // kontinuierlicher Slider für 1-25km-Einzelschritte war auf dem Handy kaum
@@ -286,6 +338,7 @@ function toggleInSet(current: string[], value: string): string[] {
 }
 
 export default function EventListScreen() {
+  const { t, language } = useTranslation();
   const router = useRouter();
   const params = useLocalSearchParams<{ locations?: string; search?: string }>();
   const [events, setEvents] = useState<Event[]>(() => eventsCache ?? []);
@@ -887,9 +940,10 @@ export default function EventListScreen() {
       >
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.header}>Vibe</Text>
-            <Text style={styles.subheader}>Events in München</Text>
+            <Text style={styles.header}>{t('events.title')}</Text>
+            <Text style={styles.subheader}>{t('events.subtitle')}</Text>
           </View>
+          <LanguageToggle />
         </View>
       </LinearGradient>
 
@@ -897,7 +951,7 @@ export default function EventListScreen() {
         <View style={styles.offlineBanner}>
           <Ionicons name="cloud-offline-outline" size={14} color="#f2c94c" />
           <Text style={styles.offlineBannerText}>
-            Offline — zeige zuletzt geladene Events
+            {t('events.offline')}
           </Text>
         </View>
       )}
@@ -910,7 +964,7 @@ export default function EventListScreen() {
       <View style={styles.searchWrap}>
         <TextInput
           style={[styles.search, styles.searchInput]}
-          placeholder="Event, Ort, Genre oder Datum suchen..."
+          placeholder={t('events.searchPlaceholder')}
           placeholderTextColor="#666"
           value={search}
           onChangeText={setSearch}
@@ -944,7 +998,7 @@ export default function EventListScreen() {
                   dateFilter === f.key && styles.filterChipTextActive,
                 ]}
               >
-                {f.label}
+                {t(f.labelKey)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -987,7 +1041,7 @@ export default function EventListScreen() {
         >
           <Ionicons name="options-outline" size={16} color={contentFilterCount > 0 ? '#000' : '#999'} />
           <Text style={[styles.filterButtonText, contentFilterCount > 0 && styles.filterChipTextActive]}>
-            Filter{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
+            {t('events.filter')}{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
           </Text>
         </TouchableOpacity>
 
@@ -1001,7 +1055,7 @@ export default function EventListScreen() {
             color={showFavoritesOnly ? '#000' : '#999'}
           />
           <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
-            Favoriten
+            {t('events.favorites')}
           </Text>
         </TouchableOpacity>
 
@@ -1011,7 +1065,7 @@ export default function EventListScreen() {
         >
           <Ionicons name="pricetag-outline" size={16} color={showFreeOnly ? '#000' : '#999'} />
           <Text style={[styles.filterButtonText, showFreeOnly && styles.filterChipTextActive]}>
-            Kostenlos
+            {t('events.free')}
           </Text>
         </TouchableOpacity>
 
@@ -1021,7 +1075,7 @@ export default function EventListScreen() {
         >
           <Ionicons name="layers-outline" size={16} color={showMultiDayOnly ? '#000' : '#999'} />
           <Text style={[styles.filterButtonText, showMultiDayOnly && styles.filterChipTextActive]}>
-            Ausstellungen
+            {t('events.multiDay')}
           </Text>
         </TouchableOpacity>
 
@@ -1037,7 +1091,7 @@ export default function EventListScreen() {
               <Ionicons name="location-outline" size={16} color={userLocation ? '#000' : '#999'} />
             )}
             <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
-              {locationStatus === 'loading' ? 'Lädt Standort…' : 'Nähe'}
+              {locationStatus === 'loading' ? t('events.loadingLocation') : t('events.nearby')}
             </Text>
           </TouchableOpacity>
         )}
@@ -1058,7 +1112,7 @@ export default function EventListScreen() {
               />
             )}
             <Text style={[styles.filterButtonText, pushEnabled && styles.filterChipTextActive]}>
-              {pushEnabled ? 'Benachrichtigungen an' : 'Benachrichtigungen'}
+              {pushEnabled ? t('events.notificationsOn') : t('events.notifications')}
             </Text>
           </TouchableOpacity>
         )}
@@ -1070,7 +1124,7 @@ export default function EventListScreen() {
           >
             <Ionicons name="time-outline" size={16} color="#999" />
             <Text style={styles.filterButtonText}>
-              Erinnerung{reminderOffsets.length > 0 ? ` (${reminderOffsets.length})` : ''}
+              {t('events.reminder')}{reminderOffsets.length > 0 ? ` (${reminderOffsets.length})` : ''}
             </Text>
           </TouchableOpacity>
         )}
@@ -1083,7 +1137,7 @@ export default function EventListScreen() {
           ) : (
             <Ionicons name="refresh-outline" size={16} color="#999" />
           )}
-          <Text style={styles.filterButtonText}>Aktualisieren</Text>
+          <Text style={styles.filterButtonText}>{t('events.refresh')}</Text>
         </TouchableOpacity>
       </ScrollView>
       <LinearGradient
@@ -1097,18 +1151,18 @@ export default function EventListScreen() {
 
       <View style={styles.resultCountRow}>
         <Text style={styles.resultCount}>
-          {eventGroups.length} {eventGroups.length === 1 ? 'Event' : 'Events'} gefunden
+          {eventGroups.length} {eventGroups.length === 1 ? t('events.resultsFoundOne') : t('events.resultsFoundMany')}
         </Text>
         {hasAnyActiveFilter && (
           <TouchableOpacity onPress={resetAllFilters}>
-            <Text style={styles.resultCountResetLink}>Alle Filter zurücksetzen</Text>
+            <Text style={styles.resultCountResetLink}>{t('events.resetAllFilters')}</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {locationStatus === 'denied' && (
         <Text style={styles.locationHint}>
-          Standort nicht verfügbar — bitte Standortzugriff im Browser erlauben.
+          {t('events.locationDenied')}
         </Text>
       )}
 
@@ -1129,7 +1183,7 @@ export default function EventListScreen() {
                   onPress={() => setNearbyRadiusKm(km)}
                 >
                   <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                    {km === null ? 'Alle' : `${km} km`}
+                    {km === null ? t('events.radiusAll') : `${km} km`}
                   </Text>
                 </TouchableOpacity>
               );
@@ -1155,7 +1209,7 @@ export default function EventListScreen() {
                 <Text style={styles.calendarNavText}>‹</Text>
               </TouchableOpacity>
               <Text style={styles.calendarTitle}>
-                {MONTH_LABELS[calendarMonth.month]} {calendarMonth.year}
+                {MONTH_LABELS_BY_LANG[language][calendarMonth.month]} {calendarMonth.year}
               </Text>
               <TouchableOpacity onPress={() => shiftCalendarMonth(1)} style={styles.calendarNavBtn}>
                 <Text style={styles.calendarNavText}>›</Text>
@@ -1163,7 +1217,7 @@ export default function EventListScreen() {
             </View>
 
             <View style={styles.calendarWeekRow}>
-              {WEEKDAY_LABELS.map((w) => (
+              {WEEKDAY_LABELS_BY_LANG[language].map((w) => (
                 <Text key={w} style={styles.calendarWeekLabel}>{w}</Text>
               ))}
             </View>
@@ -1207,14 +1261,14 @@ export default function EventListScreen() {
                     setShowPicker(false);
                   }}
                 >
-                  <Text style={styles.calendarClearText}>Zurücksetzen</Text>
+                  <Text style={styles.calendarClearText}>{t('events.calendarReset')}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 style={styles.calendarDoneBtn}
                 onPress={() => setShowPicker(false)}
               >
-                <Text style={styles.calendarDoneText}>Fertig</Text>
+                <Text style={styles.calendarDoneText}>{t('events.calendarDone')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -1266,7 +1320,7 @@ export default function EventListScreen() {
               setSelectedLocations([]);
             }}
           >
-            <Text style={styles.activePillResetAllText}>Alle zurücksetzen</Text>
+            <Text style={styles.activePillResetAllText}>{t('events.resetAll')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1296,18 +1350,18 @@ export default function EventListScreen() {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="calendar-clear-outline" size={40} color="#444" />
-            <Text style={styles.emptyTitle}>Keine Events gefunden</Text>
+            <Text style={styles.emptyTitle}>{t('events.emptyTitle')}</Text>
             {hasAnyActiveFilter ? (
               <>
                 <Text style={styles.emptyHint}>
-                  Mit den aktuellen Filtern gibt es nichts zu sehen.
+                  {t('events.emptyHintFiltered')}
                 </Text>
                 <TouchableOpacity style={styles.emptyResetButton} onPress={resetAllFilters}>
-                  <Text style={styles.emptyResetButtonText}>Alle Filter zurücksetzen</Text>
+                  <Text style={styles.emptyResetButtonText}>{t('events.resetAllFilters')}</Text>
                 </TouchableOpacity>
               </>
             ) : (
-              <Text style={styles.emptyHint}>Schau später nochmal vorbei.</Text>
+              <Text style={styles.emptyHint}>{t('events.emptyHint')}</Text>
             )}
           </View>
         }
@@ -1320,7 +1374,7 @@ export default function EventListScreen() {
               <View style={styles.featuredSection}>
                 <View style={styles.featuredSectionTitleRow}>
                   <Ionicons name="sparkles-outline" size={16} color="#fff" />
-                  <Text style={styles.featuredSectionTitle}>Empfohlen für dich</Text>
+                  <Text style={styles.featuredSectionTitle}>{t('events.featuredTitle')}</Text>
                 </View>
                 <ScrollView
                   horizontal
@@ -1401,7 +1455,7 @@ export default function EventListScreen() {
                   {hasMore && (
                     <View style={styles.seriesBadgeRow}>
                       <Ionicons name="repeat-outline" size={11} color="#999" />
-                      <Text style={styles.seriesBadge}>{group.length} Termine</Text>
+                      <Text style={styles.seriesBadge}>{group.length} {t('events.dates')}</Text>
                     </View>
                   )}
                   {/* Bei einer Serie nur "Ausverkauft" zeigen, wenn wirklich
@@ -1411,7 +1465,7 @@ export default function EventListScreen() {
                       sein können. Preis/Status pro Termin steht stattdessen
                       in der aufgeklappten Terminliste. */}
                   {(hasMore ? group.every((g) => g.sold_out === true) : item.sold_out === true) && (
-                    <Text style={styles.soldOutBadge}>Ausverkauft</Text>
+                    <Text style={styles.soldOutBadge}>{t('events.soldOut')}</Text>
                   )}
                 </View>
                 <Text style={styles.title}>{item.title}</Text>
@@ -1447,10 +1501,10 @@ export default function EventListScreen() {
         >
           <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
             <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Filter</Text>
+              <Text style={styles.modalTitle}>{t('events.filterModalTitle')}</Text>
               {activeFilterTabSelected.length > 0 && (
                 <TouchableOpacity onPress={resetActiveFilterTab}>
-                  <Text style={styles.modalResetLink}>Zurücksetzen</Text>
+                  <Text style={styles.modalResetLink}>{t('events.filterModalReset')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1458,9 +1512,9 @@ export default function EventListScreen() {
             <View style={styles.filterTabRow}>
               {(
                 [
-                  { key: 'category' as const, label: 'Kategorie', count: selectedCategories.length },
-                  { key: 'genre' as const, label: 'Genre', count: selectedGenres.length },
-                  { key: 'location' as const, label: 'Ort', count: selectedLocations.length },
+                  { key: 'category' as const, label: t('events.filterCategory'), count: selectedCategories.length },
+                  { key: 'genre' as const, label: t('events.filterGenre'), count: selectedGenres.length },
+                  { key: 'location' as const, label: t('events.filterLocation'), count: selectedLocations.length },
                 ]
               ).map((tab) => (
                 <TouchableOpacity
@@ -1478,7 +1532,7 @@ export default function EventListScreen() {
             {filterTab === 'location' && (
               <TextInput
                 style={[styles.search, styles.locationSearchInput]}
-                placeholder="Ort suchen..."
+                placeholder={t('events.locationSearchPlaceholder')}
                 placeholderTextColor="#666"
                 value={locationSearch}
                 onChangeText={setLocationSearch}
@@ -1511,7 +1565,7 @@ export default function EventListScreen() {
                   setLocationSearch('');
                 }}
               >
-                <Text style={styles.modalCloseButtonText}>Fertig</Text>
+                <Text style={styles.modalCloseButtonText}>{t('events.filterModalDone')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -1532,9 +1586,9 @@ export default function EventListScreen() {
           onPress={() => setShowReminderModal(false)}
         >
           <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Erinnerung bei Favoriten</Text>
+            <Text style={styles.modalTitle}>{t('events.reminderModalTitle')}</Text>
             <Text style={styles.modalSubtitle}>
-              Wann sollen wir dich an ein favorisiertes Event erinnern?
+              {t('events.reminderModalSubtitle')}
             </Text>
             {REMINDER_OFFSET_OPTIONS.map((option) => {
               const isActive = reminderOffsets.includes(option.minutes);
@@ -1556,7 +1610,7 @@ export default function EventListScreen() {
                 style={styles.modalCloseButton}
                 onPress={() => setShowReminderModal(false)}
               >
-                <Text style={styles.modalCloseButtonText}>Fertig</Text>
+                <Text style={styles.modalCloseButtonText}>{t('events.filterModalDone')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -1578,7 +1632,7 @@ export default function EventListScreen() {
           <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>{selectedGroup?.[0]?.title}</Text>
             <Text style={styles.modalSubtitle}>
-              {selectedGroup?.length} Termine
+              {selectedGroup?.length} {t('events.dates')}
               {selectedGroup?.[0]?.location_name ? ` · ${selectedGroup[0].location_name}` : ''}
             </Text>
             <FlatList
@@ -1595,14 +1649,14 @@ export default function EventListScreen() {
                   <Text style={styles.modalRowText}>{formatDate(item.start_date, item.start_time)}</Text>
                   <View style={styles.modalRowMeta}>
                     {item.price_info && <Text style={styles.modalRowPrice}>{item.price_info}</Text>}
-                    {item.sold_out === true && <Text style={styles.soldOutBadge}>Ausverkauft</Text>}
+                    {item.sold_out === true && <Text style={styles.soldOutBadge}>{t('events.soldOut')}</Text>}
                   </View>
                 </TouchableOpacity>
               )}
               ListFooterComponent={
                 selectedGroup && selectedGroup.length > 12 ? (
                   <Text style={styles.modalFooterHint}>
-                    + {selectedGroup.length - 12} weitere Termine (auf der Quellseite sichtbar)
+                    + {selectedGroup.length - 12} {t('events.moreDatesOnSource')}
                   </Text>
                 ) : null
               }
@@ -1624,7 +1678,9 @@ export default function EventListScreen() {
               >
                 <Ionicons name="calendar-outline" size={15} color="#fff" />
                 <Text style={styles.modalSecondaryButtonText}>
-                  Alle {selectedGroup.length} Termine in Kalender speichern
+                  {language === 'de'
+                    ? `Alle ${selectedGroup.length} Termine in Kalender speichern`
+                    : `Save all ${selectedGroup.length} dates to calendar`}
                 </Text>
               </TouchableOpacity>
             )}
@@ -1633,7 +1689,7 @@ export default function EventListScreen() {
                 style={styles.modalCloseButton}
                 onPress={() => setSelectedGroup(null)}
               >
-                <Text style={styles.modalCloseButtonText}>Schließen</Text>
+                <Text style={styles.modalCloseButtonText}>{t('events.close')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

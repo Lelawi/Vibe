@@ -26,6 +26,9 @@ import { fetchAllVenues } from '../lib/fetchAllVenues';
 import { useVenueFavorites } from '../lib/venueFavorites';
 import { setFilteredVenuesForMap } from '../lib/mapFilterCache';
 import BottomTabBar, { type BottomTab } from './BottomTabBar';
+import LanguageToggle from './LanguageToggle';
+import { registerStrings, useTranslation } from '../lib/strings';
+import type { Language } from '../lib/language';
 
 // Feste Auswahl-Chips statt eines <input type="range">-Sliders: ein
 // kontinuierlicher Slider für 1-25km-Einzelschritte war auf dem Handy kaum
@@ -162,37 +165,99 @@ function openState(open: boolean | null): 'open' | 'unknown' | 'closed' {
 // Öffnungszeiten statt Einzelterminen, siehe 0015_venues_generalize_for_
 // restaurants.sql) — ein gemeinsamer Screen statt zweier Kopien, nur Titel/
 // Icon/Routen/Texte unterscheiden sich je type.
+registerStrings({
+  'venues.bar.title': { de: 'Bars', en: 'Bars' },
+  'venues.restaurant.title': { de: 'Restaurants', en: 'Restaurants' },
+  'venues.spaeti.title': { de: 'Spätis', en: 'Kiosks' },
+  'venues.bar.searchPlaceholder': { de: 'Bar oder Adresse suchen...', en: 'Search bar or address...' },
+  'venues.restaurant.searchPlaceholder': { de: 'Restaurant oder Adresse suchen...', en: 'Search restaurant or address...' },
+  'venues.spaeti.searchPlaceholder': { de: 'Späti oder Adresse suchen...', en: 'Search kiosk or address...' },
+  'venues.bar.emptyText': { de: 'Keine Bars gefunden.', en: 'No bars found.' },
+  'venues.restaurant.emptyText': { de: 'Keine Restaurants gefunden.', en: 'No restaurants found.' },
+  'venues.spaeti.emptyText': { de: 'Keine Spätis gefunden.', en: 'No kiosks found.' },
+  'venues.reportTitle': { de: 'Melden?', en: 'Report?' },
+  'venues.cancel': { de: 'Abbrechen', en: 'Cancel' },
+  'venues.report': { de: 'Melden', en: 'Report' },
+  'venues.error': { de: 'Fehler', en: 'Error' },
+  'venues.openOfTotal': { de: 'von', en: 'of' },
+  'venues.openNow': { de: 'gerade geöffnet', en: 'currently open' },
+  'venues.cuisineAll': { de: 'Alle', en: 'All' },
+  'venues.onlyOpen': { de: 'Nur geöffnet', en: 'Open now' },
+  'venues.lunch': { de: 'Mittagslunch', en: 'Lunch menu' },
+  'venues.favorites': { de: 'Favoriten', en: 'Favorites' },
+  'venues.nearby': { de: 'Nähe', en: 'Nearby' },
+  'venues.loading': { de: 'Lädt…', en: 'Loading…' },
+  'venues.viewCards': { de: 'Bild-Karten', en: 'Photo cards' },
+  'venues.viewCompact': { de: 'Kompakt', en: 'Compact' },
+  'venues.refresh': { de: 'Aktualisieren', en: 'Refresh' },
+  'venues.radiusAll': { de: 'Alle', en: 'All' },
+  'venues.resultsFoundOne': { de: 'gefunden', en: 'found' },
+  'venues.resetAllFilters': { de: 'Alle Filter zurücksetzen', en: 'Reset all filters' },
+  'venues.locationDenied': { de: 'Standort nicht verfügbar — bitte Standortzugriff im Browser erlauben.', en: 'Location unavailable — please allow location access in your browser.' },
+  'venues.emptyHintFiltered': { de: 'Mit den aktuellen Filtern gibt es nichts zu sehen.', en: "There's nothing to see with the current filters." },
+  'venues.emptyHint': { de: 'Schau später nochmal vorbei.', en: 'Check back again later.' },
+  'venues.today': { de: 'Heute', en: 'Today' },
+  'venues.hoursUnknown': { de: 'Öffnungszeiten unbekannt', en: 'Opening hours unknown' },
+  'venues.open': { de: 'Geöffnet', en: 'Open' },
+  'venues.closed': { de: 'Geschlossen', en: 'Closed' },
+  'venues.website': { de: 'Website', en: 'Website' },
+  'venues.call': { de: 'Anrufen', en: 'Call' },
+  'venues.googleMaps': { de: 'Google Maps', en: 'Google Maps' },
+  'venues.lunchMenu': { de: 'Mittagskarte', en: 'Lunch menu' },
+  'venues.dinnerMenu': { de: 'Abendkarte', en: 'Dinner menu' },
+  'venues.reportLink': { de: "Gibt's nicht mehr?", en: 'No longer exists?' },
+  'venues.pendingReview': { de: '⏳ Als geschlossen gemeldet — wird geprüft', en: '⏳ Reported as closed — under review' },
+  'venues.beerPrice': { de: '0,5l Helles', en: '0.5L Helles' },
+});
+
+// reportPrompt bleibt eine Funktion statt eines flachen Übersetzungs-Keys —
+// der Name der Venue wird mitten im Satz eingesetzt und braucht je Typ
+// (Bar/Restaurant/Späti) einen anderen grammatikalischen Artikel im
+// deutschen Folgesatz ("Die Bar"/"Das Restaurant"/"Der Späti"), was das
+// einfache Schlüssel-Wörterbuch (ohne Platzhalter-Interpolation) nicht
+// abbilden kann.
+const REPORT_PROMPT: Record<VenueType, (name: string, language: Language) => string> = {
+  bar: (name, lang) =>
+    lang === 'de'
+      ? `"${name}" als "gibt's nicht mehr" melden? Die Bar wird dann zur Prüfung markiert.`
+      : `Report "${name}" as "no longer exists"? The bar will then be marked for review.`,
+  restaurant: (name, lang) =>
+    lang === 'de'
+      ? `"${name}" als "gibt's nicht mehr" melden? Das Restaurant wird dann zur Prüfung markiert.`
+      : `Report "${name}" as "no longer exists"? The restaurant will then be marked for review.`,
+  spaeti: (name, lang) =>
+    lang === 'de'
+      ? `"${name}" als "gibt's nicht mehr" melden? Der Späti wird dann zur Prüfung markiert.`
+      : `Report "${name}" as "no longer exists"? The kiosk will then be marked for review.`,
+};
+
 const CONFIG: Record<VenueType, {
-  title: string;
+  titleKey: string;
   icon: keyof typeof Ionicons.glyphMap;
   mapRoute: string;
-  searchPlaceholder: string;
-  emptyText: string;
-  reportPrompt: (name: string) => string;
+  searchPlaceholderKey: string;
+  emptyTextKey: string;
 }> = {
   bar: {
-    title: 'Bars',
+    titleKey: 'venues.bar.title',
     icon: 'beer-outline',
     mapRoute: '/bars-map',
-    searchPlaceholder: 'Bar oder Adresse suchen...',
-    emptyText: 'Keine Bars gefunden.',
-    reportPrompt: (name) => `"${name}" als "gibt's nicht mehr" melden? Die Bar wird dann zur Prüfung markiert.`,
+    searchPlaceholderKey: 'venues.bar.searchPlaceholder',
+    emptyTextKey: 'venues.bar.emptyText',
   },
   restaurant: {
-    title: 'Restaurants',
+    titleKey: 'venues.restaurant.title',
     icon: 'restaurant-outline',
     mapRoute: '/restaurants-map',
-    searchPlaceholder: 'Restaurant oder Adresse suchen...',
-    emptyText: 'Keine Restaurants gefunden.',
-    reportPrompt: (name) => `"${name}" als "gibt's nicht mehr" melden? Das Restaurant wird dann zur Prüfung markiert.`,
+    searchPlaceholderKey: 'venues.restaurant.searchPlaceholder',
+    emptyTextKey: 'venues.restaurant.emptyText',
   },
   spaeti: {
-    title: 'Spätis',
+    titleKey: 'venues.spaeti.title',
     icon: 'storefront-outline',
     mapRoute: '/spaetis-map',
-    searchPlaceholder: 'Späti oder Adresse suchen...',
-    emptyText: 'Keine Spätis gefunden.',
-    reportPrompt: (name) => `"${name}" als "gibt's nicht mehr" melden? Der Späti wird dann zur Prüfung markiert.`,
+    searchPlaceholderKey: 'venues.spaeti.searchPlaceholder',
+    emptyTextKey: 'venues.spaeti.emptyText',
   },
 };
 
@@ -209,6 +274,7 @@ function googleMapsUrl(name: string, address?: string | null) {
 }
 
 export default function VenueListScreen({ type }: { type: VenueType }) {
+  const { t, language } = useTranslation();
   const config = CONFIG[type];
   const router = useRouter();
   const [venues, setVenues] = useState<Venue[]>(() => venueScreenCache.get(type)?.venues ?? []);
@@ -325,7 +391,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   // keine freie Datenquelle gibt, die "existiert nicht mehr" verlässlich
   // automatisch bestätigen könnte.
   function confirmReportClosed(venueId: string, venueName: string) {
-    const message = config.reportPrompt(venueName);
+    const message = REPORT_PROMPT[type](venueName, language);
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       // window.confirm() synchron direkt im Touch-Handler aufzurufen, ließ
       // danach die Suchleiste (und andere Eingaben) unklickbar zurück (per
@@ -339,9 +405,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       }, 0);
       return;
     }
-    Alert.alert('Melden?', message, [
-      { text: 'Abbrechen', style: 'cancel' },
-      { text: 'Melden', style: 'destructive', onPress: () => reportClosed(venueId, venueName) },
+    Alert.alert(t('venues.reportTitle'), message, [
+      { text: t('venues.cancel'), style: 'cancel' },
+      { text: t('venues.report'), style: 'destructive', onPress: () => reportClosed(venueId, venueName) },
     ]);
   }
 
@@ -350,10 +416,12 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     const { error } = await supabase
       .from('venue_closure_reports')
       .upsert({ venue_id: venueId, status: 'pending' }, { onConflict: 'venue_id' });
+    const failureMessage =
+      language === 'de' ? `Melden von "${venueName}" ist fehlgeschlagen.` : `Reporting "${venueName}" failed.`;
     if (error && Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert(`Melden von "${venueName}" ist fehlgeschlagen.`);
+      window.alert(failureMessage);
     } else if (error) {
-      Alert.alert('Fehler', `Melden von "${venueName}" ist fehlgeschlagen.`);
+      Alert.alert(t('venues.error'), failureMessage);
     }
   }
 
@@ -545,11 +613,12 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     >
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.header}>{config.title}</Text>
+          <Text style={styles.header}>{t(config.titleKey)}</Text>
           <Text style={styles.subheader}>
-            {openCount} von {venuesMatchingOtherFilters.length} gerade geöffnet
+            {openCount} {t('venues.openOfTotal')} {venuesMatchingOtherFilters.length} {t('venues.openNow')}
           </Text>
         </View>
+        <LanguageToggle />
       </View>
     </LinearGradient>
   );
@@ -560,7 +629,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         <View style={styles.searchWrap}>
           <TextInput
             style={[styles.search, styles.searchInput]}
-            placeholder={config.searchPlaceholder}
+            placeholder={t(config.searchPlaceholderKey)}
             placeholderTextColor="#666"
             value={search}
             onChangeText={setSearch}
@@ -580,13 +649,14 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               contentContainerStyle={styles.cuisineScrollContent}
               style={styles.cuisineScroll}
             >
-              {['Alle', ...cuisineOptions].map((cuisine) => {
-                const active = cuisine === 'Alle' ? !cuisineFilter : cuisineFilter === cuisine;
+              {[t('venues.cuisineAll'), ...cuisineOptions].map((cuisine) => {
+                const isAllChip = cuisine === t('venues.cuisineAll');
+                const active = isAllChip ? !cuisineFilter : cuisineFilter === cuisine;
                 return (
                   <TouchableOpacity
                     key={cuisine}
                     style={[styles.filterChip, active && styles.filterChipActive]}
-                    onPress={() => setCuisineFilter(cuisine === 'Alle' || cuisineFilter === cuisine ? null : cuisine)}
+                    onPress={() => setCuisineFilter(isAllChip || cuisineFilter === cuisine ? null : cuisine)}
                   >
                     <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{cuisine}</Text>
                   </TouchableOpacity>
@@ -607,7 +677,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               onPress={() => setOnlyOpen((v) => !v)}
             >
               <Ionicons name="time-outline" size={16} color={onlyOpen ? '#000' : '#999'} />
-              <Text style={[styles.filterButtonText, onlyOpen && styles.filterChipTextActive]}>Nur geöffnet</Text>
+              <Text style={[styles.filterButtonText, onlyOpen && styles.filterChipTextActive]}>{t('venues.onlyOpen')}</Text>
             </TouchableOpacity>
 
             {type === 'restaurant' && (
@@ -616,7 +686,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 onPress={() => setLunchOnly((v) => !v)}
               >
                 <Ionicons name="sunny-outline" size={16} color={lunchOnly ? '#000' : '#999'} />
-                <Text style={[styles.filterButtonText, lunchOnly && styles.filterChipTextActive]}>Mittagslunch</Text>
+                <Text style={[styles.filterButtonText, lunchOnly && styles.filterChipTextActive]}>{t('venues.lunch')}</Text>
               </TouchableOpacity>
             )}
 
@@ -630,7 +700,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 color={showFavoritesOnly ? '#000' : '#999'}
               />
               <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
-                Favoriten
+                {t('venues.favorites')}
               </Text>
             </TouchableOpacity>
 
@@ -646,7 +716,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   <Ionicons name="location-outline" size={16} color={userLocation ? '#000' : '#999'} />
                 )}
                 <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
-                  {locationStatus === 'loading' ? 'Lädt…' : 'Nähe'}
+                  {locationStatus === 'loading' ? t('venues.loading') : t('venues.nearby')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -656,7 +726,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               onPress={() => setViewMode((m) => (m === 'compact' ? 'cards' : 'compact'))}
             >
               <Ionicons name={viewMode === 'compact' ? 'image-outline' : 'list-outline'} size={16} color="#999" />
-              <Text style={styles.filterButtonText}>{viewMode === 'compact' ? 'Bild-Karten' : 'Kompakt'}</Text>
+              <Text style={styles.filterButtonText}>{viewMode === 'compact' ? t('venues.viewCards') : t('venues.viewCompact')}</Text>
             </TouchableOpacity>
 
             {/* Ersetzt echtes Pull-to-refresh, das auf react-native-web nicht
@@ -667,7 +737,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               ) : (
                 <Ionicons name="refresh-outline" size={16} color="#999" />
               )}
-              <Text style={styles.filterButtonText}>Aktualisieren</Text>
+              <Text style={styles.filterButtonText}>{t('venues.refresh')}</Text>
             </TouchableOpacity>
           </ScrollView>
           <LinearGradient
@@ -681,18 +751,18 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
 
         <View style={styles.resultCountRow}>
           <Text style={styles.resultCount}>
-            {filteredVenues.length} {filteredVenues.length === 1 ? config.title.slice(0, -1) : config.title} gefunden
+            {filteredVenues.length} {filteredVenues.length === 1 ? t(config.titleKey).slice(0, -1) : t(config.titleKey)} {t('venues.resultsFoundOne')}
           </Text>
           {hasAnyActiveFilter && (
             <TouchableOpacity onPress={resetAllFilters}>
-              <Text style={styles.resultCountResetLink}>Alle Filter zurücksetzen</Text>
+              <Text style={styles.resultCountResetLink}>{t('venues.resetAllFilters')}</Text>
             </TouchableOpacity>
           )}
         </View>
 
         {locationStatus === 'denied' && (
           <Text style={styles.locationHint}>
-            Standort nicht verfügbar — bitte Standortzugriff im Browser erlauben.
+            {t('venues.locationDenied')}
           </Text>
         )}
 
@@ -713,7 +783,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     onPress={() => setNearbyRadiusKm(km)}
                   >
                     <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                      {km === null ? 'Alle' : `${km} km`}
+                      {km === null ? t('venues.radiusAll') : `${km} km`}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -744,16 +814,16 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             return (
               <View style={styles.emptyState}>
                 <Ionicons name={config.icon} size={40} color="#444" />
-                <Text style={styles.emptyTitle}>{config.emptyText}</Text>
+                <Text style={styles.emptyTitle}>{t(config.emptyTextKey)}</Text>
                 {hasAnyActiveFilter ? (
                   <>
-                    <Text style={styles.emptyHint}>Mit den aktuellen Filtern gibt es nichts zu sehen.</Text>
+                    <Text style={styles.emptyHint}>{t('venues.emptyHintFiltered')}</Text>
                     <TouchableOpacity style={styles.emptyResetButton} onPress={resetAllFilters}>
-                      <Text style={styles.emptyResetButtonText}>Alle Filter zurücksetzen</Text>
+                      <Text style={styles.emptyResetButtonText}>{t('venues.resetAllFilters')}</Text>
                     </TouchableOpacity>
                   </>
                 ) : (
-                  <Text style={styles.emptyHint}>Schau später nochmal vorbei.</Text>
+                  <Text style={styles.emptyHint}>{t('venues.emptyHint')}</Text>
                 )}
               </View>
             );
@@ -768,11 +838,11 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             });
 
           const hoursNode = item.hoursToday ? (
-            <Text style={styles.venueHours}>Heute: {item.hoursToday}</Text>
+            <Text style={styles.venueHours}>{t('venues.today')}: {item.hoursToday}</Text>
           ) : item.effectiveHours ? (
             <Text style={styles.venueHours}>{item.effectiveHours}</Text>
           ) : (
-            <Text style={styles.venueHoursUnknown}>Öffnungszeiten unbekannt</Text>
+            <Text style={styles.venueHoursUnknown}>{t('venues.hoursUnknown')}</Text>
           );
 
           const programNode = item.program.length > 0 && (
@@ -812,7 +882,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                       }}
                     >
                       <Ionicons name="sunny-outline" size={13} color="#f2c94c" />
-                      <Text style={[styles.actionChipText, styles.actionChipTextMenu]}>Mittagskarte</Text>
+                      <Text style={[styles.actionChipText, styles.actionChipTextMenu]}>{t('venues.lunchMenu')}</Text>
                     </TouchableOpacity>
                   )}
                   {item.dinner_menu_url && (
@@ -824,7 +894,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                       }}
                     >
                       <Ionicons name="moon-outline" size={13} color="#f2c94c" />
-                      <Text style={[styles.actionChipText, styles.actionChipTextMenu]}>Abendkarte</Text>
+                      <Text style={[styles.actionChipText, styles.actionChipTextMenu]}>{t('venues.dinnerMenu')}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -839,7 +909,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     }}
                   >
                     <Ionicons name="globe-outline" size={13} color="#0af" />
-                    <Text style={[styles.actionChipText, styles.actionChipTextWebsite]}>Website</Text>
+                    <Text style={[styles.actionChipText, styles.actionChipTextWebsite]}>{t('venues.website')}</Text>
                   </TouchableOpacity>
                 )}
                 {item.phone && (
@@ -851,7 +921,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     }}
                   >
                     <Ionicons name="call-outline" size={13} color="#4ade80" />
-                    <Text style={[styles.actionChipText, styles.actionChipTextCall]}>Anrufen</Text>
+                    <Text style={[styles.actionChipText, styles.actionChipTextCall]}>{t('venues.call')}</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -862,7 +932,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   }}
                 >
                   <Ionicons name="map-outline" size={13} color="#c084fc" />
-                  <Text style={[styles.actionChipText, styles.actionChipTextMaps]}>Google Maps</Text>
+                  <Text style={[styles.actionChipText, styles.actionChipTextMaps]}>{t('venues.googleMaps')}</Text>
                 </TouchableOpacity>
               </View>
               {/* Eigene Zeile statt neben den Links (space-between): auf dem
@@ -879,7 +949,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     confirmReportClosed(item.id, item.name);
                   }}
                 >
-                  <Text style={styles.reportLink}>Gibt's nicht mehr?</Text>
+                  <Text style={styles.reportLink}>{t('venues.reportLink')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -911,10 +981,10 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
 
           const cuisineLabel = item.cuisine?.split(';')[0]?.trim();
           const lunchNode = item.lunch_available && (
-            <Text style={styles.lunchBadge}>🍽️ Mittagslunch</Text>
+            <Text style={styles.lunchBadge}>🍽️ {t('venues.lunch')}</Text>
           );
           const beerPriceNode = item.beer_price_eur != null && (
-            <Text style={styles.lunchBadge}>🍺 0,5l Helles: {item.beer_price_eur.toFixed(2).replace('.', ',')} €</Text>
+            <Text style={styles.lunchBadge}>🍺 {t('venues.beerPrice')}: {item.beer_price_eur.toFixed(2).replace('.', ',')} €</Text>
           );
 
           // Nicht nur auf image_url != null prüfen, sondern auch, ob genau
@@ -964,8 +1034,8 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                       Seite wechselte (per Nutzer-Feedback: "sollte nicht auf
                       die andere Seite springen"). */}
                   <View style={styles.cardsBadgeRow}>
-                    {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-                    {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                    {item.open === true && <Text style={styles.openBadge}>{t('venues.open')}</Text>}
+                    {item.open === false && <Text style={styles.closedBadge}>{t('venues.closed')}</Text>}
                     {renderFavoriteButton(true)}
                   </View>
                 </View>
@@ -984,7 +1054,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   {beerPriceNode}
                   {programNode}
                   {item.closureStatus === 'pending' && (
-                    <Text style={styles.pendingBadge}>⏳ Als geschlossen gemeldet — wird geprüft</Text>
+                    <Text style={styles.pendingBadge}>{t('venues.pendingReview')}</Text>
                   )}
                   {footerNode}
                 </View>
@@ -999,8 +1069,8 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.venueName}>{item.name}</Text>
                   <View style={styles.cardHeaderBadges}>
-                    {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-                    {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                    {item.open === true && <Text style={styles.openBadge}>{t('venues.open')}</Text>}
+                    {item.open === false && <Text style={styles.closedBadge}>{t('venues.closed')}</Text>}
                     {favoriteButton}
                   </View>
                 </View>
