@@ -841,21 +841,29 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             </View>
           );
 
-          const favoriteButton = (
-            <TouchableOpacity
-              style={styles.favoriteBtn}
-              onPress={(e) => {
-                e.stopPropagation();
-                toggleFavorite(item.id);
-              }}
-            >
-              <Ionicons
-                name={isFavorite(item.id) ? 'heart' : 'heart-outline'}
-                size={18}
-                color={isFavorite(item.id) ? '#ff4d6d' : '#fff'}
-              />
-            </TouchableOpacity>
-          );
+          // onImage: true, wenn der Button direkt auf einem Foto liegt (Bild-
+          // Karten-Ansicht) statt auf dem dunklen Karten-Hintergrund
+          // (Kompakt-Ansicht) — dort braucht er einen eigenen Kreis-
+          // Hintergrund, sonst verschwindet das weiße Herz-Outline-Icon auf
+          // hellen/weißen Fotos komplett (per Nutzer-Feedback).
+          function renderFavoriteButton(onImage: boolean) {
+            return (
+              <TouchableOpacity
+                style={[styles.favoriteBtn, onImage && styles.favoriteBtnOnImage]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(item.id);
+                }}
+              >
+                <Ionicons
+                  name={isFavorite(item.id) ? 'heart' : 'heart-outline'}
+                  size={18}
+                  color={isFavorite(item.id) ? '#ff4d6d' : '#fff'}
+                />
+              </TouchableOpacity>
+            );
+          }
+          const favoriteButton = renderFavoriteButton(false);
 
           const cuisineLabel = item.cuisine?.split(';')[0]?.trim();
           const lunchNode = item.lunch_available && (
@@ -905,9 +913,17 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               <TouchableOpacity style={styles.cardsCard} disabled={!hasCoords} onPress={onPress}>
                 <View style={styles.cardsImageWrap}>
                   {image}
-                  <View style={styles.favoriteBtnOverlay}>{favoriteButton}</View>
-                  {item.open === true && <Text style={[styles.openBadge, styles.badgeOverlay]}>Geöffnet</Text>}
-                  {item.open === false && <Text style={[styles.closedBadge, styles.badgeOverlay]}>Geschlossen</Text>}
+                  {/* Badge+Herz in derselben Reihenfolge wie in der Kompakt-
+                      Ansicht (dort: Badge dann Herz, beide rechts) — vorher
+                      lag das Herz links, der Badge rechts, wodurch es beim
+                      Wechsel zwischen Bild-Karten und Kompakt-Ansicht die
+                      Seite wechselte (per Nutzer-Feedback: "sollte nicht auf
+                      die andere Seite springen"). */}
+                  <View style={styles.cardsBadgeRow}>
+                    {item.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
+                    {item.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                    {renderFavoriteButton(true)}
+                  </View>
                 </View>
                 <View style={styles.cardsBody}>
                   <Text style={styles.venueName}>{item.name}</Text>
@@ -1141,12 +1157,19 @@ const styles = StyleSheet.create({
   // aussieht").
   cardsImage: { width: '100%', aspectRatio: 4 / 3, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
   cardsBody: { padding: 14 },
-  badgeOverlay: { position: 'absolute', top: 10, right: 10 },
+  cardsBadgeRow: { position: 'absolute', top: 10, right: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardBody: { flex: 1 },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardHeaderBadges: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   favoriteBtn: { padding: 2 },
-  favoriteBtnOverlay: { position: 'absolute', top: 10, left: 10 },
+  // Kreis-Hintergrund nur auf dem Foto-Overlay (Bild-Karten) — auf der
+  // dunklen Kompakt-Kartenfläche ist das weiße Herz-Icon immer gut sichtbar,
+  // dort würde der zusätzliche Kreis nur unnötig auftragen.
+  favoriteBtnOnImage: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 14,
+    padding: 5,
+  },
   venueName: { color: '#fff', fontSize: 16, fontWeight: '700', flexShrink: 1 },
   openBadge: {
     fontSize: 11,
