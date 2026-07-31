@@ -314,7 +314,16 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   function confirmReportClosed(venueId: string, venueName: string) {
     const message = config.reportPrompt(venueName);
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(message)) reportClosed(venueId, venueName);
+      // window.confirm() synchron direkt im Touch-Handler aufzurufen, ließ
+      // danach die Suchleiste (und andere Eingaben) unklickbar zurück (per
+      // Nutzer-Feedback) — ein bekanntes Problem auf mobilen Browsern: ein
+      // blockierender Dialog mitten in einer laufenden Touch-Geste bringt
+      // deren Event-Zustand durcheinander. setTimeout(...,0) lässt die
+      // auslösende Touch-Geste erst regulär abschließen, bevor der Dialog
+      // öffnet.
+      setTimeout(() => {
+        if (window.confirm(message)) reportClosed(venueId, venueName);
+      }, 0);
       return;
     }
     Alert.alert('Melden?', message, [
