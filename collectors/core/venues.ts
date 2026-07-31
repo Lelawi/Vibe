@@ -494,7 +494,12 @@ function extractLunchSignal($: cheerio.CheerioAPI, baseUrl: string): { available
   if (match) {
     const precedingText = bodyText.slice(Math.max(0, match.index - 30), match.index);
     if (!/\b(kein|keine|nicht|ohne)\b/i.test(precedingText)) {
-      return { available: true, menuUrl: null };
+      // Kein eigener Link, aber die Karte selbst steht direkt als Text auf
+      // dieser Seite (z.B. 3d-restaurant-bar-neuhausen.de: "Unser
+      // Mittagsmenü Mo-Fr 11:30-14:00 ..." direkt auf der Startseite, kein
+      // separates PDF/Unterseite) — dann ist die Seite selbst der
+      // sinnvollste Link, statt gar keinen zu zeigen (per Nutzer-Feedback).
+      return { available: true, menuUrl: baseUrl };
     }
   }
   return { available: false, menuUrl: null };
