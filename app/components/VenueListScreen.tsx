@@ -27,13 +27,12 @@ import { useVenueFavorites } from '../lib/venueFavorites';
 import { setFilteredVenuesForMap } from '../lib/mapFilterCache';
 import BottomTabBar, { type BottomTab } from './BottomTabBar';
 
-// Web-only <input type="range">-Styling für den Umkreis-Slider (siehe
-// index.tsx) — reines HTML-Element statt @react-native-community/slider,
-// dessen Web-Support über react-native-web unzuverlässig ist.
-const radiusSliderStyle = {
-  width: '100%' as const,
-  accentColor: '#0af',
-};
+// Feste Auswahl-Chips statt eines <input type="range">-Sliders: ein
+// kontinuierlicher Slider für 1-25km-Einzelschritte war auf dem Handy kaum
+// präzise zu bedienen (per Nutzer-Feedback gemeldet) — dieselben Chips wie
+// beim Küchen-/Datumsfilter sind mit dem Daumen deutlich zuverlässiger zu
+// treffen als ein schmaler Schieberegler.
+const RADIUS_PRESETS_KM: (number | null)[] = [null, 1, 2, 5, 10, 25];
 
 export type VenueType = 'bar' | 'restaurant' | 'spaeti';
 
@@ -185,6 +184,16 @@ const CONFIG: Record<VenueType, {
 };
 
 const SWITCHER_TAB: Record<VenueType, BottomTab> = { bar: 'bars', restaurant: 'restaurants', spaeti: 'spaetis' };
+
+// Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff (siehe
+// gleiche Funktion in VenueLeafletView.web.tsx/VenueMapNative.tsx) — mit
+// Adresse ist die Anfrage eindeutig, "München" als Ortszusatz grenzt die
+// Freitextsuche ausreichend ein, wenn keine Adresse gepflegt ist (bei
+// kleinen Kiosken/Spätis in OSM häufig).
+function googleMapsUrl(name: string, address?: string | null) {
+  const query = address ? `${name}, ${address}` : `${name}, München`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
 
 export default function VenueListScreen({ type }: { type: VenueType }) {
   const config = CONFIG[type];
@@ -377,10 +386,17 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([key]) => key);
   }, [venues, type]);
 
-  const filteredVenues = useMemo(() => {
+  // Getrennt von filteredVenues, OHNE den onlyOpen-Filter selbst: die Banner-
+  // Kennzahl ("X von Y gerade geöffnet") soll immer ein aussagekräftiges
+  // Verhältnis zeigen. Vorher wurde openCount aus dem BEREITS gefilterten
+  // filteredVenues berechnet — sobald "Nur geöffnet" aktiv war, enthielt die
+  // gefilterte Liste zwangsläufig nur noch offene Orte, wodurch die Anzeige
+  // immer "X von X" zeigte (tautologisch, verliert die eigentliche Zahl der
+  // insgesamt gefundenen Orte — per Nutzer-Feedback z.B. "197/197" bei
+  // Spätis gemeldet, obwohl 423 insgesamt gefunden wurden).
+  const venuesMatchingOtherFilters = useMemo(() => {
     return enrichedVenues
       .filter((v) => fuzzyMatch([v.name, v.address, v.cuisine].filter(Boolean).join(' '), search))
-      .filter((v) => !onlyOpen || v.open === true)
       .filter((v) => !cuisineFilter || v.cuisine?.split(';').map((c) => c.trim()).includes(cuisineFilter))
       .filter((v) => !lunchOnly || v.lunch_available)
       .filter((v) => !showFavoritesOnly || isFavorite(v.id))
@@ -391,7 +407,12 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         // index.tsx).
         if (!userLocation || nearbyRadiusKm === null) return true;
         return v.distanceKm != null && v.distanceKm <= nearbyRadiusKm;
-      })
+      });
+  }, [enrichedVenues, search, cuisineFilter, lunchOnly, showFavoritesOnly, favorites, userLocation, nearbyRadiusKm]);
+
+  const filteredVenues = useMemo(() => {
+    return venuesMatchingOtherFilters
+      .filter((v) => !onlyOpen || v.open === true)
       .sort((a, b) => {
         // Favoriten immer zuerst — der Grund, warum man einen Ort favorisiert
         // hat, ändert sich nicht danach, ob er gerade offen hat oder wie weit
@@ -406,7 +427,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         if (priorityDiff !== 0) return priorityDiff;
         return a.name.localeCompare(b.name, 'de');
       });
-  }, [enrichedVenues, search, onlyOpen, cuisineFilter, lunchOnly, showFavoritesOnly, favorites, userLocation, nearbyRadiusKm]);
+  }, [venuesMatchingOtherFilters, onlyOpen, favorites]);
 
   // Damit die Karte (VenueMapNative.web.tsx) exakt dieselben Treffer zeigen
   // kann wie die gerade aktive Filterkombination hier, ohne die komplette
@@ -439,7 +460,10 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     );
   }, [type, filteredVenues, loading]);
 
-  const openCount = useMemo(() => filteredVenues.filter((v) => v.open === true).length, [filteredVenues]);
+  const openCount = useMemo(
+    () => venuesMatchingOtherFilters.filter((v) => v.open === true).length,
+    [venuesMatchingOtherFilters]
+  );
   const switcherActive = SWITCHER_TAB[type];
   const hasAnyActiveFilter = search.trim() !== '' || onlyOpen || cuisineFilter !== null || lunchOnly || showFavoritesOnly;
 
@@ -492,7 +516,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         <View>
           <Text style={styles.header}>{config.title}</Text>
           <Text style={styles.subheader}>
-            {openCount} von {filteredVenues.length} gerade geöffnet
+            {openCount} von {venuesMatchingOtherFilters.length} gerade geöffnet
           </Text>
         </View>
       </View>
@@ -642,28 +666,28 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         )}
 
         {userLocation && (
-          <View style={styles.radiusRow}>
-            <Text style={styles.radiusLabel}>
-              Umkreis: {nearbyRadiusKm === null ? 'Alle' : `${nearbyRadiusKm} km`}
-            </Text>
-            <View style={styles.radiusSliderWrap}>
-              {/* Web-only wie das ganze Nähe-Feature (Platform.OS==='web' schon
-                  eine Ebene höher am Nähe-Button selbst). */}
-              <input
-                type="range"
-                min={1}
-                max={25}
-                step={1}
-                value={nearbyRadiusKm ?? 25}
-                onChange={(e) => setNearbyRadiusKm(Number(e.target.value))}
-                style={radiusSliderStyle}
-              />
-            </View>
-            <TouchableOpacity onPress={() => setNearbyRadiusKm(null)}>
-              <Text style={[styles.radiusAllLink, nearbyRadiusKm === null && styles.radiusAllLinkActive]}>
-                Alle
-              </Text>
-            </TouchableOpacity>
+          <View style={styles.controlRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cuisineScrollContent}
+              style={styles.cuisineScroll}
+            >
+              {RADIUS_PRESETS_KM.map((km) => {
+                const active = km === null ? nearbyRadiusKm === null : nearbyRadiusKm === km;
+                return (
+                  <TouchableOpacity
+                    key={km ?? 'all'}
+                    style={[styles.filterChip, active && styles.filterChipActive]}
+                    onPress={() => setNearbyRadiusKm(km)}
+                  >
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                      {km === null ? 'Alle' : `${km} km`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         )}
       </View>
@@ -741,40 +765,46 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
 
           const footerNode = (
             <View style={styles.cardFooterRow}>
-              {(item.website || item.phone || item.lunch_menu_url) && (
-                <View style={styles.cardFooterLinks}>
-                  {item.website && (
-                    <TouchableOpacity
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        Linking.openURL(item.website!);
-                      }}
-                    >
-                      <Text style={styles.websiteLink}>Website öffnen</Text>
-                    </TouchableOpacity>
-                  )}
-                  {item.phone && (
-                    <TouchableOpacity
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        Linking.openURL(`tel:${item.phone}`);
-                      }}
-                    >
-                      <Text style={styles.websiteLink}>Anrufen</Text>
-                    </TouchableOpacity>
-                  )}
-                  {item.lunch_menu_url && (
-                    <TouchableOpacity
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        Linking.openURL(item.lunch_menu_url!);
-                      }}
-                    >
-                      <Text style={styles.websiteLink}>Mittagskarte</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
+              <View style={styles.cardFooterLinks}>
+                {item.website && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Linking.openURL(item.website!);
+                    }}
+                  >
+                    <Text style={styles.websiteLink}>Website öffnen</Text>
+                  </TouchableOpacity>
+                )}
+                {item.phone && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Linking.openURL(`tel:${item.phone}`);
+                    }}
+                  >
+                    <Text style={styles.websiteLink}>Anrufen</Text>
+                  </TouchableOpacity>
+                )}
+                {item.lunch_menu_url && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Linking.openURL(item.lunch_menu_url!);
+                    }}
+                  >
+                    <Text style={styles.websiteLink}>Mittagskarte</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    Linking.openURL(googleMapsUrl(item.name, item.address));
+                  }}
+                >
+                  <Text style={styles.websiteLink}>In Google Maps öffnen</Text>
+                </TouchableOpacity>
+              </View>
               {/* Eigene Zeile statt neben den Links (space-between): auf dem
                   Handy reichte die Breite oft nicht für Website+Anrufen+
                   Mittagskarte UND diesen Link nebeneinander — sie klebten
@@ -1007,11 +1037,6 @@ const styles = StyleSheet.create({
   resultCount: { color: '#666', fontSize: 12 },
   resultCountResetLink: { color: '#888', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
   locationHint: { color: '#888', fontSize: 12, paddingHorizontal: 16, marginBottom: 8 },
-  radiusRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8, gap: 10 },
-  radiusLabel: { color: '#888', fontSize: 12, minWidth: 84 },
-  radiusSliderWrap: { flex: 1 },
-  radiusAllLink: { color: '#666', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
-  radiusAllLinkActive: { color: '#0af' },
   // paddingBottom deckt die fixe BottomTabBar ab, sonst wäre die letzte Karte
   // dahinter verdeckt.
   listContent: { paddingHorizontal: 16, paddingBottom: 90 },
@@ -1061,7 +1086,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardsImageWrap: { position: 'relative' },
-  cardsImage: { width: '100%', height: 160, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
+  // 4:3 statt vorher fix 160px Höhe (bei typischer Kartenbreite ~2,3:1,
+  // deutlich breiter/flacher als die meisten echten Fotos) — mit einem
+  // Seitenverhältnis nah an echten Fotoformaten schneidet resizeMode="cover"
+  // (Standardwert von Image) beim Zuschnitt viel weniger vom Bild ab (per
+  // Nutzer-Feedback: "sind rechteckig, wodurch ein breitziehen nicht gut
+  // aussieht").
+  cardsImage: { width: '100%', aspectRatio: 4 / 3, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
   cardsBody: { padding: 14 },
   badgeOverlay: { position: 'absolute', top: 10, right: 10 },
   cardBody: { flex: 1 },

@@ -23,14 +23,14 @@ type Venue = {
 // ist eine Bar in OSM schlicht als "Bridge" statt "Bridge Bar" gepflegt, eine
 // reine Namenssuche auf Google Maps interpretiert das dann als Freitextsuche
 // und findet echte Brücken statt der Bar. Mit Adresse ist die Anfrage
-// eindeutig; ganz ohne Adresse lieber auf die exakten Koordinaten
-// zurückfallen statt auf den (ggf. mehrdeutigen) nackten Namen.
-function openInGoogleMaps(lat: number, lng: number, name: string, address?: string | null) {
-  const query = address ? `${name}, ${address}` : null;
-  const url = query
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
-    : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-  Linking.openURL(url);
+// eindeutig. Ganz ohne Adresse (bei kleinen Kiosken/Spätis in OSM häufig gar
+// keine addr:*-Tags gepflegt) NICHT auf die nackten Koordinaten zurückfallen
+// — das öffnet nur einen anonymen Pin ohne Namen/Infos in Google Maps.
+// "München" als Ortszusatz grenzt die Freitextsuche ausreichend ein, ohne
+// den Namen ganz wegzulassen.
+function openInGoogleMaps(name: string, address?: string | null) {
+  const query = address ? `${name}, ${address}` : `${name}, München`;
+  Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`);
 }
 
 // Grün/Rot/Grau statt des App-Blaus (#0af) — das ist bereits "meine
@@ -144,7 +144,7 @@ export default function VenueMapNative({
                     <Text style={styles.calloutLink}>Website öffnen</Text>
                   </Pressable>
                 )}
-                <Pressable onPress={() => openInGoogleMaps(venue.latitude!, venue.longitude!, venue.name, venue.address)}>
+                <Pressable onPress={() => openInGoogleMaps(venue.name, venue.address)}>
                   <Text style={styles.calloutLink}>In Google Maps öffnen</Text>
                 </Pressable>
               </View>

@@ -1,11 +1,12 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
 import { getFilteredEventsForMap } from '../lib/mapFilterCache';
 import MapCategorySwitcher from './MapCategorySwitcher';
-import type { VenueMarker } from './LeafletMapView.web';
+import type { VenueMarker, LeafletMapHandle } from './LeafletMapView.web';
 
 // Lädt die eigentliche Leaflet-Karte erst zur Laufzeit im Browser (siehe
 // Kommentar in LeafletMapView.web.tsx) — verhindert einen Absturz beim
@@ -31,6 +32,7 @@ export default function MapNative() {
   const [events, setEvents] = useState<RawEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const leafletRef = useRef<LeafletMapHandle>(null);
 
   useEffect(() => {
     // Best-effort, kein Fehler-UI bei Ablehnung — der "Wo bin ich"-Punkt ist
@@ -128,6 +130,7 @@ export default function MapNative() {
         }
       >
         <LeafletMapView
+          ref={leafletRef}
           venues={venues}
           centerLat={centerLat}
           centerLng={centerLng}
@@ -145,6 +148,14 @@ export default function MapNative() {
         />
       </Suspense>
       <MapCategorySwitcher active="events" />
+      {userLocation && (
+        <TouchableOpacity
+          style={styles.locateButton}
+          onPress={() => leafletRef.current?.flyToUserLocation()}
+        >
+          <Ionicons name="locate" size={22} color="#fff" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -152,4 +163,18 @@ export default function MapNative() {
 const styles = StyleSheet.create({
   wrap: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  locateButton: {
+    position: 'absolute',
+    bottom: 24,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(20,20,20,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
 });

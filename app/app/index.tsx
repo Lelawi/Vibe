@@ -241,12 +241,12 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'weekend', label: 'Wochenende' },
 ];
 
-// Reines CSS-Objekt für das native <input type="range">-DOM-Element (kein
-// RN-Style) — accentColor auf den App-Akzent statt des Browser-Blaus.
-const radiusSliderStyle = {
-  width: '100%' as const,
-  accentColor: '#0af',
-};
+// Feste Auswahl-Chips statt eines <input type="range">-Sliders: ein
+// kontinuierlicher Slider für 1-25km-Einzelschritte war auf dem Handy kaum
+// präzise zu bedienen (per Nutzer-Feedback gemeldet) — dieselben Chips wie
+// beim Datumsfilter sind mit dem Daumen deutlich zuverlässiger zu treffen
+// als ein schmaler Schieberegler.
+const RADIUS_PRESETS_KM: (number | null)[] = [null, 1, 2, 5, 10, 25];
 
 const GENRE_GROUPS: { label: string; patterns: RegExp[] }[] = [
   { label: 'Pop & Rock', patterns: [/pop/i, /rock/i, /alternative/i, /indie/i, /singer/i, /schlager/i] },
@@ -1113,35 +1113,28 @@ export default function EventListScreen() {
       )}
 
       {userLocation && (
-        <View style={styles.radiusRow}>
-          <Text style={styles.radiusLabel}>
-            Umkreis: {nearbyRadiusKm === null ? 'Alle' : `${nearbyRadiusKm} km`}
-          </Text>
-          <View style={styles.radiusSliderWrap}>
-            {/* Web-only wie das ganze Nähe-Feature (Platform.OS==='web' schon
-                eine Ebene höher am Nähe-Button selbst) — reines HTML-Element
-                statt @react-native-community/slider, da dessen Web-Support
-                über react-native-web unzuverlässig ist. */}
-            <input
-              type="range"
-              min={1}
-              max={25}
-              step={1}
-              value={nearbyRadiusKm ?? 25}
-              onChange={(e) => setNearbyRadiusKm(Number(e.target.value))}
-              style={radiusSliderStyle}
-            />
-          </View>
-          <TouchableOpacity onPress={() => setNearbyRadiusKm(null)}>
-            <Text
-              style={[
-                styles.radiusAllLink,
-                nearbyRadiusKm === null && styles.radiusAllLinkActive,
-              ]}
-            >
-              Alle
-            </Text>
-          </TouchableOpacity>
+        <View style={styles.controlRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.dateScrollContent}
+            style={styles.dateScroll}
+          >
+            {RADIUS_PRESETS_KM.map((km) => {
+              const active = km === null ? nearbyRadiusKm === null : nearbyRadiusKm === km;
+              return (
+                <TouchableOpacity
+                  key={km ?? 'all'}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  onPress={() => setNearbyRadiusKm(km)}
+                >
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                    {km === null ? 'Alle' : `${km} km`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       )}
 
@@ -1806,17 +1799,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textDecorationLine: 'underline',
   },
-  radiusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 8,
-    gap: 10,
-  },
-  radiusLabel: { color: '#888', fontSize: 12, minWidth: 84 },
-  radiusSliderWrap: { flex: 1 },
-  radiusAllLink: { color: '#666', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
-  radiusAllLinkActive: { color: '#0af' },
   calendarBackdrop: {
     flex: 1,
     backgroundColor: '#000a',

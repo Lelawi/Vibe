@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -6,7 +6,7 @@ import { isOpenNow } from '../lib/openingHours';
 import { fetchAllVenues } from '../lib/fetchAllVenues';
 import { getFilteredVenuesForMap } from '../lib/mapFilterCache';
 import MapCategorySwitcher, { type MapCategory } from './MapCategorySwitcher';
-import type { VenueMarker } from './VenueLeafletView.web';
+import type { VenueMarker, VenueLeafletHandle } from './VenueLeafletView.web';
 import type { VenueType } from './VenueListScreen';
 
 const MAP_CATEGORY: Record<VenueType, MapCategory> = { bar: 'bars', restaurant: 'restaurants', spaeti: 'spaetis' };
@@ -58,6 +58,7 @@ export default function VenueMapNative({
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [lunchOnly, setLunchOnly] = useState(false);
+  const leafletRef = useRef<VenueLeafletHandle>(null);
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return;
@@ -170,6 +171,7 @@ export default function VenueMapNative({
         }
       >
         <VenueLeafletView
+          ref={leafletRef}
           venues={visibleMarkers}
           centerLat={hasTarget ? targetLat! : userLocation?.lat ?? MUNICH_CENTER.lat}
           centerLng={hasTarget ? targetLng! : userLocation?.lng ?? MUNICH_CENTER.lng}
@@ -179,6 +181,14 @@ export default function VenueMapNative({
         />
       </Suspense>
       <MapCategorySwitcher active={MAP_CATEGORY[type]} />
+      {userLocation && (
+        <TouchableOpacity
+          style={styles.locateButton}
+          onPress={() => leafletRef.current?.flyToUserLocation()}
+        >
+          <Ionicons name="locate" size={22} color="#fff" />
+        </TouchableOpacity>
+      )}
       <View style={styles.filterRow}>
         <TouchableOpacity
           style={[styles.filterButton, onlyOpen && styles.filterButtonActive]}
@@ -230,4 +240,18 @@ const styles = StyleSheet.create({
   filterButtonActive: { backgroundColor: '#4ade80' },
   filterButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   filterButtonTextActive: { color: '#000' },
+  locateButton: {
+    position: 'absolute',
+    bottom: 24,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(20,20,20,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
 });

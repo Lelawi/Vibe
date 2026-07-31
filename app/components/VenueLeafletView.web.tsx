@@ -16,7 +16,7 @@
 // bzw. 2263 Restaurants wären ungruppierte Marker beim Herauszoomen ein
 // unlesbarer Fleckenteppich, und dicht beieinanderliegende Marker konnten
 // sich gegenseitig am Anklicken hindern.
-import { useEffect, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, View, Text, Pressable, Image } from 'react-native';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
@@ -43,13 +43,15 @@ export type VenueMarker = {
 // ist eine Bar in OSM schlicht als "Bridge" statt "Bridge Bar" gepflegt, eine
 // reine Namenssuche auf Google Maps interpretiert das dann als Freitextsuche
 // und findet echte Brücken statt der Bar. Mit Adresse ist die Anfrage
-// eindeutig; ganz ohne Adresse lieber auf die exakten Koordinaten
-// zurückfallen statt auf den (ggf. mehrdeutigen) nackten Namen.
-function googleMapsUrl(lat: number, lng: number, name: string, address?: string | null) {
-  const query = address ? `${name}, ${address}` : null;
-  return query
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
-    : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+// eindeutig. Ganz ohne Adresse (bei kleinen Kiosken/Spätis in OSM häufig gar
+// keine addr:*-Tags gepflegt, siehe buildAddress in collectors/core/
+// venues.ts) NICHT auf die nackten Koordinaten zurückfallen — das öffnet nur
+// einen anonymen Pin ohne Namen/Infos in Google Maps (per Nutzer-Feedback
+// gemeldet: "zeigt die Koordinate statt den Shop"). "München" als Ortszusatz
+// grenzt die Freitextsuche ausreichend ein, ohne den Namen ganz wegzulassen.
+function googleMapsUrl(name: string, address?: string | null) {
+  const query = address ? `${name}, ${address}` : `${name}, München`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 function markerColor(open: boolean | null): string {
@@ -144,22 +146,46 @@ function FocusTarget({
   return null;
 }
 
-export default function VenueLeafletView({
-  venues,
-  centerLat,
-  centerLng,
-  zoom,
-  userLocation,
-  targetId = null,
-}: {
-  venues: VenueMarker[];
-  centerLat: number;
-  centerLng: number;
-  zoom: number;
-  userLocation?: { lat: number; lng: number } | null;
-  targetId?: string | null;
-}) {
+// Übergibt die Leaflet-Map-Instanz per Ref nach außen (siehe VenueLeafletHandle
+// unten) — das eigentliche <MapContainer> lebt hier drin, aber der "Zu meiner
+// Position"-Button (Nutzer-Anfrage) sitzt wie die anderen Kartenknöpfe
+// (MapCategorySwitcher, Filter) als Geschwister-Element im umgebenden View
+// von VenueMapNative.web.tsx, nicht innerhalb des MapContainer selbst.
+function MapInstanceCapture({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null> }) {
+  const map = useMap();
+  useEffect(() => {
+    mapRef.current = map;
+  }, [map, mapRef]);
+  return null;
+}
+
+export type VenueLeafletHandle = { flyToUserLocation: () => void };
+
+const VenueLeafletView = forwardRef<
+  VenueLeafletHandle,
+  {
+    venues: VenueMarker[];
+    centerLat: number;
+    centerLng: number;
+    zoom: number;
+    userLocation?: { lat: number; lng: number } | null;
+    targetId?: string | null;
+  }
+>(function VenueLeafletView({ venues, centerLat, centerLng, zoom, userLocation, targetId = null }, ref) {
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
+  const mapInstanceRef = useRef<L.Map | null>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flyToUserLocation: () => {
+        if (userLocation && mapInstanceRef.current) {
+          mapInstanceRef.current.flyTo([userLocation.lat, userLocation.lng], 15);
+        }
+      },
+    }),
+    [userLocation]
+  );
 
   return (
     <MapContainer center={[centerLat, centerLng]} zoom={zoom} style={styles.map}>
@@ -216,7 +242,7 @@ export default function VenueLeafletView({
                       <Text style={styles.popupLink}>Mittagskarte</Text>
                     </Pressable>
                   )}
-                  <Pressable onPress={() => window.open(googleMapsUrl(venue.latitude, venue.longitude, venue.name, venue.address), '_blank')}>
+                  <Pressable onPress={() => window.open(googleMapsUrl(venue.name, venue.address), '_blank')}>
                     <Text style={styles.popupMapsButton}>In Google Maps öffnen</Text>
                   </Pressable>
                 </View>
@@ -246,9 +272,12 @@ export default function VenueLeafletView({
         </>
       )}
       <FocusTarget targetId={targetId} targetLat={targetId ? centerLat : null} targetLng={targetId ? centerLng : null} markerRefs={markerRefs} />
+      <MapInstanceCapture mapRef={mapInstanceRef} />
     </MapContainer>
   );
-}
+});
+
+export default VenueLeafletView;
 
 const styles = StyleSheet.create({
   map: { flex: 1, width: '100%', height: '100%' },

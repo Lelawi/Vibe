@@ -3,7 +3,7 @@
 // greift beim Modul-Import direkt auf `window`/`document` zu und würde einen
 // serverseitigen Prerender-Schritt (Expo Web-Export mit output: "static")
 // zum Absturz bringen, wenn es auf oberster Ebene importiert würde.
-import { useEffect, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, View, Text, Pressable, ScrollView } from 'react-native';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
@@ -127,26 +127,46 @@ function FocusTarget({
   return null;
 }
 
-export default function LeafletMapView({
-  venues,
-  centerLat,
-  centerLng,
-  zoom,
-  targetKey,
-  userLocation,
-  onOpenEvent,
-  onOpenList,
-}: {
-  venues: VenueMarker[];
-  centerLat: number;
-  centerLng: number;
-  zoom: number;
-  targetKey: string | null;
-  userLocation?: { lat: number; lng: number } | null;
-  onOpenEvent: (id: string) => void;
-  onOpenList: (names: string[]) => void;
-}) {
+function MapInstanceCapture({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null> }) {
+  const map = useMap();
+  useEffect(() => {
+    mapRef.current = map;
+  }, [map, mapRef]);
+  return null;
+}
+
+export type LeafletMapHandle = { flyToUserLocation: () => void };
+
+const LeafletMapView = forwardRef<
+  LeafletMapHandle,
+  {
+    venues: VenueMarker[];
+    centerLat: number;
+    centerLng: number;
+    zoom: number;
+    targetKey: string | null;
+    userLocation?: { lat: number; lng: number } | null;
+    onOpenEvent: (id: string) => void;
+    onOpenList: (names: string[]) => void;
+  }
+>(function LeafletMapView(
+  { venues, centerLat, centerLng, zoom, targetKey, userLocation, onOpenEvent, onOpenList },
+  ref
+) {
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
+  const mapInstanceRef = useRef<L.Map | null>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flyToUserLocation: () => {
+        if (userLocation && mapInstanceRef.current) {
+          mapInstanceRef.current.flyTo([userLocation.lat, userLocation.lng], 15);
+        }
+      },
+    }),
+    [userLocation]
+  );
 
   return (
     <MapContainer
@@ -228,9 +248,12 @@ export default function LeafletMapView({
         targetLng={targetKey ? centerLng : null}
         markerRefs={markerRefs}
       />
+      <MapInstanceCapture mapRef={mapInstanceRef} />
     </MapContainer>
   );
-}
+});
+
+export default LeafletMapView;
 
 const styles = StyleSheet.create({
   map: { flex: 1, width: '100%', height: '100%' },
