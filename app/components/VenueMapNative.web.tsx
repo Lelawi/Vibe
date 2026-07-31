@@ -8,6 +8,12 @@ import { getFilteredVenuesForMap } from '../lib/mapFilterCache';
 import MapCategorySwitcher, { type MapCategory } from './MapCategorySwitcher';
 import type { VenueMarker, VenueLeafletHandle } from './VenueLeafletView.web';
 import type { VenueType } from './VenueListScreen';
+import { registerStrings, useTranslation } from '../lib/strings';
+
+registerStrings({
+  'venueMap.openNow': { de: 'Jetzt geöffnet', en: 'Open now' },
+  'venueMap.lunch': { de: 'Mittagslunch', en: 'Lunch menu' },
+});
 
 const MAP_CATEGORY: Record<VenueType, MapCategory> = { bar: 'bars', restaurant: 'restaurants', spaeti: 'spaetis' };
 
@@ -46,6 +52,7 @@ export default function VenueMapNative({
   targetLat?: number | null;
   targetLng?: number | null;
 }) {
+  const { t } = useTranslation();
   const [venues, setVenues] = useState<RawVenue[]>([]);
   // Von der Listenansicht bereits gefilterte Treffer (siehe mapFilterCache.ts)
   // — vorhanden, wenn man von dort zur Karte navigiert ist, dann zeigt die
@@ -199,7 +206,7 @@ export default function VenueMapNative({
         >
           <Ionicons name="time-outline" size={15} color={onlyOpen ? '#000' : '#fff'} />
           <Text style={[styles.filterButtonText, onlyOpen && styles.filterButtonTextActive]}>
-            Jetzt geöffnet ({markers.filter((m) => m.open === true).length})
+            {t('venueMap.openNow')} ({markers.filter((m) => m.open === true).length})
           </Text>
         </TouchableOpacity>
         {type === 'restaurant' && (
@@ -209,7 +216,7 @@ export default function VenueMapNative({
           >
             <Ionicons name="sunny-outline" size={15} color={lunchOnly ? '#000' : '#fff'} />
             <Text style={[styles.filterButtonText, lunchOnly && styles.filterButtonTextActive]}>
-              Mittagslunch ({markers.filter((m) => m.lunch_available).length})
+              {t('venueMap.lunch')} ({markers.filter((m) => m.lunch_available).length})
             </Text>
           </TouchableOpacity>
         )}

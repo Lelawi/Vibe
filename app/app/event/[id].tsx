@@ -21,8 +21,55 @@ import { shareEvent } from '../../lib/share';
 import { useFavorites } from '../../lib/favorites';
 import { useFollowedOrganizers } from '../../lib/followedOrganizers';
 import { isPushSupported } from '../../lib/pushNotifications';
+import { registerStrings, useTranslation } from '../../lib/strings';
+import type { Language } from '../../lib/language';
 
-const REPORT_REASONS = ['Ort/Adresse falsch', 'Datum/Uhrzeit falsch', 'Bereits vorbei', 'Doppelt vorhanden', 'Sonstiges'];
+registerStrings({
+  'event.back': { de: '‹ Übersicht', en: '‹ Overview' },
+  'event.notFound': { de: 'Event nicht gefunden.', en: 'Event not found.' },
+  'event.ticketPage': { de: 'Zur Ticketseite', en: 'Go to ticket page' },
+  'event.openInGoogleMaps': { de: 'In Google Maps öffnen', en: 'Open in Google Maps' },
+  'event.favorited': { de: 'Favorit', en: 'Favorited' },
+  'event.favorite': { de: 'Merken', en: 'Save' },
+  'event.when': { de: 'Wann', en: 'When' },
+  'event.until': { de: 'bis', en: 'until' },
+  'event.price': { de: 'Preis', en: 'Price' },
+  'event.noPriceInfo': { de: 'Keine Preisinfo verfügbar', en: 'No price info available' },
+  'event.soldOut': { de: 'Ausverkauft', en: 'Sold out' },
+  'event.where': { de: 'Wo', en: 'Where' },
+  'event.genre': { de: 'Genre', en: 'Genre' },
+  'event.organizer': { de: 'Veranstalter', en: 'Organizer' },
+  'event.following': { de: 'Gefolgt', en: 'Following' },
+  'event.follow': { de: 'Folgen', en: 'Follow' },
+  'event.moreFrom': { de: 'Weitere Events von', en: 'More events from' },
+  'event.description': { de: 'Beschreibung', en: 'Description' },
+  'event.linkCopied': { de: 'Link kopiert', en: 'Link copied' },
+  'event.share': { de: 'Teilen', en: 'Share' },
+  'event.saveToCalendar': { de: 'In Kalender speichern', en: 'Save to calendar' },
+  'event.reportError': { de: 'Fehler melden', en: 'Report an issue' },
+  'event.reportModalTitle': { de: 'Was stimmt nicht?', en: "What's wrong?" },
+  'event.reportSent': { de: '✓ Danke, wird geprüft!', en: "✓ Thanks, we'll take a look!" },
+  'event.reportNotePlaceholder': { de: 'Details (optional)', en: 'Details (optional)' },
+  'event.cancel': { de: 'Abbrechen', en: 'Cancel' },
+  'event.report': { de: 'Melden', en: 'Report' },
+  'event.reportReason.address': { de: 'Ort/Adresse falsch', en: 'Location/address wrong' },
+  'event.reportReason.datetime': { de: 'Datum/Uhrzeit falsch', en: 'Date/time wrong' },
+  'event.reportReason.past': { de: 'Bereits vorbei', en: 'Already happened' },
+  'event.reportReason.duplicate': { de: 'Doppelt vorhanden', en: 'Duplicate entry' },
+  'event.reportReason.other': { de: 'Sonstiges', en: 'Other' },
+});
+
+// value bleibt Deutsch (an die DB gesendeter Wert, siehe submitReport) —
+// nur labelKey wird je nach Sprache übersetzt angezeigt, damit sich am
+// gespeicherten Datenformat/an der bestehenden manuellen Review-Auswertung
+// nichts ändert.
+const REPORT_REASONS: { value: string; labelKey: string }[] = [
+  { value: 'Ort/Adresse falsch', labelKey: 'event.reportReason.address' },
+  { value: 'Datum/Uhrzeit falsch', labelKey: 'event.reportReason.datetime' },
+  { value: 'Bereits vorbei', labelKey: 'event.reportReason.past' },
+  { value: 'Doppelt vorhanden', labelKey: 'event.reportReason.duplicate' },
+  { value: 'Sonstiges', labelKey: 'event.reportReason.other' },
+];
 
 type EventDetail = {
   id: string;
@@ -44,20 +91,20 @@ type EventDetail = {
   longitude: number | null;
 };
 
-function formatDate(dateStr: string, timeStr: string | null) {
+function formatDate(dateStr: string, timeStr: string | null, lang: Language) {
   const date = new Date(`${dateStr}T${timeStr ?? '00:00'}`);
-  const dateFormatted = date.toLocaleDateString('de-DE', {
+  const dateFormatted = date.toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
     year: 'numeric',
   });
   if (!timeStr) return dateFormatted;
-  return `${dateFormatted} · ${timeStr.slice(0, 5)} Uhr`;
+  return lang === 'de' ? `${dateFormatted} · ${timeStr.slice(0, 5)} Uhr` : `${dateFormatted} · ${timeStr.slice(0, 5)}`;
 }
 
-function formatEndDate(dateStr: string) {
-  return new Date(`${dateStr}T00:00`).toLocaleDateString('de-DE', {
+function formatEndDate(dateStr: string, lang: Language) {
+  return new Date(`${dateStr}T00:00`).toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
@@ -66,6 +113,7 @@ function formatEndDate(dateStr: string) {
 }
 
 export default function EventDetailScreen() {
+  const { t, language } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [event, setEvent] = useState<EventDetail | null>(null);
@@ -114,7 +162,7 @@ export default function EventDetailScreen() {
     return (
       <SafeAreaView style={styles.center}>
         <TouchableOpacity style={styles.backBar} onPress={goBack}>
-          <Text style={styles.backBarText}>‹ Übersicht</Text>
+          <Text style={styles.backBarText}>{t('event.back')}</Text>
         </TouchableOpacity>
         <ActivityIndicator size="large" color="#fff" />
       </SafeAreaView>
@@ -125,9 +173,9 @@ export default function EventDetailScreen() {
     return (
       <SafeAreaView style={styles.center}>
         <TouchableOpacity style={styles.backBar} onPress={goBack}>
-          <Text style={styles.backBarText}>‹ Übersicht</Text>
+          <Text style={styles.backBarText}>{t('event.back')}</Text>
         </TouchableOpacity>
-        <Text style={styles.errorText}>Event nicht gefunden.</Text>
+        <Text style={styles.errorText}>{t('event.notFound')}</Text>
       </SafeAreaView>
     );
   }
@@ -139,10 +187,14 @@ export default function EventDetailScreen() {
   // als einer von fünf gleich aussehenden Buttons im Scroll-Inhalt unterzugehen.
   // Ohne Quell-URL übernimmt "In Google Maps öffnen" diese Rolle, sonst bleibt
   // es unten als normaler Sekundär-Button stehen.
-  const primaryAction = event.source_url
-    ? { label: 'Zur Ticketseite', onPress: () => Linking.openURL(event.source_url!) }
+  // key statt direkt des übersetzten Labels — wird weiter unten sowohl für
+  // die Anzeige (übersetzt) als auch als stabiler Vergleichswert genutzt
+  // (z.B. um den doppelten "In Google Maps öffnen"-Sekundärbutton zu
+  // vermeiden, wenn Maps schon die primäre Aktion ist).
+  const primaryAction: { key: 'ticket' | 'maps'; onPress: () => void } | null = event.source_url
+    ? { key: 'ticket', onPress: () => Linking.openURL(event.source_url!) }
     : hasCoords
-    ? { label: 'In Google Maps öffnen', onPress: () => openInGoogleMaps() }
+    ? { key: 'maps', onPress: () => openInGoogleMaps() }
     : null;
 
   function openInGoogleMaps() {
@@ -218,30 +270,30 @@ export default function EventDetailScreen() {
                 size={16}
                 color={isFavorite(event.id) ? '#ff4d6d' : '#fff'}
               />
-              <Text style={styles.favoriteBtnText}>{isFavorite(event.id) ? 'Favorit' : 'Merken'}</Text>
+              <Text style={styles.favoriteBtnText}>{isFavorite(event.id) ? t('event.favorited') : t('event.favorite')}</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.title}>{event.title}</Text>
 
           <View style={styles.infoBlock}>
-            <Text style={styles.infoLabel}>Wann</Text>
+            <Text style={styles.infoLabel}>{t('event.when')}</Text>
             <Text style={styles.infoValue}>
-              {formatDate(event.start_date, event.start_time)}
+              {formatDate(event.start_date, event.start_time, language)}
             </Text>
             {event.end_date && event.end_date !== event.start_date ? (
-              <Text style={styles.infoValue}>bis {formatEndDate(event.end_date)}</Text>
+              <Text style={styles.infoValue}>{t('event.until')} {formatEndDate(event.end_date, language)}</Text>
             ) : null}
           </View>
 
           {(event.price_info || event.sold_out !== null) && (
             <View style={styles.infoBlock}>
-              <Text style={styles.infoLabel}>Preis</Text>
+              <Text style={styles.infoLabel}>{t('event.price')}</Text>
               <View style={styles.priceRow}>
-                <Text style={styles.infoValue}>{event.price_info ?? 'Keine Preisinfo verfügbar'}</Text>
+                <Text style={styles.infoValue}>{event.price_info ?? t('event.noPriceInfo')}</Text>
                 {event.sold_out === true && (
                   <View style={styles.soldOutTag}>
                     <Ionicons name="close-circle" size={13} color="#ff4d4d" />
-                    <Text style={styles.soldOutTagText}>Ausverkauft</Text>
+                    <Text style={styles.soldOutTagText}>{t('event.soldOut')}</Text>
                   </View>
                 )}
               </View>
@@ -259,7 +311,7 @@ export default function EventDetailScreen() {
                 })
               }
             >
-              <Text style={styles.infoLabel}>Wo</Text>
+              <Text style={styles.infoLabel}>{t('event.where')}</Text>
               <View style={styles.locationValueRow}>
                 <Text style={[styles.infoValue, hasCoords && styles.linkValue]}>{event.location_name}</Text>
                 {hasCoords && <Ionicons name="location-outline" size={15} color="#0af" />}
@@ -270,14 +322,14 @@ export default function EventDetailScreen() {
 
           {event.subcategory && (
             <View style={styles.infoBlock}>
-              <Text style={styles.infoLabel}>Genre</Text>
+              <Text style={styles.infoLabel}>{t('event.genre')}</Text>
               <Text style={styles.infoValue}>{event.subcategory}</Text>
             </View>
           )}
 
           {event.organizer && (
             <View style={styles.infoBlock}>
-              <Text style={styles.infoLabel}>Veranstalter</Text>
+              <Text style={styles.infoLabel}>{t('event.organizer')}</Text>
               <View style={styles.organizerRow}>
                 <Text style={styles.infoValue}>{event.organizer}</Text>
                 {isPushSupported() && (
@@ -288,7 +340,7 @@ export default function EventDetailScreen() {
                       color="#0af"
                     />
                     <Text style={styles.organizerFollowLink}>
-                      {isFollowing(event.organizer) ? 'Gefolgt' : 'Folgen'}
+                      {isFollowing(event.organizer) ? t('event.following') : t('event.follow')}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -296,14 +348,14 @@ export default function EventDetailScreen() {
               <TouchableOpacity
                 onPress={() => router.push({ pathname: '/', params: { search: event.organizer! } })}
               >
-                <Text style={styles.organizerMoreLink}>Weitere Events von {event.organizer} →</Text>
+                <Text style={styles.organizerMoreLink}>{t('event.moreFrom')} {event.organizer} →</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {event.description && (
             <View style={styles.infoBlock}>
-              <Text style={styles.infoLabel}>Beschreibung</Text>
+              <Text style={styles.infoLabel}>{t('event.description')}</Text>
               <Text style={styles.infoValue}>{event.description}</Text>
             </View>
           )}
@@ -315,17 +367,17 @@ export default function EventDetailScreen() {
               color="#fff"
             />
             <Text style={styles.secondaryButtonText}>
-              {shareStatus === 'copied' ? 'Link kopiert' : 'Teilen'}
+              {shareStatus === 'copied' ? t('event.linkCopied') : t('event.share')}
             </Text>
           </TouchableOpacity>
 
           {/* "In Google Maps öffnen" nur als Sekundär-Button, wenn die
               Ticketseite bereits die primäre Aktion in der unteren Leiste
               ist — sonst würde Maps doppelt auftauchen. */}
-          {hasCoords && primaryAction?.label !== 'In Google Maps öffnen' && (
+          {hasCoords && primaryAction?.key !== 'maps' && (
             <TouchableOpacity style={styles.secondaryButton} onPress={openInGoogleMaps}>
               <Ionicons name="map-outline" size={16} color="#fff" />
-              <Text style={styles.secondaryButtonText}>In Google Maps öffnen</Text>
+              <Text style={styles.secondaryButtonText}>{t('event.openInGoogleMaps')}</Text>
             </TouchableOpacity>
           )}
 
@@ -345,12 +397,12 @@ export default function EventDetailScreen() {
             }
           >
             <Ionicons name="calendar-outline" size={16} color="#fff" />
-            <Text style={styles.secondaryButtonText}>In Kalender speichern</Text>
+            <Text style={styles.secondaryButtonText}>{t('event.saveToCalendar')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.reportButton} onPress={() => setShowReportModal(true)}>
             <Ionicons name="flag-outline" size={13} color="#666" />
-            <Text style={styles.reportButtonText}>Fehler melden</Text>
+            <Text style={styles.reportButtonText}>{t('event.reportError')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -359,8 +411,8 @@ export default function EventDetailScreen() {
         <View style={styles.primaryActionBar}>
           <TouchableOpacity style={styles.primaryActionButton} onPress={primaryAction.onPress}>
             <Text style={styles.primaryActionButtonText}>
-              {primaryAction.label}
-              {primaryAction.label === 'Zur Ticketseite' && event.price_info ? ` · ${event.price_info}` : ''}
+              {t(primaryAction.key === 'ticket' ? 'event.ticketPage' : 'event.openInGoogleMaps')}
+              {primaryAction.key === 'ticket' && event.price_info ? ` · ${event.price_info}` : ''}
             </Text>
           </TouchableOpacity>
         </View>
@@ -378,28 +430,28 @@ export default function EventDetailScreen() {
           onPress={() => setShowReportModal(false)}
         >
           <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Was stimmt nicht?</Text>
+            <Text style={styles.modalTitle}>{t('event.reportModalTitle')}</Text>
 
             {reportStatus === 'sent' ? (
-              <Text style={styles.reportSentText}>✓ Danke, wird geprüft!</Text>
+              <Text style={styles.reportSentText}>{t('event.reportSent')}</Text>
             ) : (
               <>
                 <View style={styles.reasonWrap}>
                   {REPORT_REASONS.map((r) => (
                     <TouchableOpacity
-                      key={r}
-                      style={[styles.reasonChip, reportReason === r && styles.reasonChipActive]}
-                      onPress={() => setReportReason(r)}
+                      key={r.value}
+                      style={[styles.reasonChip, reportReason === r.value && styles.reasonChipActive]}
+                      onPress={() => setReportReason(r.value)}
                     >
-                      <Text style={[styles.reasonChipText, reportReason === r && styles.reasonChipTextActive]}>
-                        {r}
+                      <Text style={[styles.reasonChipText, reportReason === r.value && styles.reasonChipTextActive]}>
+                        {t(r.labelKey)}
                       </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
                 <TextInput
                   style={styles.reportInput}
-                  placeholder="Details (optional)"
+                  placeholder={t('event.reportNotePlaceholder')}
                   placeholderTextColor="#666"
                   value={reportNote}
                   onChangeText={setReportNote}
@@ -410,7 +462,7 @@ export default function EventDetailScreen() {
                     style={styles.modalSecondaryButton}
                     onPress={() => setShowReportModal(false)}
                   >
-                    <Text style={styles.modalSecondaryButtonText}>Abbrechen</Text>
+                    <Text style={styles.modalSecondaryButtonText}>{t('event.cancel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalCloseButton, !reportReason && styles.modalCloseButtonDisabled]}
@@ -418,7 +470,7 @@ export default function EventDetailScreen() {
                     onPress={submitReport}
                   >
                     <Text style={styles.modalCloseButtonText}>
-                      {reportStatus === 'sending' ? '...' : 'Melden'}
+                      {reportStatus === 'sending' ? '...' : t('event.report')}
                     </Text>
                   </TouchableOpacity>
                 </View>

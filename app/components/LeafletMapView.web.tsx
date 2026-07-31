@@ -9,6 +9,14 @@ import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import { createClusterIcon } from '../lib/leafletCluster';
+import { registerStrings, useTranslation } from '../lib/strings';
+import type { Language } from '../lib/language';
+
+registerStrings({
+  'eventMap.more': { de: 'weitere', en: 'more' },
+  'eventMap.moreListOpen': { de: 'weitere · Liste öffnen', en: 'more · open list' },
+  'eventMap.openInGoogleMaps': { de: 'In Google Maps öffnen', en: 'Open in Google Maps' },
+});
 
 // Leaflets Standard-Marker-Icons verweisen auf relative Bildpfade, die unter
 // Metro/Webpack-Bundlern nicht auflösen — stattdessen auf die CDN-Bilder
@@ -37,15 +45,15 @@ export type VenueMarker = {
 
 const MAX_POPUP_EVENTS = 5;
 
-function venueTitle(names: string[]) {
+function venueTitle(names: string[], t: (key: string) => string) {
   if (names.length === 1) return names[0];
   if (names.length <= 3) return names.join(' / ');
-  return `${names[0]} + ${names.length - 1} weitere`;
+  return `${names[0]} + ${names.length - 1} ${t('eventMap.more')}`;
 }
 
-function formatShort(dateStr: string, timeStr: string | null) {
+function formatShort(dateStr: string, timeStr: string | null, lang: Language) {
   const date = new Date(`${dateStr}T${timeStr ?? '00:00'}`);
-  const formatted = date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' });
+  const formatted = date.toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
   return timeStr ? `${formatted} · ${timeStr.slice(0, 5)}` : formatted;
 }
 
@@ -163,6 +171,7 @@ const LeafletMapView = forwardRef<
   { venues, centerLat, centerLng, zoom, targetKey, userLocation, onOpenEvent, onOpenList },
   ref
 ) {
+  const { t, language } = useTranslation();
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
   const mapInstanceRef = useRef<L.Map | null>(null);
 
@@ -206,25 +215,25 @@ const LeafletMapView = forwardRef<
             >
               <Popup minWidth={220}>
                 <View style={styles.popup}>
-                  <Text style={styles.popupTitle}>{venueTitle(v.names)}</Text>
+                  <Text style={styles.popupTitle}>{venueTitle(v.names, t)}</Text>
                   <ScrollView style={styles.popupEventList}>
                     {shownEvents.map((ev) => (
                       <Pressable key={ev.id} style={styles.popupEventRow} onPress={() => onOpenEvent(ev.id)}>
                         <Text style={styles.popupEventTitle} numberOfLines={1}>{ev.title}</Text>
-                        <Text style={styles.popupEventDate}>{formatShort(ev.start_date, ev.start_time)}</Text>
+                        <Text style={styles.popupEventDate}>{formatShort(ev.start_date, ev.start_time, language)}</Text>
                       </Pressable>
                     ))}
                   </ScrollView>
                   {remaining > 0 && (
                     <Pressable onPress={() => onOpenList(v.names)}>
-                      <Text style={styles.popupMoreLink}>+ {remaining} weitere · Liste öffnen</Text>
+                      <Text style={styles.popupMoreLink}>+ {remaining} {t('eventMap.moreListOpen')}</Text>
                     </Pressable>
                   )}
                   <Pressable
                     style={styles.popupMapsButton}
-                    onPress={() => window.open(googleMapsUrl(v.latitude, v.longitude, venueTitle(v.names)), '_blank')}
+                    onPress={() => window.open(googleMapsUrl(v.latitude, v.longitude, venueTitle(v.names, t)), '_blank')}
                   >
-                    <Text style={styles.popupMapsButtonText}>In Google Maps öffnen</Text>
+                    <Text style={styles.popupMapsButtonText}>{t('eventMap.openInGoogleMaps')}</Text>
                   </Pressable>
                 </View>
               </Popup>

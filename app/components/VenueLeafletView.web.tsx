@@ -23,6 +23,22 @@ import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap } 
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import { todayLabel } from '../lib/openingHours';
 import { createClusterIcon, type VenueStatusMarker } from '../lib/leafletCluster';
+import { registerStrings, useTranslation } from '../lib/strings';
+
+// Dieselben Keys wie in VenueListScreen.tsx (Object.assign ist idempotent) —
+// hier zusätzlich registriert, damit diese Komponente nicht von der
+// Ladereihenfolge der Module abhängt.
+registerStrings({
+  'venues.open': { de: 'Geöffnet', en: 'Open' },
+  'venues.closed': { de: 'Geschlossen', en: 'Closed' },
+  'venues.today': { de: 'Heute', en: 'Today' },
+  'venues.lunch': { de: 'Mittagslunch', en: 'Lunch menu' },
+  'venues.beerPrice': { de: '0,5l Helles', en: '0.5L Helles' },
+  'venueMap.openWebsite': { de: 'Website öffnen', en: 'Open website' },
+  'venues.lunchMenu': { de: 'Mittagskarte', en: 'Lunch menu' },
+  'venues.dinnerMenu': { de: 'Abendkarte', en: 'Dinner menu' },
+  'venues.googleMapsOpen': { de: 'In Google Maps öffnen', en: 'Open in Google Maps' },
+});
 
 export type VenueMarker = {
   id: string;
@@ -183,6 +199,7 @@ const VenueLeafletView = forwardRef<
     targetId?: string | null;
   }
 >(function VenueLeafletView({ venues, centerLat, centerLng, zoom, userLocation, targetId = null }, ref) {
+  const { t } = useTranslation();
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
   const mapInstanceRef = useRef<L.Map | null>(null);
   // Manche gespeicherten image_url-Werte sind zwischenzeitlich tot (Website
@@ -244,34 +261,34 @@ const VenueLeafletView = forwardRef<
                   )}
                   <View style={styles.popupHeaderRow}>
                     <Text style={styles.popupTitle}>{venue.name}</Text>
-                    {venue.open === true && <Text style={styles.openBadge}>Geöffnet</Text>}
-                    {venue.open === false && <Text style={styles.closedBadge}>Geschlossen</Text>}
+                    {venue.open === true && <Text style={styles.openBadge}>{t('venues.open')}</Text>}
+                    {venue.open === false && <Text style={styles.closedBadge}>{t('venues.closed')}</Text>}
                   </View>
                   {venue.address && <Text style={styles.popupAddress}>{venue.address}</Text>}
-                  {hoursToday && <Text style={styles.popupHours}>Heute: {hoursToday}</Text>}
-                  {venue.lunch_available && <Text style={styles.popupLunchBadge}>🍽️ Mittagslunch</Text>}
+                  {hoursToday && <Text style={styles.popupHours}>{t('venues.today')}: {hoursToday}</Text>}
+                  {venue.lunch_available && <Text style={styles.popupLunchBadge}>🍽️ {t('venues.lunch')}</Text>}
                   {venue.beer_price_eur != null && (
                     <Text style={styles.popupLunchBadge}>
-                      🍺 0,5l Helles: {venue.beer_price_eur.toFixed(2).replace('.', ',')} €
+                      🍺 {t('venues.beerPrice')}: {venue.beer_price_eur.toFixed(2).replace('.', ',')} €
                     </Text>
                   )}
                   {venue.website && (
                     <Pressable onPress={() => window.open(venue.website!, '_blank')}>
-                      <Text style={styles.popupLink}>Website öffnen</Text>
+                      <Text style={styles.popupLink}>{t('venueMap.openWebsite')}</Text>
                     </Pressable>
                   )}
                   {venue.lunch_menu_url && (
                     <Pressable onPress={() => window.open(venue.lunch_menu_url!, '_blank')}>
-                      <Text style={styles.popupLink}>Mittagskarte</Text>
+                      <Text style={styles.popupLink}>{t('venues.lunchMenu')}</Text>
                     </Pressable>
                   )}
                   {venue.dinner_menu_url && (
                     <Pressable onPress={() => window.open(venue.dinner_menu_url!, '_blank')}>
-                      <Text style={styles.popupLink}>Abendkarte</Text>
+                      <Text style={styles.popupLink}>{t('venues.dinnerMenu')}</Text>
                     </Pressable>
                   )}
                   <Pressable onPress={() => window.open(googleMapsUrl(venue.name, venue.address), '_blank')}>
-                    <Text style={styles.popupMapsButton}>In Google Maps öffnen</Text>
+                    <Text style={styles.popupMapsButton}>{t('venues.googleMapsOpen')}</Text>
                   </Pressable>
                 </View>
               </Popup>
