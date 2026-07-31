@@ -50,6 +50,7 @@ type Venue = {
   cuisine: string | null;
   lunch_available: boolean;
   lunch_menu_url: string | null;
+  dinner_menu_url: string | null;
   beer_price_eur: number | null;
 };
 
@@ -68,21 +69,33 @@ type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
 async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
   const attempts: { columns: string; fill: (v: Record<string, unknown>) => Venue }[] = [
     {
-      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,beer_price_eur`,
+      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur`,
       fill: (v) => v as unknown as Venue,
     },
     {
+      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,beer_price_eur`,
+      fill: (v) => ({ ...v, dinner_menu_url: null } as unknown as Venue),
+    },
+    {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url`,
-      fill: (v) => ({ ...v, beer_price_eur: null } as unknown as Venue),
+      fill: (v) => ({ ...v, dinner_menu_url: null, beer_price_eur: null } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine`,
-      fill: (v) => ({ ...v, lunch_available: false, lunch_menu_url: null, beer_price_eur: null } as unknown as Venue),
+      fill: (v) =>
+        ({ ...v, lunch_available: false, lunch_menu_url: null, dinner_menu_url: null, beer_price_eur: null } as unknown as Venue),
     },
     {
       columns: VENUE_BASE_COLUMNS,
       fill: (v) =>
-        ({ ...v, cuisine: null, lunch_available: false, lunch_menu_url: null, beer_price_eur: null } as unknown as Venue),
+        ({
+          ...v,
+          cuisine: null,
+          lunch_available: false,
+          lunch_menu_url: null,
+          dinner_menu_url: null,
+          beer_price_eur: null,
+        } as unknown as Venue),
     },
   ];
 
@@ -472,6 +485,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           image_url: v.image_url,
           lunch_available: v.lunch_available,
           lunch_menu_url: v.lunch_menu_url,
+          dinner_menu_url: v.dinner_menu_url,
           beer_price_eur: v.beer_price_eur,
         }))
     );
@@ -782,6 +796,39 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
 
           const footerNode = (
             <View style={styles.cardFooterRow}>
+              {/* Mittags-/Abendkarte in einer eigenen Spalte statt in der
+                  Reihe mit Website/Anrufen/Google Maps — bei beiden
+                  vorhandenen Karten übereinander (per Nutzer-Wunsch), sonst
+                  fällt die Spalte automatisch auf eine einzelne Zeile
+                  zusammen. */}
+              {(item.lunch_menu_url || item.dinner_menu_url) && (
+                <View style={styles.menuLinksColumn}>
+                  {item.lunch_menu_url && (
+                    <TouchableOpacity
+                      style={[styles.actionChip, styles.actionChipMenu]}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        Linking.openURL(item.lunch_menu_url!);
+                      }}
+                    >
+                      <Ionicons name="sunny-outline" size={13} color="#f2c94c" />
+                      <Text style={[styles.actionChipText, styles.actionChipTextMenu]}>Mittagskarte</Text>
+                    </TouchableOpacity>
+                  )}
+                  {item.dinner_menu_url && (
+                    <TouchableOpacity
+                      style={[styles.actionChip, styles.actionChipMenu]}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        Linking.openURL(item.dinner_menu_url!);
+                      }}
+                    >
+                      <Ionicons name="moon-outline" size={13} color="#f2c94c" />
+                      <Text style={[styles.actionChipText, styles.actionChipTextMenu]}>Abendkarte</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
               <View style={styles.cardFooterLinks}>
                 {item.website && (
                   <TouchableOpacity
@@ -805,18 +852,6 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   >
                     <Ionicons name="call-outline" size={13} color="#4ade80" />
                     <Text style={[styles.actionChipText, styles.actionChipTextCall]}>Anrufen</Text>
-                  </TouchableOpacity>
-                )}
-                {item.lunch_menu_url && (
-                  <TouchableOpacity
-                    style={[styles.actionChip, styles.actionChipMenu]}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      Linking.openURL(item.lunch_menu_url!);
-                    }}
-                  >
-                    <Ionicons name="restaurant-outline" size={13} color="#f2c94c" />
-                    <Text style={[styles.actionChipText, styles.actionChipTextMenu]}>Mittagskarte</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -1206,6 +1241,11 @@ const styles = StyleSheet.create({
   programText: { color: '#5fd4ff', fontSize: 13 },
   cardFooterRow: { marginTop: 8 },
   cardFooterLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  // Column statt Row: fällt bei nur einer vorhandenen Karte automatisch auf
+  // eine einzelne Zeile zusammen, stapelt Mittags- und Abendkarte bei
+  // beiden vorhandenen übereinander (per Nutzer-Wunsch) statt nebeneinander
+  // in derselben Reihe wie Website/Anrufen/Google Maps.
+  menuLinksColumn: { flexDirection: 'column', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
   // Vorher alle vier Aktionen (Website/Anrufen/Mittagskarte/Google Maps) als
   // identisch aussehende blaue Textlinks — kaum auseinanderzuhalten, welcher
   // Link zu welcher Aktion gehört (per Nutzer-Feedback: "sehen sich zu

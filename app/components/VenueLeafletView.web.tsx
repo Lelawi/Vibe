@@ -36,6 +36,7 @@ export type VenueMarker = {
   image_url: string | null;
   lunch_available?: boolean;
   lunch_menu_url?: string | null;
+  dinner_menu_url?: string | null;
   beer_price_eur?: number | null;
 };
 
@@ -262,6 +263,11 @@ const VenueLeafletView = forwardRef<
                   {venue.lunch_menu_url && (
                     <Pressable onPress={() => window.open(venue.lunch_menu_url!, '_blank')}>
                       <Text style={styles.popupLink}>Mittagskarte</Text>
+                    </Pressable>
+                  )}
+                  {venue.dinner_menu_url && (
+                    <Pressable onPress={() => window.open(venue.dinner_menu_url!, '_blank')}>
+                      <Text style={styles.popupLink}>Abendkarte</Text>
                     </Pressable>
                   )}
                   <Pressable onPress={() => window.open(googleMapsUrl(venue.name, venue.address), '_blank')}>

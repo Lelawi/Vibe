@@ -29,6 +29,7 @@ type RawVenue = {
   image_url: string | null;
   lunch_available: boolean | null;
   lunch_menu_url: string | null;
+  dinner_menu_url: string | null;
   beer_price_eur: number | null;
 };
 
@@ -89,20 +90,21 @@ export default function VenueMapNative({
       // 2263 Restaurants hätte ein einfaches .select() über die Hälfte
       // verschluckt (siehe app/lib/fetchAllVenues.ts).
       const venuesColumns =
-        'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url,beer_price_eur';
+        'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur';
       const [venuesData, reportsRes] = await Promise.all([
         fetchAllVenues<RawVenue>(type, venuesColumns).catch(async (err) => {
-          // beer_price_eur kam erst mit 0018_venues_beer_price.sql dazu —
-          // falls diese Migration noch nicht angewendet wurde, soll die
-          // Karte trotzdem funktionieren (nur ohne Bierpreis) statt vom
-          // Direktaufruf der Karte (ohne Listen-Filterkontext, siehe
-          // getFilteredVenuesForMap oben) komplett leer zu bleiben.
-          console.warn('[VenueMapNative] retrying without beer_price_eur column', err);
-          const fallback = await fetchAllVenues<Omit<RawVenue, 'beer_price_eur'>>(
+          // dinner_menu_url (0021)/beer_price_eur (0018) kamen nachträglich
+          // dazu — falls eine dieser Migrationen noch nicht angewendet
+          // wurde, soll die Karte trotzdem funktionieren (nur ohne die
+          // jeweilige Info) statt vom Direktaufruf der Karte (ohne Listen-
+          // Filterkontext, siehe getFilteredVenuesForMap oben) komplett
+          // leer zu bleiben.
+          console.warn('[VenueMapNative] retrying without dinner_menu_url/beer_price_eur columns', err);
+          const fallback = await fetchAllVenues<Omit<RawVenue, 'dinner_menu_url' | 'beer_price_eur'>>(
             type,
             'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url'
           );
-          return fallback.map((v) => ({ ...v, beer_price_eur: null }));
+          return fallback.map((v) => ({ ...v, dinner_menu_url: null, beer_price_eur: null }));
         }),
         // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
         // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
@@ -135,6 +137,7 @@ export default function VenueMapNative({
           image_url: v.image_url,
           lunch_available: v.lunch_available ?? false,
           lunch_menu_url: v.lunch_menu_url,
+          dinner_menu_url: v.dinner_menu_url,
           beer_price_eur: v.beer_price_eur,
         };
       });

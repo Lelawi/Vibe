@@ -24,6 +24,21 @@ const OVERPASS_URL = 'https://overpass.kumi.systems/api/interpreter';
 // fehleranfällig — lieferte beim Direktabruf 406 statt Daten).
 const MUNICH_BBOX = '48.0616,11.3600,48.2482,11.7228';
 
+// Einzelne OSM-Knoten, die zwar technisch amenity=restaurant/bar getaggt
+// sind, aber keine öffentlich zugänglichen Gaststätten im Sinne der App
+// sind — bewusst eine enge, von Hand kuratierte Liste statt eines
+// Namensmuster-Filters (z.B. "Sportlerheim"/"Vereinsheim" im Namen), weil
+// nicht jeder Treffer mit so einem Wort automatisch ein reiner Vereinsraum
+// ist ("Auszeit im Vereinsheim" z.B. ist ein eigenständig geführtes,
+// öffentliches Restaurant, das nur zufällig in einem Vereinsheim-Gebäude
+// sitzt — der Name allein verrät das nicht zuverlässig).
+const EXCLUDED_VENUE_OSM_IDS = new Set<number>([
+  // "FC Ismaning Sportlerheim" — reine Vereinskantine ohne eigenen
+  // Geschäftsnamen, kein für die Öffentlichkeit gedachtes Restaurant (per
+  // Nutzer-Feedback gemeldet, 2026-07).
+  185543054,
+]);
+
 interface OverpassElement {
   id: number;
   lat: number;
@@ -112,6 +127,223 @@ function countCoveredDays(hoursStr: string): number {
     }
   }
   return covered.size;
+}
+
+// Deliberate 1:1-in-spirit duplicate of app/lib/openingHours.ts's
+// parseOpeningHours/isWithinRules — same reason as canonicalizeVenue.ts
+// (collectors can't import from app/, see CLAUDE.md architecture
+// principle). Used PURELY as a strict validation gate below: free-text
+// "Öffnungszeiten" sections on venue websites are normalized toward OSM
+// syntax on a best-effort basis (extractFreeTextOpeningHours), and only
+// accepted if the result actually parses cleanly here — garbage
+// normalization simply fails this check and is discarded rather than
+// silently stored as a wrong schedule. Keep in sync by hand if the real
+// parser's rules change.
+interface HoursDayRule {
+  days: number[];
+  ranges: { startMinutes: number; endMinutes: number }[];
+  closed: boolean;
+}
+const HOURS_DAY_INDEX: Record<string, number> = { Su: 0, Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6 };
+function validateParseTimeToMinutes(time: string): number | null {
+  const match = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 32 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+function validateParseDayToken(token: string): number[] | null {
+  if (/^ph$/i.test(token)) return [];
+  const rangeMatch = token.match(/^([A-Za-z]{2})-([A-Za-z]{2})$/);
+  if (rangeMatch) {
+    const start = HOURS_DAY_INDEX[rangeMatch[1]];
+    const end = HOURS_DAY_INDEX[rangeMatch[2]];
+    if (start === undefined || end === undefined) return null;
+    const days: number[] = [];
+    let i = start;
+    while (true) {
+      days.push(i);
+      if (i === end) break;
+      i = (i + 1) % 7;
+      if (days.length > 7) return null;
+    }
+    return days;
+  }
+  const single = HOURS_DAY_INDEX[token];
+  return single === undefined ? null : [single];
+}
+function validateParseTimeRangeToken(token: string): { startMinutes: number; endMinutes: number } | null {
+  const match = token.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
+  if (!match) return null;
+  const start = validateParseTimeToMinutes(match[1]);
+  const end = validateParseTimeToMinutes(match[2]);
+  if (start === null || end === null) return null;
+  return { startMinutes: start, endMinutes: end <= start ? end + 24 * 60 : end };
+}
+function validateOpeningHours(raw: string): HoursDayRule[] | null {
+  const source = raw.trim();
+  if (!source) return null;
+  const rules: HoursDayRule[] = [];
+  for (const block of source.split(';')) {
+    const segment = block.trim();
+    if (!segment) continue;
+    let pendingDays: number[] = [];
+    let lastRule: HoursDayRule | null = null;
+    for (const part of segment.split(',')) {
+      const piece = part.trim();
+      if (!piece) continue;
+      const tokens = piece.split(/\s+/);
+      if (tokens.length < 1) continue;
+      const days = validateParseDayToken(tokens[0]);
+      if (days === null) {
+        const bareRange = validateParseTimeRangeToken(piece);
+        if (bareRange && !lastRule && pendingDays.length === 0 && rules.length === 0) {
+          lastRule = { days: [0, 1, 2, 3, 4, 5, 6], ranges: [bareRange], closed: false };
+          rules.push(lastRule);
+          continue;
+        }
+        if (!lastRule || lastRule.closed) return null;
+        const range = bareRange;
+        if (!range) return null;
+        lastRule.ranges.push(range);
+        continue;
+      }
+      const rest = tokens.slice(1).join(' ');
+      if (rest === '') { pendingDays.push(...days); lastRule = null; continue; }
+      const allDays = [...new Set([...pendingDays, ...days])];
+      pendingDays = [];
+      if (/^(off|closed)$/i.test(rest)) { lastRule = { days: allDays, ranges: [], closed: true }; rules.push(lastRule); continue; }
+      const range = validateParseTimeRangeToken(rest);
+      if (!range) return null;
+      lastRule = { days: allDays, ranges: [range], closed: false };
+      rules.push(lastRule);
+    }
+    if (pendingDays.length > 0) return null;
+  }
+  return rules.length > 0 ? rules : null;
+}
+
+// Manche Venue-Websites veröffentlichen ihre Öffnungszeiten nur als
+// Fließtext unter einer "Öffnungszeiten"-Überschrift statt als schema.org-
+// Markup (per Live-Test an 20 zufälligen echten Venue-Websites verifiziert,
+// 2026-07: 8 von 15 erreichbaren hatten so einen Abschnitt, keine davon
+// strukturiertes Markup). Deutlich unregelmäßigeres Format als schema.org
+// (Wochentage als "Montags"/"Mo"/"Di" statt einheitlich, "–"/"bis" statt
+// "-", Dezimalpunkt statt Doppelpunkt bei Uhrzeiten, "Uhr" optional,
+// mehrere Zeitfenster mit "&" statt Komma verbunden, "Öffnungszeiten"
+// erscheint auf manchen Seiten zuerst nur als Navigations-Linktext gefolgt
+// von unrelated Content, bevor der echte Öffnungszeiten-Absatz kommt).
+// Wird deshalb aggressiv Richtung OSM-Syntax normalisiert, aber NUR
+// übernommen, wenn das Ergebnis anschließend durch validateOpeningHours()
+// oben tatsächlich sauber durchparst UND genug Wochentage abdeckt — bei
+// Fehlschlag lieber nichts speichern statt zu raten.
+const FREETEXT_DAY_MAP: [RegExp, string][] = [
+  [/sonn-?\s*und\s*feiertag[e]?s?/gi, 'Su,PH'],
+  [/feiertag[e]?s?/gi, 'PH'],
+  [/montags?/gi, 'Mo'], [/dienstags?/gi, 'Tu'], [/mittwochs?/gi, 'We'],
+  [/donnerstags?/gi, 'Th'], [/freitags?/gi, 'Fr'], [/samstags?/gi, 'Sa'], [/sonntags?/gi, 'Su'],
+  // Deutsche Kurzformen (Di/Mi/Do/So) unterscheiden sich für 4 von 7 Tagen
+  // von den hier intern genutzten OSM/englischen Tokens (Tu/We/Th/Su) — ohne
+  // diese Zuordnung blieb z.B. "Sa - So" unerkannt (an einer echten
+  // Website beobachtet).
+  [/\bDi\b/g, 'Tu'], [/\bMi\b/g, 'We'], [/\bDo\b/g, 'Th'], [/\bSo\b/g, 'Su'],
+];
+const FREETEXT_TRAILING_NOISE =
+  /\b(Kontakt|Anfahrt|Impressum|Reservieren|Adresse|Standort|Newsletter|Datenschutz|Facebook|Instagram|Social|Restaurant\s|Bar\s)\b/i;
+const FREETEXT_DAY_TOK = '(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)';
+
+function normalizeFreeTextHoursCandidate(rawText: string): string {
+  // Küche-Nebeninfo ("Küche jeweils bis 22:00 Uhr", "(Küche bis 21:30)")
+  // zuerst entfernen, bevor ihre eigenen "."-Uhrzeiten spätere Schritte
+  // verwirren können.
+  let t = rawText.replace(/\(?\s*(warme\s+)?Küche\b[^)]{0,60}?(Uhr|\))/gi, ' ');
+  // "UhrSamstags" (kein Leerzeichen zwischen zwei benachbarten Text-Knoten
+  // im Quell-HTML) — Leerzeichen einfügen, damit der folgende Wochentag für
+  // jede spätere \b-verankerte Regel unten eine echte Wortgrenze hat.
+  t = t.replace(/Uhr(?=[A-ZÄÖÜ])/g, 'Uhr ');
+
+  const noiseMatch = t.match(FREETEXT_TRAILING_NOISE);
+  if (noiseMatch) t = t.slice(0, noiseMatch.index);
+
+  for (const [re, abbr] of FREETEXT_DAY_MAP) t = t.replace(re, abbr);
+  // Wochentag direkt an eine Ziffer geklebt ("Freitag11:30", "PH15.00") —
+  // auch hier vor allen \b-abhängigen Regeln trennen (Buchstabe+Ziffer
+  // zählen beide als \w, \b feuert zwischen ihnen sonst nicht).
+  t = t.replace(new RegExp(`\\b(${FREETEXT_DAY_TOK})(\\d)`, 'g'), '$1 $2');
+
+  t = t.replace(/[–—]/g, '-');
+  t = t.replace(new RegExp(`\\b(${FREETEXT_DAY_TOK})\\s+bis\\s+(${FREETEXT_DAY_TOK})\\b`, 'gi'), '$1-$2');
+  t = t.replace(new RegExp(`\\b(${FREETEXT_DAY_TOK})\\s*-\\s*(${FREETEXT_DAY_TOK})\\b`, 'g'), '$1-$2');
+  t = t.replace(/(\d{1,2}[:.]\d{2})\s*bis\s*(\d{1,2}[:.]\d{2})/g, '$1-$2');
+  t = t.replace(/(\d{1,2}[:.]\d{2})\s*bis\s*(\d{1,2})\b(?!:)/g, '$1-$2:00');
+  t = t.replace(/\bvon\s+/gi, '');
+  // Dezimalpunkt-Uhrzeit ("11.30", "22.30") -> Doppelpunkt. Nur 1-2 Ziffern,
+  // Punkt, exakt 2 Ziffern — unrelated Zahlen (Preise, Adressen) matchen
+  // dadurch kaum zufällig mit.
+  t = t.replace(/\b(\d{1,2})\.(\d{2})\b/g, '$1:$2');
+  // Reine Stunden-Spanne direkt vor "Uhr" ("8- 24 Uhr") -> ":00" ergänzen.
+  t = t.replace(/\b(\d{1,2})\s*-\s*(\d{1,2})(?=\s*Uhr\b)/g, (_m, a: string, b: string) => `${a.padStart(2, '0')}:00-${b.padStart(2, '0')}:00`);
+  t = t.replace(/\bgeschlossen\b/gi, 'off').replace(/\bruhetag\b/gi, 'off');
+  // Doppelpunkt direkt nach einem Wochentag/einer Tagesliste ("Sa:", "PH:")
+  // ist reine Interpunktion, keine Daten.
+  t = t.replace(new RegExp(`\\b(${FREETEXT_DAY_TOK})\\s*:\\s*`, 'g'), '$1 ');
+  // Fehlende Trenner zwischen benachbarten Tagesgruppen, wo das Quell-HTML
+  // gar keinen Whitespace/keine Interpunktion dazwischen hatte (häufig:
+  // "23:00 UhrSa...", "00:00 Tu Geschlossen", "off Sa-So ..."). Jede davon
+  // muss eine eigenständige Regel werden (Semikolon), nicht versehentlich in
+  // die Tage- oder Zeitliste der vorherigen verschmelzen.
+  t = t.replace(/\s*Uhr(?=\s*(?:$|[A-ZÄÖÜ]))/g, '; ');
+  t = t.replace(new RegExp(`(\\boff\\b)\\s+(?=${FREETEXT_DAY_TOK}\\b)`, 'gi'), '$1; ');
+  t = t.replace(new RegExp(`(\\d{2}:\\d{2})\\s+(?=${FREETEXT_DAY_TOK}\\b)`, 'g'), '$1; ');
+  t = t.replace(/\s*Uhr\b/gi, '');
+  t = t.replace(/\s*&\s*/g, ', ');
+  t = t.replace(/,\s*,/g, ',');
+  t = t.replace(/;\s*;/g, ';');
+  return t.trim();
+}
+
+function extractFreeTextOpeningHours($: cheerio.CheerioAPI): string | null {
+  const bodyClone = $('body').clone();
+  bodyClone.find('script, style, noscript').remove();
+  const pageText = bodyClone.text().replace(/[ \t]+/g, ' ').replace(/\n+/g, ' ').trim();
+
+  // Ein einzelner, klarer Hinweis auf eine dauerhafte Schließung IRGENDWO
+  // auf der Seite ist ein absolutes Veto — real beobachtete Falle: ein ganz
+  // normal aussehender Öffnungszeiten-Absatz weiter oben auf einer Seite,
+  // die an anderer Stelle unmissverständlich sagt, dass dauerhaft
+  // geschlossen ist (veraltete, nie entfernte alte Angabe).
+  if (/dauerhaft\s+geschlossen|permanently\s+closed|für\s+immer\s+geschlossen/i.test(pageText)) return null;
+
+  // Jedes Vorkommen von "Öffnungszeiten" ausprobieren, nicht nur das erste
+  // — auf manchen Seiten erscheint es zuerst als reines Navigations-
+  // Linklabel mit unrelated Content direkt danach, der echte Absatz erst
+  // bei einem späteren Vorkommen.
+  const heading = /Öffnungszeiten/gi;
+  let m: RegExpExecArray | null;
+  while ((m = heading.exec(pageText))) {
+    const rawWindow = pageText.slice(m.index + m[0].length, m.index + m[0].length + 300);
+    // "ab 22:00 Uhr" ganz ohne Ende-Zeit ist eine unvollständige Angabe
+    // (variable Schließzeit) — lieber nichts speichern als eine Schließzeit
+    // zu raten.
+    if (/\bab\s+\d{1,2}[:.]\d{2}\s*Uhr\b/i.test(rawWindow.slice(0, 100)) && !/-/.test(rawWindow.slice(0, 100))) continue;
+
+    const normalized = normalizeFreeTextHoursCandidate(rawWindow);
+    // Nachfolgender Fließtext nach dem eigentlichen Öffnungszeiten-Absatz
+    // (Marketing-Text, Städteliste, Navigations-Label ohne eigenen Treffer
+    // in FREETEXT_TRAILING_NOISE) lässt den kompletten String scheitern,
+    // obwohl der führende Teil ein einwandfreier Zeitplan ist — deshalb
+    // zunächst den vollen String versuchen, dann schrittweise kürzere
+    // Präfixe (an ";"-Grenzen, die der Normalisierer bereits zwischen
+        // eigenständigen Tagesgruppen einfügt), bis einer sauber durchparst.
+    const chunks = normalized.split(';').map((c) => c.trim()).filter(Boolean);
+    for (let end = chunks.length; end > 0; end--) {
+      const candidate = chunks.slice(0, end).join('; ');
+      const parsed = validateOpeningHours(candidate);
+      if (parsed && countCoveredDays(candidate) >= MIN_COVERED_DAYS) return candidate;
+    }
+  }
+  return null;
 }
 
 function extractOpeningHoursOverride($: cheerio.CheerioAPI): string | null {
@@ -266,6 +498,35 @@ function extractLunchSignal($: cheerio.CheerioAPI, baseUrl: string): { available
     }
   }
   return { available: false, menuUrl: null };
+}
+
+// Abendkarte/allgemeine Speisekarte (Nutzer-Anfrage: "neben der Mittagskarte
+// wäre auch bei den anderen die Abendkarte interessant") — anders als beim
+// Mittagslunch (echtes Ja/Nein-Signal, nicht jedes Restaurant bietet das)
+// gibt es hier keinen sinnvollen "verfügbar"-Filter: praktisch jedes
+// bewirtete Restaurant hat irgendeine Haupt-/Abendkarte, daher nur der Link
+// selbst von Interesse, kein zusätzliches Boolean-Feld. "Speisekarte" ist
+// bewusst mit dabei (nicht nur "Abendkarte") — der weit verbreitetere
+// deutsche Begriff für genau diese allgemeine/abendliche Karte, sobald eine
+// separate Mittagskarte existiert bezeichnet "Speisekarte" praktisch immer
+// die übrige (Abend-)Karte.
+const DINNER_KEYWORDS = /abendkarte|abendmen[üu]|dinner[\s-]?menu|dinnerkarte|speisekarte/i;
+
+function extractDinnerMenuUrl($: cheerio.CheerioAPI, baseUrl: string): string | null {
+  let menuUrl: string | null = null;
+  $('a[href]').each((_, el) => {
+    if (menuUrl) return;
+    const href = $(el).attr('href') ?? '';
+    const text = $(el).text();
+    if (DINNER_KEYWORDS.test(href) || DINNER_KEYWORDS.test(text)) {
+      try {
+        menuUrl = new URL(href, baseUrl).toString();
+      } catch {
+        menuUrl = null;
+      }
+    }
+  });
+  return menuUrl;
 }
 
 // Preis für 0,5l Helles (Münchner Standardmaß, siehe Nutzer-Anfrage) — reine
@@ -452,6 +713,7 @@ async function fetchWebsiteEnrichment(
   hours: string | null;
   lunchAvailable: boolean;
   lunchMenuUrl: string | null;
+  dinnerMenuUrl: string | null;
   beerPriceEur: number | null;
 }> {
   try {
@@ -459,7 +721,7 @@ async function fetchWebsiteEnrichment(
       headers: { 'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)' },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null, beerPriceEur: null };
+    if (!res.ok) return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null, dinnerMenuUrl: null, beerPriceEur: null };
     const html = await res.text();
     const metaMatch = html.match(/<meta[^>]+property=["'](?:og|twitter):image["'][^>]+content=["']([^"']+)["']/i)
       ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["'](?:og|twitter):image["']/i)
@@ -469,8 +731,11 @@ async function fetchWebsiteEnrichment(
     // Website-URL auflösen statt kaputte relative Pfade zu speichern.
     const image = metaMatch ? new URL(metaMatch[1], website).toString() : findBestImage(html, website);
     const $ = cheerio.load(html);
-    const hours = extractOpeningHoursOverride($);
+    // JSON-LD (strukturiert, zuverlässiger) zuerst versuchen, Fließtext-
+    // Extraktion nur als Fallback, wenn die Seite kein Markup hat.
+    const hours = extractOpeningHoursOverride($) ?? extractFreeTextOpeningHours($);
     const lunch = extractLunchSignal($, website);
+    const dinnerMenuUrl = extractDinnerMenuUrl($, website);
     let beerPriceEur = extractBeerPrice($);
     // Kein Preis im HTML-Text gefunden — bei Bars (anders als Restaurants
     // für den Mittagslunch) fast immer der Fall, da Getränkekarten praktisch
@@ -482,9 +747,9 @@ async function fetchWebsiteEnrichment(
         if (beerPriceEur !== null) break;
       }
     }
-    return { image, hours, lunchAvailable: lunch.available, lunchMenuUrl: lunch.menuUrl, beerPriceEur };
+    return { image, hours, lunchAvailable: lunch.available, lunchMenuUrl: lunch.menuUrl, dinnerMenuUrl, beerPriceEur };
   } catch {
-    return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null, beerPriceEur: null };
+    return { image: null, hours: null, lunchAvailable: false, lunchMenuUrl: null, dinnerMenuUrl: null, beerPriceEur: null };
   }
 }
 
@@ -529,7 +794,7 @@ out body;
 
     const data = (await res.json()) as { elements: OverpassElement[] };
     const rawVenues = data.elements
-      .filter((el) => el.tags?.name)
+      .filter((el) => el.tags?.name && !EXCLUDED_VENUE_OSM_IDS.has(el.id))
       .map((el) => {
         const tags = el.tags!;
         return {
@@ -559,7 +824,7 @@ out body;
     // eins davon fehlt, wird neu gefetcht.
     const { data: existing } = await supabase
       .from('venues')
-      .select('osm_id,image_url,opening_hours_override,lunch_available,lunch_menu_url,beer_price_eur')
+      .select('osm_id,image_url,opening_hours_override,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur')
       .eq('type', type);
     const existingByOsmId = new Map(
       (existing ?? []).map((v) => [
@@ -569,6 +834,7 @@ out body;
           hours: v.opening_hours_override as string | null,
           lunchAvailable: (v.lunch_available as boolean | null) ?? false,
           lunchMenuUrl: v.lunch_menu_url as string | null,
+          dinnerMenuUrl: v.dinner_menu_url as string | null,
           beerPriceEur: v.beer_price_eur as number | null,
         },
       ])
@@ -576,12 +842,12 @@ out body;
 
     const toFetch = rawVenues.filter((v) => {
       const cached = existingByOsmId.get(v.osm_id);
-      return v.website && (!cached || !cached.image || !cached.hours || !cached.lunchAvailable || !cached.beerPriceEur);
+      return v.website && (!cached || !cached.image || !cached.hours || !cached.lunchAvailable || !cached.dinnerMenuUrl || !cached.beerPriceEur);
     });
-    console.log(`[${label}] fetching website enrichment for`, toFetch.length, 'venues missing an image, opening-hours override, lunch info or beer price');
+    console.log(`[${label}] fetching website enrichment for`, toFetch.length, 'venues missing an image, opening-hours override, lunch/dinner menu or beer price');
     const enrichmentByOsmId = new Map<
       number,
-      { image: string | null; hours: string | null; lunchAvailable: boolean; lunchMenuUrl: string | null; beerPriceEur: number | null }
+      { image: string | null; hours: string | null; lunchAvailable: boolean; lunchMenuUrl: string | null; dinnerMenuUrl: string | null; beerPriceEur: number | null }
     >();
     const CONCURRENCY = 6;
     let cursor = 0;
@@ -602,6 +868,7 @@ out body;
         opening_hours_override: fetched?.hours ?? cached?.hours ?? null,
         lunch_available: fetched?.lunchAvailable ?? cached?.lunchAvailable ?? false,
         lunch_menu_url: fetched?.lunchMenuUrl ?? cached?.lunchMenuUrl ?? null,
+        dinner_menu_url: fetched?.dinnerMenuUrl ?? cached?.dinnerMenuUrl ?? null,
         beer_price_eur: fetched?.beerPriceEur ?? cached?.beerPriceEur ?? null,
       };
     });
