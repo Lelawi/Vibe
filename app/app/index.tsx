@@ -28,6 +28,7 @@ import { fuzzyMatch } from '../lib/fuzzySearch';
 import { addEventsToCalendar } from '../lib/calendar';
 import { useFavorites } from '../lib/favorites';
 import { useFollowedOrganizers } from '../lib/followedOrganizers';
+import { consumeOnboardingSeed } from '../lib/onboarding';
 import { useReminderSettings, REMINDER_OFFSET_OPTIONS } from '../lib/reminderSettings';
 import {
   isPushSupported,
@@ -454,6 +455,19 @@ export default function EventListScreen() {
       { enableHighAccuracy: false, timeout: 10000 }
     );
   }
+
+  // Einmalige Übernahme der Onboarding-Auswahl (siehe app/lib/onboarding.ts)
+  // — liefert nach dem ersten Abschluss des Onboardings genau einmal die
+  // gewählten Kategorien/Nähe-Wunsch, danach dauerhaft null, damit spätere
+  // manuelle Filteränderungen nicht bei jedem Mount überschrieben werden.
+  useEffect(() => {
+    consumeOnboardingSeed().then((seed) => {
+      if (!seed) return;
+      if (seed.categories.length > 0) setSelectedCategories(seed.categories);
+      if (seed.nearby) toggleNearby();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Eigenständige Funktion statt reiner useEffect-Closure, damit sie auch vom
   // manuellen Aktualisieren-Button erneut aufgerufen werden kann — echtes

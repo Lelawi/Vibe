@@ -1,9 +1,13 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import OnboardingScreen from '../components/OnboardingScreen';
+import { useOnboarding } from '../lib/onboarding';
 
 export default function Layout() {
+  const { loading, completed, complete } = useOnboarding();
+
   useEffect(() => {
     // Service Worker fürs Offline-Caching nur im Web-Build relevant — Pfad
     // mit dem GitHub-Pages-Unterordner (siehe experiments.baseUrl in
@@ -38,6 +42,24 @@ export default function Layout() {
       return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }
   }, []);
+
+  // Solange der AsyncStorage-Read noch läuft: nichts rendern statt kurz die
+  // echte App aufblitzen zu lassen, bevor feststeht, ob das Onboarding noch
+  // fehlt. Ist bewusst noch vor dem Onboarding-Screen selbst — der bräuchte
+  // sonst ebenfalls einen eigenen Lade-Zustand.
+  if (loading) {
+    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+  }
+
+  // Zeigt das Onboarding bei jedem Kaltstart, bis es einmal abgeschlossen
+  // wurde — unabhängig vom Einstiegspunkt (auch bei einem direkt geöffneten
+  // Event-Link). Bewusst kein Deep-Link-Bypass: das Onboarding läuft nur
+  // einmal pro Installation, und die App hat noch keine Möglichkeit, "das
+  // ist ein geteilter Link" von "normaler Kaltstart" zu unterscheiden, ohne
+  // zusätzliche Komplexität einzuführen, die dafür nicht nötig ist.
+  if (!completed) {
+    return <OnboardingScreen onComplete={complete} />;
+  }
 
   return (
     <>
