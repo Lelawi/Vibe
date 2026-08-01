@@ -1,17 +1,22 @@
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 
-// Google-Bewertungen für Venues (bars/restaurants/spaetis) — bewusst über die
-// offizielle Places API (New) statt Scraping (verstößt gegen Googles Nutzungs-
-// bedingungen, siehe Diskussion im Chat 2026-08-01). Das rating-Feld gehört
-// zum teuersten "Enterprise"-SKU von Place Details, das nur 1.000 kostenlose
+// Google-Bewertungen (+ Website/Telefon als Nebenprodukt) für Venues
+// (bars/restaurants/spaetis) — bewusst über die offizielle Places API (New)
+// statt Scraping (verstößt gegen Googles Nutzungsbedingungen, siehe
+// Diskussion im Chat 2026-08-01). Das rating-Feld gehört zum teuersten
+// "Enterprise"-SKU von Place Details, das nur 1.000 kostenlose
 // Anfragen/Monat hat (zurückgesetzt am Monatsersten, kein Rollover) — daher
 // ein hartes Selbst-Limit weit darunter (MONTHLY_BUDGET) als zusätzliche
 // Absicherung zum eigentlichen Schutz: einem hart eingestellten Quota-Limit
 // in der Google Cloud Console (nicht nur ein Budget-Alert, das nur
 // benachrichtigt statt zu blocken). Text Search zum Auflösen der place_id
-// läuft im viel günstigeren Tier (id-only-Feldmaske) und ist hier nie der
-// Flaschenhals.
+// läuft im viel günstigeren Tier und ist hier nie der Flaschenhals.
+// website/phone werden mit demselben Enterprise-Call kostenlos mitgeliefert
+// (gehören bereits zum bezahlten Tier) und nur dann übernommen, wenn wir
+// dafür noch keinen Wert haben — Google ist im Schnitt aktueller als OSM
+// (siehe Feder-Bar-Fall), aber überschreibt nichts, um Bestandsdaten nicht
+// versehentlich durch einen Text-Search-Fehltreffer zu ersetzen.
 //
 // Rotation: jeden Tag werden bis zu DAILY_BATCH Venues mit dem ältesten (oder
 // fehlendem) google_rating_checked_at neu abgefragt — bei ~2.500 Venues also
@@ -20,21 +25,6 @@ import { createClient } from '@supabase/supabase-js';
 const PLACES_API_BASE = 'https://places.googleapis.com/v1';
 const MONTHLY_BUDGET = 900;
 const DAILY_BATCH = 30;
-
-interface RatingVenue {
-  id: string;
-  name: string;
-  address: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  google_place_id: string | null;
-}
-
-function startOfCurrentMonthUtc(): string {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-}
-
 // Ohne explizites Timeout hängt ein einzelner ausbleibender Response die
 // gesamte Batch-Verarbeitung unbegrenzt lange auf (per Nutzer-Feedback
 // beobachtet: Lauf stand nach der Start-Log-Zeile 5+ Minuten still, ohne
@@ -42,13 +32,81 @@ function startOfCurrentMonthUtc(): string {
 // Antwort, aber verhindert einen unbegrenzten Hänger.
 const REQUEST_TIMEOUT_MS = 10_000;
 
-async function resolvePlaceId(apiKey: string, venue: RatingVenue): Promise<string | null> {
+interface RatingVenue {
+  id: string;
+  name: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  website: string | null;
+  phone: string | null;
+  google_place_id: string | null;
+}
+
+interface PlaceCandidate {
+  id: string;
+  name: string;
+  address: string | null;
+}
+
+interface PlaceDetails {
+  rating: number | null;
+  count: number | null;
+  website: string | null;
+  phone: string | null;
+}
+
+function startOfCurrentMonthUtc(): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+}
+
+// Kombinierende diakritische Zeichen (U+0300-U+036F) nach NFD-Zerlegung —
+// per \u-Escape statt eingebetteter Sonderzeichen im Quelltext, um
+// Encoding-Probleme beim Bearbeiten dieser Datei zu vermeiden.
+const DIACRITICS_RE = new RegExp(`[${String.fromCharCode(0x0300)}-${String.fromCharCode(0x036f)}]`, 'g');
+
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(DIACRITICS_RE, '') // Umlaute/Akzente auf Basisbuchstaben reduzieren
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPostcode(s: string | null): string | null {
+  if (!s) return null;
+  return s.match(/\b\d{5}\b/)?.[0] ?? null;
+}
+
+// Fehltreffer-Absicherung für die Text-Search-Zuordnung: München hat mehrere
+// Orte mit sehr ähnlichen/generischen Namen (z.B. "Diba", "Charlatan",
+// "Goldstück" — diese Session voll von Beispielen), ein Location-Bias allein
+// garantiert keinen korrekten Treffer. Bewusst kein hartes Ausschlusskriterium
+// bei fehlender Adresse (viele Spätis haben in unserer DB gar keine) — dann
+// verlässt sich die Prüfung nur auf den Namen.
+function looksLikeSameVenue(venue: RatingVenue, candidate: PlaceCandidate): boolean {
+  const a = normalize(venue.name);
+  const b = normalize(candidate.name);
+  if (!a || !b) return false;
+  const nameMatches =
+    a.includes(b) ||
+    b.includes(a) ||
+    a.split(' ').some((w) => w.length >= 4 && b.split(' ').includes(w));
+  if (!nameMatches) return false;
+  const venuePlz = extractPostcode(venue.address);
+  const candidatePlz = extractPostcode(candidate.address);
+  if (venuePlz && candidatePlz) return venuePlz === candidatePlz;
+  return true;
+}
+
+async function resolvePlaceCandidate(apiKey: string, venue: RatingVenue): Promise<PlaceCandidate | null> {
   const body: Record<string, unknown> = {
     textQuery: venue.address ? `${venue.name}, ${venue.address}` : `${venue.name}, München`,
   };
-  // Location-Bias statt reiner Namenssuche: München hat mehrere Orte mit
-  // ähnlichen/generischen Namen (z.B. "Goldstück", "Diba") — mit Koordinate
-  // trifft die Suche zuverlässiger den richtigen Eintrag.
+  // Location-Bias statt reiner Namenssuche: siehe looksLikeSameVenue oben.
   if (venue.latitude != null && venue.longitude != null) {
     body.locationBias = {
       circle: { center: { latitude: venue.latitude, longitude: venue.longitude }, radius: 200.0 },
@@ -59,10 +117,11 @@ async function resolvePlaceId(apiKey: string, venue: RatingVenue): Promise<strin
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': apiKey,
-      // Nur die id anfragen — hält Text Search im günstigsten SKU (10.000
-      // kostenlose Anfragen/Monat), das rating-Feld kommt separat über Place
-      // Details, wo es ohnehin gebraucht wird.
-      'X-Goog-FieldMask': 'places.id',
+      // id/displayName/formattedAddress sind alle im günstigsten SKU
+      // (Essentials, 10.000 kostenlose Anfragen/Monat) — displayName und
+      // formattedAddress kosten hier nichts extra, werden aber für die
+      // Fehltreffer-Absicherung (looksLikeSameVenue) gebraucht.
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress',
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -71,21 +130,39 @@ async function resolvePlaceId(apiKey: string, venue: RatingVenue): Promise<strin
     console.warn(`[google-ratings] text search failed for "${venue.name}"`, res.status, await res.text().catch(() => ''));
     return null;
   }
-  const data = (await res.json()) as { places?: { id: string }[] };
-  return data.places?.[0]?.id ?? null;
+  const data = (await res.json()) as { places?: { id: string; displayName?: { text: string }; formattedAddress?: string }[] };
+  const place = data.places?.[0];
+  if (!place) return null;
+  return { id: place.id, name: place.displayName?.text ?? '', address: place.formattedAddress ?? null };
 }
 
-async function fetchRating(apiKey: string, placeId: string): Promise<{ rating: number | null; count: number | null } | null> {
+async function fetchDetails(apiKey: string, placeId: string): Promise<PlaceDetails | null> {
   const res = await fetch(`${PLACES_API_BASE}/places/${placeId}`, {
-    headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': 'rating,userRatingCount' },
+    headers: {
+      'X-Goog-Api-Key': apiKey,
+      // websiteUri/nationalPhoneNumber gehören zum selben Enterprise-Tier
+      // wie rating — kein zusätzlicher Kostenfaktor, da ohnehin schon der
+      // teuerste SKU für dieses Requests bezahlt wird.
+      'X-Goog-FieldMask': 'rating,userRatingCount,websiteUri,nationalPhoneNumber',
+    },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     console.warn('[google-ratings] place details failed', placeId, res.status, await res.text().catch(() => ''));
     return null;
   }
-  const data = (await res.json()) as { rating?: number; userRatingCount?: number };
-  return { rating: data.rating ?? null, count: data.userRatingCount ?? null };
+  const data = (await res.json()) as {
+    rating?: number;
+    userRatingCount?: number;
+    websiteUri?: string;
+    nationalPhoneNumber?: string;
+  };
+  return {
+    rating: data.rating ?? null,
+    count: data.userRatingCount ?? null,
+    website: data.websiteUri ?? null,
+    phone: data.nationalPhoneNumber ?? null,
+  };
 }
 
 export async function run() {
@@ -115,7 +192,7 @@ export async function run() {
 
   const { data: venues, error: fetchError } = await supabase
     .from('venues')
-    .select('id,name,address,latitude,longitude,google_place_id')
+    .select('id,name,address,latitude,longitude,website,phone,google_place_id')
     .order('google_rating_checked_at', { ascending: true, nullsFirst: true })
     .limit(batchSize);
   if (fetchError) { console.error('[google-ratings] could not fetch venues', fetchError); return; }
@@ -123,28 +200,39 @@ export async function run() {
 
   let found = 0;
   let notFound = 0;
+  let rejectedMatch = 0;
   let i = 0;
   for (const venue of venues as RatingVenue[]) {
     i++;
     console.log(`[google-ratings] (${i}/${venues.length}) ${venue.name}`);
     try {
-      const placeId = venue.google_place_id ?? (await resolvePlaceId(apiKey, venue));
+      let placeId = venue.google_place_id;
       if (!placeId) {
-        notFound++;
-        await supabase.from('venues').update({ google_rating_checked_at: new Date().toISOString() }).eq('id', venue.id);
-        continue;
+        // Frische Auflösung: die Kandidaten-Antwort wird gegen looksLikeSameVenue
+        // geprüft, bevor irgendetwas übernommen wird — ein bereits zwischen-
+        // gespeicherter place_id (aus einem früheren Lauf) wurde schon einmal
+        // validiert und wird nicht jeden Tag erneut geprüft.
+        const candidate = await resolvePlaceCandidate(apiKey, venue);
+        if (!candidate || !looksLikeSameVenue(venue, candidate)) {
+          if (candidate) rejectedMatch++;
+          notFound++;
+          await supabase.from('venues').update({ google_rating_checked_at: new Date().toISOString() }).eq('id', venue.id);
+          continue;
+        }
+        placeId = candidate.id;
       }
-      const rating = await fetchRating(apiKey, placeId);
+      const details = await fetchDetails(apiKey, placeId);
       found++;
-      await supabase
-        .from('venues')
-        .update({
-          google_place_id: placeId,
-          google_rating: rating?.rating ?? null,
-          google_rating_count: rating?.count ?? null,
-          google_rating_checked_at: new Date().toISOString(),
-        })
-        .eq('id', venue.id);
+      const update: Record<string, unknown> = {
+        google_place_id: placeId,
+        google_rating: details?.rating ?? null,
+        google_rating_count: details?.count ?? null,
+        google_rating_checked_at: new Date().toISOString(),
+      };
+      // Nur auffüllen, nie überschreiben — siehe Kommentar am Dateianfang.
+      if (!venue.website && details?.website) update.website = details.website;
+      if (!venue.phone && details?.phone) update.phone = details.phone;
+      await supabase.from('venues').update(update).eq('id', venue.id);
     } catch (err) {
       console.warn(`[google-ratings] error processing "${venue.name}"`, err);
     }
@@ -153,7 +241,9 @@ export async function run() {
     await new Promise((r) => setTimeout(r, 250));
   }
 
-  console.log(`[google-ratings] done — ${found} ratings updated, ${notFound} not found on Google`);
+  console.log(
+    `[google-ratings] done — ${found} updated, ${notFound} not found (${rejectedMatch} rejected as likely mismatch)`
+  );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
