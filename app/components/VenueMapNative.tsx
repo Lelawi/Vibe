@@ -18,6 +18,8 @@ type Venue = {
   opening_hours_override: string | null;
   website: string | null;
   image_url: string | null;
+  google_rating: number | null;
+  google_rating_count: number | null;
 };
 
 // Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff — z.B.
@@ -67,7 +69,7 @@ export default function VenueMapNative({
       const [venuesData, reportsRes] = await Promise.all([
         fetchAllVenues<Venue>(
           type,
-          'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url'
+          'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,google_rating,google_rating_count'
         ),
         // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
         // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
@@ -145,6 +147,12 @@ export default function VenueMapNative({
                 </View>
                 {venue.address && <Text style={styles.calloutAddress}>{venue.address}</Text>}
                 {venue.hoursToday && <Text style={styles.calloutHours}>Heute: {venue.hoursToday}</Text>}
+                {venue.google_rating != null && (
+                  <Text style={styles.calloutHours}>
+                    ⭐ {venue.google_rating.toFixed(1).replace('.', ',')}
+                    {venue.google_rating_count != null ? ` (${venue.google_rating_count})` : ''}
+                  </Text>
+                )}
                 {venue.website && (
                   <Pressable onPress={() => Linking.openURL(venue.website!)}>
                     <Text style={styles.calloutLink}>Website öffnen</Text>

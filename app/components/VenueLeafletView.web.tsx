@@ -57,6 +57,8 @@ export type VenueMarker = {
   dinner_menu_url?: string | null;
   beer_price_eur?: number | null;
   wifi?: boolean | null;
+  google_rating?: number | null;
+  google_rating_count?: number | null;
 };
 
 // Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff — z.B.
@@ -273,6 +275,12 @@ const VenueLeafletView = forwardRef<
                   </View>
                   {venue.address && <Text style={styles.popupAddress}>{venue.address}</Text>}
                   {hoursToday && <Text style={styles.popupHours}>{t('venues.today')}: {hoursToday}</Text>}
+                  {venue.google_rating != null && (
+                    <Text style={styles.popupLunchBadge}>
+                      ⭐ {venue.google_rating.toFixed(1).replace('.', ',')}
+                      {venue.google_rating_count != null ? ` (${venue.google_rating_count})` : ''}
+                    </Text>
+                  )}
                   {venue.lunch_available && <Text style={styles.popupLunchBadge}>🍽️ {t('venues.lunch')}</Text>}
                   {venue.beer_price_eur != null && (
                     <Text style={styles.popupLunchBadge}>

@@ -58,6 +58,8 @@ type Venue = {
   dinner_menu_url: string | null;
   beer_price_eur: number | null;
   wifi: boolean | null;
+  google_rating: number | null;
+  google_rating_count: number | null;
 };
 
 const VENUE_BASE_COLUMNS =
@@ -75,25 +77,46 @@ type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
 async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
   const attempts: { columns: string; fill: (v: Record<string, unknown>) => Venue }[] = [
     {
-      columns: `${VENUE_BASE_COLUMNS},name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi`,
+      columns: `${VENUE_BASE_COLUMNS},name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count`,
       fill: (v) => v as unknown as Venue,
     },
     {
+      columns: `${VENUE_BASE_COLUMNS},name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi`,
+      fill: (v) => ({ ...v, google_rating: null, google_rating_count: null } as unknown as Venue),
+    },
+    {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi`,
-      fill: (v) => ({ ...v, name_override: null } as unknown as Venue),
+      fill: (v) => ({ ...v, name_override: null, google_rating: null, google_rating_count: null } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur`,
-      fill: (v) => ({ ...v, name_override: null, wifi: null } as unknown as Venue),
+      fill: (v) =>
+        ({ ...v, name_override: null, wifi: null, google_rating: null, google_rating_count: null } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,beer_price_eur`,
-      fill: (v) => ({ ...v, name_override: null, dinner_menu_url: null, wifi: null } as unknown as Venue),
+      fill: (v) =>
+        ({
+          ...v,
+          name_override: null,
+          dinner_menu_url: null,
+          wifi: null,
+          google_rating: null,
+          google_rating_count: null,
+        } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url`,
       fill: (v) =>
-        ({ ...v, name_override: null, dinner_menu_url: null, beer_price_eur: null, wifi: null } as unknown as Venue),
+        ({
+          ...v,
+          name_override: null,
+          dinner_menu_url: null,
+          beer_price_eur: null,
+          wifi: null,
+          google_rating: null,
+          google_rating_count: null,
+        } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine`,
@@ -106,6 +129,8 @@ async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
           dinner_menu_url: null,
           beer_price_eur: null,
           wifi: null,
+          google_rating: null,
+          google_rating_count: null,
         } as unknown as Venue),
     },
     {
@@ -120,6 +145,8 @@ async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
           dinner_menu_url: null,
           beer_price_eur: null,
           wifi: null,
+          google_rating: null,
+          google_rating_count: null,
         } as unknown as Venue),
     },
   ];
@@ -688,6 +715,8 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           dinner_menu_url: v.dinner_menu_url,
           beer_price_eur: v.beer_price_eur,
           wifi: v.wifi,
+          google_rating: v.google_rating,
+          google_rating_count: v.google_rating_count,
         }))
     );
   }, [type, filteredVenues, loading]);
@@ -1114,6 +1143,13 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           }
           const favoriteButton = renderFavoriteButton(false);
 
+          const ratingNode = item.google_rating != null && (
+            <Text style={styles.lunchBadge}>
+              ⭐ {item.google_rating.toFixed(1).replace('.', ',')}
+              {item.google_rating_count != null ? ` (${item.google_rating_count})` : ''}
+            </Text>
+          );
+
           const primaryCuisine = item.cuisine?.split(';')[0]?.trim();
           const primaryCuisineLabel = primaryCuisine ? cuisineLabel(primaryCuisine, language) : undefined;
           const lunchNode = item.lunch_available && (
@@ -1187,6 +1223,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     </Text>
                   )}
                   {hoursNode}
+                  {ratingNode}
                   {lunchNode}
                   {beerPriceNode}
                   {wifiNode}
@@ -1221,6 +1258,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   </Text>
                 )}
                 {hoursNode}
+                {ratingNode}
                 {lunchNode}
                 {beerPriceNode}
                 {wifiNode}

@@ -39,6 +39,8 @@ type RawVenue = {
   dinner_menu_url: string | null;
   beer_price_eur: number | null;
   wifi: boolean | null;
+  google_rating: number | null;
+  google_rating_count: number | null;
 };
 
 const MUNICH_CENTER = { lat: 48.1371, lng: 11.5754 };
@@ -99,21 +101,32 @@ export default function VenueMapNative({
       // 2263 Restaurants hätte ein einfaches .select() über die Hälfte
       // verschluckt (siehe app/lib/fetchAllVenues.ts).
       const venuesColumns =
-        'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi';
+        'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count';
       const [venuesData, reportsRes] = await Promise.all([
         fetchAllVenues<RawVenue>(type, venuesColumns).catch(async (err) => {
           // name_override (0023)/dinner_menu_url (0021)/beer_price_eur
-          // (0018)/wifi (0022) kamen nachträglich dazu — falls eine dieser
-          // Migrationen noch nicht angewendet wurde, soll die Karte trotzdem
-          // funktionieren (nur ohne die jeweilige Info) statt vom
-          // Direktaufruf der Karte (ohne Listen-Filterkontext, siehe
-          // getFilteredVenuesForMap oben) komplett leer zu bleiben.
-          console.warn('[VenueMapNative] retrying without name_override/dinner_menu_url/beer_price_eur/wifi columns', err);
-          const fallback = await fetchAllVenues<Omit<RawVenue, 'name_override' | 'dinner_menu_url' | 'beer_price_eur' | 'wifi'>>(
-            type,
-            'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url'
+          // (0018)/wifi (0022)/google_rating* (0024) kamen nachträglich dazu
+          // — falls eine dieser Migrationen noch nicht angewendet wurde,
+          // soll die Karte trotzdem funktionieren (nur ohne die jeweilige
+          // Info) statt vom Direktaufruf der Karte (ohne Listen-
+          // Filterkontext, siehe getFilteredVenuesForMap oben) komplett leer
+          // zu bleiben.
+          console.warn(
+            '[VenueMapNative] retrying without name_override/dinner_menu_url/beer_price_eur/wifi/google_rating columns',
+            err
           );
-          return fallback.map((v) => ({ ...v, name_override: null, dinner_menu_url: null, beer_price_eur: null, wifi: null }));
+          const fallback = await fetchAllVenues<
+            Omit<RawVenue, 'name_override' | 'dinner_menu_url' | 'beer_price_eur' | 'wifi' | 'google_rating' | 'google_rating_count'>
+          >(type, 'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url');
+          return fallback.map((v) => ({
+            ...v,
+            name_override: null,
+            dinner_menu_url: null,
+            beer_price_eur: null,
+            wifi: null,
+            google_rating: null,
+            google_rating_count: null,
+          }));
         }),
         // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
         // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
@@ -149,6 +162,8 @@ export default function VenueMapNative({
           dinner_menu_url: v.dinner_menu_url,
           beer_price_eur: v.beer_price_eur,
           wifi: v.wifi,
+          google_rating: v.google_rating,
+          google_rating_count: v.google_rating_count,
         };
       });
   }, [cachedMarkers, venues, closedIds]);

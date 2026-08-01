@@ -29,6 +29,8 @@ export type MapVenueEntry = {
   dinner_menu_url: string | null;
   beer_price_eur: number | null;
   wifi: boolean | null;
+  google_rating: number | null;
+  google_rating_count: number | null;
 };
 
 export type MapEventEntry = {
