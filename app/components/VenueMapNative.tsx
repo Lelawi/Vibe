@@ -10,6 +10,7 @@ import type { VenueType } from './VenueListScreen';
 type Venue = {
   id: string;
   name: string;
+  name_override: string | null;
   address: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -66,7 +67,7 @@ export default function VenueMapNative({
       const [venuesData, reportsRes] = await Promise.all([
         fetchAllVenues<Venue>(
           type,
-          'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url'
+          'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url'
         ),
         // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
         // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
@@ -87,7 +88,12 @@ export default function VenueMapNative({
           // Vom Betreiber gepflegte Öffnungszeiten (Website) sind
           // zuverlässiger als der oft ungenaue/veraltete OSM-Tag.
           const effectiveHours = v.opening_hours_override ?? v.opening_hours_raw;
-          return { ...v, open: isOpenNow(effectiveHours), hoursToday: todayLabel(effectiveHours) };
+          return {
+            ...v,
+            name: v.name_override ?? v.name,
+            open: isOpenNow(effectiveHours),
+            hoursToday: todayLabel(effectiveHours),
+          };
         }),
     [venues, confirmedClosedIds]
   );

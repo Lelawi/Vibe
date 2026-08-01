@@ -55,14 +55,14 @@ async function run() {
 
   const venueIds = (closures ?? []).map((c) => c.venue_id);
   const { data: venues } = venueIds.length
-    ? await supabase.from('venues').select('id,name,type,address').in('id', venueIds)
-    : { data: [] as { id: string; name: string; type: string; address: string | null }[] };
+    ? await supabase.from('venues').select('id,name,name_override,type,address').in('id', venueIds)
+    : { data: [] as { id: string; name: string; name_override: string | null; type: string; address: string | null }[] };
   const venueById = new Map((venues ?? []).map((v) => [v.id, v]));
 
   console.log(`\n[check-feedback] pending venue_closure_reports: ${closures?.length ?? 0}`);
   for (const c of closures ?? []) {
     const venue = venueById.get(c.venue_id);
-    console.log(`- [${venue?.type ?? '?'}] ${venue?.name ?? c.venue_id} (${venue?.address ?? 'keine Adresse'}) — gemeldet ${c.reported_at}`);
+    console.log(`- [${venue?.type ?? '?'}] ${venue?.name_override ?? venue?.name ?? c.venue_id} (${venue?.address ?? 'keine Adresse'}) — gemeldet ${c.reported_at}`);
   }
 }
 

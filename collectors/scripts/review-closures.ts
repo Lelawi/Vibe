@@ -42,14 +42,14 @@ export async function run() {
 
   const { data: venues } = await supabase
     .from('venues')
-    .select('id,name,type,address,website,opening_hours_raw')
+    .select('id,name,name_override,type,address,website,opening_hours_raw')
     .in('id', reports.map((r) => r.venue_id));
   const venueById = new Map((venues ?? []).map((v) => [v.id, v]));
 
   console.log(`[review-closures] ${reports.length} pending report(s):\n`);
   for (const r of reports) {
     const venue = venueById.get(r.venue_id);
-    console.log(`- [${venue?.type ?? '?'}] ${venue?.name ?? '(gelöscht?)'}  [${r.venue_id}]`);
+    console.log(`- [${venue?.type ?? '?'}] ${venue?.name_override ?? venue?.name ?? '(gelöscht?)'}  [${r.venue_id}]`);
     if (venue?.address) console.log(`  Adresse: ${venue.address}`);
     if (venue?.website) console.log(`  Website: ${venue.website}`);
     if (venue?.opening_hours_raw) console.log(`  OSM-Öffnungszeiten: ${venue.opening_hours_raw}`);

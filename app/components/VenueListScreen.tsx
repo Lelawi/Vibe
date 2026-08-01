@@ -43,6 +43,7 @@ export type VenueType = 'bar' | 'restaurant' | 'spaeti';
 type Venue = {
   id: string;
   name: string;
+  name_override: string | null;
   address: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -74,26 +75,32 @@ type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
 async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
   const attempts: { columns: string; fill: (v: Record<string, unknown>) => Venue }[] = [
     {
-      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi`,
+      columns: `${VENUE_BASE_COLUMNS},name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi`,
       fill: (v) => v as unknown as Venue,
     },
     {
+      columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi`,
+      fill: (v) => ({ ...v, name_override: null } as unknown as Venue),
+    },
+    {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur`,
-      fill: (v) => ({ ...v, wifi: null } as unknown as Venue),
+      fill: (v) => ({ ...v, name_override: null, wifi: null } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url,beer_price_eur`,
-      fill: (v) => ({ ...v, dinner_menu_url: null, wifi: null } as unknown as Venue),
+      fill: (v) => ({ ...v, name_override: null, dinner_menu_url: null, wifi: null } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine,lunch_available,lunch_menu_url`,
-      fill: (v) => ({ ...v, dinner_menu_url: null, beer_price_eur: null, wifi: null } as unknown as Venue),
+      fill: (v) =>
+        ({ ...v, name_override: null, dinner_menu_url: null, beer_price_eur: null, wifi: null } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},cuisine`,
       fill: (v) =>
         ({
           ...v,
+          name_override: null,
           lunch_available: false,
           lunch_menu_url: null,
           dinner_menu_url: null,
@@ -106,6 +113,7 @@ async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
       fill: (v) =>
         ({
           ...v,
+          name_override: null,
           cuisine: null,
           lunch_available: false,
           lunch_menu_url: null,
@@ -138,6 +146,7 @@ type NearbyEvent = {
 
 type EnrichedVenue = Venue & {
   effectiveHours: string | null;
+  effectiveName: string;
   open: boolean | null;
   hoursToday: string | null;
   program: NearbyEvent[];
@@ -477,7 +486,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           .limit(1000),
         supabase.from('venue_closure_reports').select('venue_id,status'),
       ]);
-      const sortedVenues = venuesData.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+      const sortedVenues = venuesData.sort((a, b) =>
+        (a.name_override ?? a.name).localeCompare(b.name_override ?? b.name, 'de')
+      );
       const nearby = eventsRes.data ?? [];
       const closureMap = new Map(
         (reportsRes.data ?? []).map((r) => [r.venue_id as string, r.status as ClosureStatus])
@@ -567,12 +578,18 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         // sind zuverlässiger als der oft ungenaue/veraltete OSM-
         // opening_hours-Tag — wo vorhanden, hat der Override Vorrang.
         const effectiveHours = v.opening_hours_override ?? v.opening_hours_raw;
+        // Manuell korrigierter Name (z.B. wenn eine Bar umbenannt wurde, OSM
+        // das aber noch nicht nachgezogen hat) hat Vorrang vor dem vom
+        // Collector aus dem OSM-Tag übernommenen Namen — gleiches Override-
+        // Prinzip wie bei effectiveHours oben.
+        const effectiveName = v.name_override ?? v.name;
         return {
           ...v,
           effectiveHours,
+          effectiveName,
           open: isOpenNow(effectiveHours, now),
           hoursToday: todayLabel(effectiveHours, now, language),
-          program: eventsByVenue.get(canonicalizeVenue(v.name)) ?? [],
+          program: eventsByVenue.get(canonicalizeVenue(effectiveName)) ?? [],
           closureStatus: closureStatusByVenue.get(v.id) ?? null,
           distanceKm:
             userLocation && v.latitude != null && v.longitude != null
@@ -609,7 +626,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   // Spätis gemeldet, obwohl 423 insgesamt gefunden wurden).
   const venuesMatchingOtherFilters = useMemo(() => {
     return enrichedVenues
-      .filter((v) => fuzzyMatch([v.name, v.address, v.cuisine].filter(Boolean).join(' '), search))
+      .filter((v) => fuzzyMatch([v.effectiveName, v.address, v.cuisine].filter(Boolean).join(' '), search))
       .filter((v) => !cuisineFilter || v.cuisine?.split(';').map((c) => c.trim()).includes(cuisineFilter))
       .filter((v) => !lunchOnly || v.lunch_available)
       .filter((v) => !showFavoritesOnly || isFavorite(v.id))
@@ -638,7 +655,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         if (a.distanceKm != null && b.distanceKm != null) return a.distanceKm - b.distanceKm;
         const priorityDiff = OPEN_PRIORITY[openState(a.open)] - OPEN_PRIORITY[openState(b.open)];
         if (priorityDiff !== 0) return priorityDiff;
-        return a.name.localeCompare(b.name, 'de');
+        return a.effectiveName.localeCompare(b.effectiveName, 'de');
       });
   }, [venuesMatchingOtherFilters, onlyOpen, favorites]);
 
@@ -658,7 +675,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         .filter((v) => v.latitude != null && v.longitude != null)
         .map((v) => ({
           id: v.id,
-          name: v.name,
+          name: v.effectiveName,
           address: v.address,
           latitude: v.latitude!,
           longitude: v.longitude!,
@@ -1046,7 +1063,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   style={[styles.actionChip, styles.actionChipMaps]}
                   onPress={(e) => {
                     e.stopPropagation();
-                    openExternalUrl(googleMapsUrl(item.name, item.address));
+                    openExternalUrl(googleMapsUrl(item.effectiveName, item.address));
                   }}
                 >
                   <Ionicons name="map-outline" size={13} color="#c084fc" />
@@ -1064,7 +1081,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   style={styles.reportLinkRow}
                   onPress={(e) => {
                     e.stopPropagation();
-                    confirmReportClosed(item.id, item.name);
+                    confirmReportClosed(item.id, item.effectiveName);
                   }}
                 >
                   <Text style={styles.reportLink}>{t('venues.reportLink')}</Text>
@@ -1160,7 +1177,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   </View>
                 </View>
                 <View style={styles.cardsBody}>
-                  <Text style={styles.venueName}>{item.name}</Text>
+                  <Text style={styles.venueName}>{item.effectiveName}</Text>
                   {(item.address || item.distanceKm != null || primaryCuisineLabel) && (
                     <Text style={styles.venueAddress}>
                       {primaryCuisineLabel ? `${primaryCuisineLabel} · ` : ''}
@@ -1188,7 +1205,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               {image}
               <View style={styles.cardBody}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.venueName}>{item.name}</Text>
+                  <Text style={styles.venueName}>{item.effectiveName}</Text>
                   <View style={styles.cardHeaderBadges}>
                     {item.open === true && <Text style={styles.openBadge}>{t('venues.open')}</Text>}
                     {item.open === false && <Text style={styles.closedBadge}>{t('venues.closed')}</Text>}

@@ -43,6 +43,7 @@
     "bars": "tsx sources/bars/index.ts",
     "restaurants": "tsx sources/restaurants/index.ts",
     "spaetis": "tsx sources/spaetis/index.ts",
+    "google-ratings": "tsx sources/google-ratings/index.ts",
     "review-closures": "tsx scripts/review-closures.ts",
     "check-feedback": "tsx scripts/check-feedback.ts",
     "test:eventim": "tsx --test sources/eventim/index.test.ts",

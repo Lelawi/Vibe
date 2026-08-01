@@ -92,7 +92,9 @@ Env vars (`.env`, not committed): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 `collect-all.ts` falls back to `../app/.env` if `collectors/.env` doesn't
 exist, so a single `.env` in `app/` covers both projects locally. Push
 notification sending additionally needs `VAPID_PUBLIC_KEY`,
-`VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — see Push notifications below.
+`VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — see Push notifications below. The
+Google ratings collector additionally needs `GOOGLE_PLACES_API_KEY` — see
+Google ratings below.
 
 No lint or test scripts are configured for collectors.
 
@@ -197,3 +199,35 @@ native push setup exists.
   `EXPO_PUBLIC_VAPID_PUBLIC_KEY`) and `send-notifications.yml`
   (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — a
   `mailto:` contact address, required by the Web Push protocol).
+
+## Google ratings
+
+The one deliberate exception to "no paid APIs" (see below) — a small,
+hard-budgeted use of the official Google Places API (New), never scraping
+Google Maps/Reviews directly (that would violate Google's ToS regardless of
+technique, be it HTML scraping or repeatedly querying it through a search
+tool).
+
+- `supabase/migrations/0024_venues_google_rating.sql` — adds
+  `google_place_id`, `google_rating`, `google_rating_count`,
+  `google_rating_checked_at` to `venues`.
+- `collectors/sources/google-ratings/index.ts`, run daily
+  (`.github/workflows/google-ratings.yml`) via `npm run google-ratings` in
+  `collectors/`. Resolves each venue's `google_place_id` once via Text Search
+  (cheap, id-only field mask), then fetches `rating`/`userRatingCount` via
+  Place Details — that field pushes Place Details into the pricier
+  "Enterprise" SKU, which only has 1,000 free requests/month (resets on the
+  1st, no rollover). `MONTHLY_BUDGET` in the script self-limits to 900/month
+  as a safety margin, processing up to `DAILY_BATCH` (30) oldest-checked
+  venues per run — full rotation across ~2,500 venues takes ~3 months, then
+  repeats indefinitely to keep ratings from going stale.
+- The real safety net against unexpected charges is **not** this script's
+  self-limiting logic but a hard quota limit set in the Google Cloud Console
+  on the Places API itself (Cloud Billing *budgets* only alert, they don't
+  block requests — *quotas* actually stop them). Never remove or loosen
+  `MONTHLY_BUDGET` without confirming the Cloud Console quota is still set
+  at least as conservatively.
+- `GOOGLE_PLACES_API_KEY` required as a repo secret for
+  `google-ratings.yml`. Setup (Google Cloud project, enabling Places API
+  (New), billing account, API key, hard quota limit) is manual and owned by
+  the project owner — not something this repo or Claude Code can provision.
