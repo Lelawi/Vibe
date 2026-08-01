@@ -35,6 +35,13 @@ function startOfCurrentMonthUtc(): string {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
+// Ohne explizites Timeout hängt ein einzelner ausbleibender Response die
+// gesamte Batch-Verarbeitung unbegrenzt lange auf (per Nutzer-Feedback
+// beobachtet: Lauf stand nach der Start-Log-Zeile 5+ Minuten still, ohne
+// Fehler oder Fortschritt) — 10s ist großzügig für eine einzelne REST-
+// Antwort, aber verhindert einen unbegrenzten Hänger.
+const REQUEST_TIMEOUT_MS = 10_000;
+
 async function resolvePlaceId(apiKey: string, venue: RatingVenue): Promise<string | null> {
   const body: Record<string, unknown> = {
     textQuery: venue.address ? `${venue.name}, ${venue.address}` : `${venue.name}, München`,
@@ -58,8 +65,12 @@ async function resolvePlaceId(apiKey: string, venue: RatingVenue): Promise<strin
       'X-Goog-FieldMask': 'places.id',
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (!res.ok) { console.warn(`[google-ratings] text search failed for "${venue.name}"`, res.status); return null; }
+  if (!res.ok) {
+    console.warn(`[google-ratings] text search failed for "${venue.name}"`, res.status, await res.text().catch(() => ''));
+    return null;
+  }
   const data = (await res.json()) as { places?: { id: string }[] };
   return data.places?.[0]?.id ?? null;
 }
@@ -67,8 +78,12 @@ async function resolvePlaceId(apiKey: string, venue: RatingVenue): Promise<strin
 async function fetchRating(apiKey: string, placeId: string): Promise<{ rating: number | null; count: number | null } | null> {
   const res = await fetch(`${PLACES_API_BASE}/places/${placeId}`, {
     headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': 'rating,userRatingCount' },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (!res.ok) { console.warn('[google-ratings] place details failed', placeId, res.status); return null; }
+  if (!res.ok) {
+    console.warn('[google-ratings] place details failed', placeId, res.status, await res.text().catch(() => ''));
+    return null;
+  }
   const data = (await res.json()) as { rating?: number; userRatingCount?: number };
   return { rating: data.rating ?? null, count: data.userRatingCount ?? null };
 }
@@ -108,7 +123,10 @@ export async function run() {
 
   let found = 0;
   let notFound = 0;
+  let i = 0;
   for (const venue of venues as RatingVenue[]) {
+    i++;
+    console.log(`[google-ratings] (${i}/${venues.length}) ${venue.name}`);
     try {
       const placeId = venue.google_place_id ?? (await resolvePlaceId(apiKey, venue));
       if (!placeId) {
