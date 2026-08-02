@@ -28,6 +28,7 @@ import { setFilteredVenuesForMap } from '../lib/mapFilterCache';
 import { openExternalUrl } from '../lib/openExternalUrl';
 import BottomTabBar, { type BottomTab } from './BottomTabBar';
 import LanguageToggle from './LanguageToggle';
+import VenueFeedbackButton from './VenueFeedbackButton';
 import { registerStrings, useTranslation } from '../lib/strings';
 import type { Language } from '../lib/language';
 
@@ -1105,17 +1106,19 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   ohne jeden Abstand aneinander (per Nutzer-Screenshot
                   gemeldet). Als eigene Zeile ist das unabhängig davon, wie
                   viele Links links stehen, immer lesbar. */}
-              {item.closureStatus !== 'pending' && (
-                <TouchableOpacity
-                  style={styles.reportLinkRow}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    confirmReportClosed(item.id, item.effectiveName);
-                  }}
-                >
-                  <Text style={styles.reportLink}>{t('venues.reportLink')}</Text>
-                </TouchableOpacity>
-              )}
+              <View style={styles.reportLinkRow}>
+                {item.closureStatus !== 'pending' && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      confirmReportClosed(item.id, item.effectiveName);
+                    }}
+                  >
+                    <Text style={styles.reportLink}>{t('venues.reportLink')}</Text>
+                  </TouchableOpacity>
+                )}
+                <VenueFeedbackButton venueId={item.id} />
+              </View>
             </View>
           );
 
@@ -1516,7 +1519,7 @@ const styles = StyleSheet.create({
   actionChipTextMenu: { color: '#f2c94c' },
   actionChipMaps: { borderColor: '#c084fc33', backgroundColor: '#c084fc14' },
   actionChipTextMaps: { color: '#c084fc' },
-  reportLinkRow: { alignSelf: 'flex-start', marginTop: 6 },
+  reportLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
   reportLink: { color: '#555', fontSize: 12 },
   pendingBadge: { color: '#f2c94c', fontSize: 12, fontWeight: '600', marginTop: 8 },
 });

@@ -5,9 +5,11 @@ import { fileURLToPath } from 'url';
 
 // Für den täglichen Cron-Check (siehe /loop-artige Erinnerung) statt einer
 // echten Hintergrund-Automatisierung: fasst neue event_reports (Nutzer-
-// Meldungen zu fehlerhaften Event-Daten, 0003_add_event_reports.sql) und
-// offene venue_closure_reports (Bars & Restaurants, 0012/0013/0015) zusammen. Lädt dotenv selbst statt
-// sich auf collect-all.ts's zentrales Laden zu verlassen, da dieses Skript
+// Meldungen zu fehlerhaften Event-Daten, 0003_add_event_reports.sql), offene
+// venue_closure_reports (Bars & Restaurants, 0012/0013/0015) und neue
+// venue_reports (falsche/fehlende Venue-Daten wie Öffnungszeiten/Bierpreis,
+// 0027_venue_reports.sql) zusammen. Lädt dotenv selbst statt sich auf
+// collect-all.ts's zentrales Laden zu verlassen, da dieses Skript
 // eigenständig läuft.
 //
 // Nutzung: npx tsx collectors/scripts/check-feedback.ts [stundenFenster]
@@ -63,6 +65,25 @@ async function run() {
   for (const c of closures ?? []) {
     const venue = venueById.get(c.venue_id);
     console.log(`- [${venue?.type ?? '?'}] ${venue?.name_override ?? venue?.name ?? c.venue_id} (${venue?.address ?? 'keine Adresse'}) — gemeldet ${c.reported_at}`);
+  }
+
+  const { data: venueReports, error: venueReportsError } = await supabase
+    .from('venue_reports')
+    .select('id,venue_id,reason,note,created_at')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false });
+  if (venueReportsError) console.error('[check-feedback] venue_reports fetch failed', venueReportsError);
+
+  const reportedVenueIds = [...new Set((venueReports ?? []).map((r) => r.venue_id))];
+  const { data: reportedVenues } = reportedVenueIds.length
+    ? await supabase.from('venues').select('id,name,name_override,type,address').in('id', reportedVenueIds)
+    : { data: [] as { id: string; name: string; name_override: string | null; type: string; address: string | null }[] };
+  const reportedVenueById = new Map((reportedVenues ?? []).map((v) => [v.id, v]));
+
+  console.log(`\n[check-feedback] venue_reports in last ${hoursWindow}h: ${venueReports?.length ?? 0}`);
+  for (const r of venueReports ?? []) {
+    const venue = reportedVenueById.get(r.venue_id);
+    console.log(`- [${venue?.type ?? '?'}] ${venue?.name_override ?? venue?.name ?? r.venue_id} — ${r.reason ?? '(kein Grund)'} ${r.note ? `: ${r.note}` : ''} (${r.created_at})`);
   }
 }
 
