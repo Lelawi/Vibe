@@ -2,8 +2,12 @@ name: Collect All Events
 
 on:
   schedule:
-    - cron: '0 6 * * *'
-    - cron: '0 18 * * *'
+    # Minute bewusst nicht :00 — siehe google-ratings.yml: GitHub-Läufe
+    # scheduled exakt zur vollen Stunde sind laut GitHub-Doku am ehesten von
+    # Verzögerung/Ausfall bei High-Load betroffen (2026-08-02 beobachtet:
+    # kein Lauf zur geplanten Zeit).
+    - cron: '7 6 * * *'
+    - cron: '7 18 * * *'
   workflow_dispatch:
 
 jobs:

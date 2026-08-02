@@ -4,7 +4,10 @@ on:
   schedule:
     # Alle 15 Minuten, damit Favoriten-Erinnerungen (3h-Vorlauffenster, siehe
     # collectors/notifications/index.ts) zuverlässig genau einmal treffen.
-    - cron: '*/15 * * * *'
+    # Minute bewusst nicht :00/:15/:30/:45 exakt, sondern leicht versetzt —
+    # siehe google-ratings.yml/collect-all.yml: volle Stunden/Viertelstunden
+    # sind laut GitHub-Doku am ehesten von Scheduling-Verzögerung betroffen.
+    - cron: '3,18,33,48 * * * *'
   workflow_dispatch:
 
 jobs:
