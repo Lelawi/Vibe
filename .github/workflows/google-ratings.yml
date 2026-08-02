@@ -4,8 +4,11 @@ on:
   schedule:
     # Täglich statt seltener: verteilt das Monatsbudget (siehe
     # collectors/sources/google-ratings/index.ts) auf viele kleine Häppchen
-    # statt eines einzelnen großen Laufs.
-    - cron: '0 6 * * *'
+    # statt eines einzelnen großen Laufs. Minute bewusst nicht :00 — laut
+    # GitHub-Doku sind exakte Stundenwechsel die überlastetsten Zeitpunkte
+    # für scheduled workflows und Läufe können dort verzögert oder ganz
+    # ausgelassen werden (am 2026-08-02 beobachtet: kein Lauf um 06:00 UTC).
+    - cron: '17 6 * * *'
   workflow_dispatch:
 
 jobs:
