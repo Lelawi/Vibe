@@ -67,6 +67,7 @@ type Event = {
 // hängen, wo dauerhaft Bildschirmfläche verloren ginge.
 type ListRow =
   | { kind: 'banner' }
+  | { kind: 'filterInfo' }
   | { kind: 'featured'; events: Event[] }
   | { kind: 'group'; group: Event[] };
 
@@ -801,7 +802,7 @@ export default function EventListScreen() {
   // hooks than during the previous render") zum Absturz der ganzen Seite
   // (schwarzer Bildschirm) führte, sobald loading von true auf false wechselte.
   const listData: ListRow[] = useMemo(() => {
-    const rows: ListRow[] = [{ kind: 'banner' }];
+    const rows: ListRow[] = [{ kind: 'banner' }, { kind: 'filterInfo' }];
     // Karussell nur ab 2 Highlights zeigen — bei nur einem Treffer bringt
     // eine eigene Extra-Zeile für dasselbe Event, das eh gleich darunter
     // nochmal in der Liste steht, keinen Mehrwert.
@@ -1169,7 +1170,22 @@ export default function EventListScreen() {
         style={styles.actionButtonRowFade}
       />
       </View>
+      </View>
+    </View>
+  );
 
+  // Ergebniszähler/Radius-Chips/aktive-Filter-Pillen scrollen bewusst NICHT
+  // mehr mit (siehe listData unten, kind: 'filterInfo') — sie standen vorher
+  // alle im selben angehefteten stickyControls-Block wie Suche/Datum/Aktions-
+  // Buttons, wodurch auf dem Handy bei mehreren aktiven Filtern (Nähe +
+  // mehrere Kategorien) bis zu sechs Zeilen dauerhaft den Bildschirm
+  // blockierten, bevor überhaupt eine einzige Veranstaltung sichtbar war
+  // (per Nutzer-Screenshot gemeldet). Nur Suche/Datum/Aktions-Buttons bleiben
+  // angeheftet — das war die ursprüngliche Absicht laut Kommentar oben an
+  // stickyHeaderIndices, ist aber durch nachträglich hier reingewachsene
+  // Abschnitte aufgeweicht worden.
+  const filterInfoSection = (
+    <View style={styles.filterInfoWrap}>
       <View style={styles.resultCountRow}>
         <Text style={styles.resultCount}>
           {eventGroups.length} {eventGroups.length === 1 ? t('events.resultsFoundOne') : t('events.resultsFoundMany')}
@@ -1345,7 +1361,6 @@ export default function EventListScreen() {
           </TouchableOpacity>
         </View>
       )}
-      </View>
     </View>
   );
 
@@ -1389,6 +1404,9 @@ export default function EventListScreen() {
         renderItem={({ item: row }) => {
           if (row.kind === 'banner') {
             return bannerSection;
+          }
+          if (row.kind === 'filterInfo') {
+            return filterInfoSection;
           }
           if (row.kind === 'featured') {
             return (
@@ -1778,6 +1796,7 @@ const styles = StyleSheet.create({
   // transparente Lücken zwischen den Header-Zeilen hindurchschimmern.
   listHeaderWrap: { backgroundColor: '#000' },
   stickyControls: { paddingTop: 12 },
+  filterInfoWrap: { backgroundColor: '#000' },
   headerButtonRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   mapButton: {
     flexDirection: 'row',
