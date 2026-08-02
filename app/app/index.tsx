@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import BottomTabBar from '../components/BottomTabBar';
 import LanguageToggle from '../components/LanguageToggle';
+import FeedbackButton from '../components/FeedbackButton';
 import { registerStrings, useTranslation } from '../lib/strings';
 import { categoryLabel } from '../lib/eventCategories';
 import { supabase } from '../lib/supabase';
@@ -960,7 +961,10 @@ export default function EventListScreen() {
             <Text style={styles.header}>{t('events.title')}</Text>
             <Text style={styles.subheader}>{t('events.subtitle')}</Text>
           </View>
-          <LanguageToggle />
+          <View style={styles.headerActions}>
+            <FeedbackButton />
+            <LanguageToggle />
+          </View>
         </View>
       </LinearGradient>
 
@@ -1744,6 +1748,11 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     paddingBottom: 22,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   headerRow: {
     flexDirection: 'row',

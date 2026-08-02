@@ -46,6 +46,7 @@
     "google-ratings": "tsx sources/google-ratings/index.ts",
     "review-closures": "tsx scripts/review-closures.ts",
     "check-feedback": "tsx scripts/check-feedback.ts",
+    "check-app-feedback": "tsx scripts/check-app-feedback.ts",
     "test:eventim": "tsx --test sources/eventim/index.test.ts",
     "send-notifications": "tsx notifications/index.ts",
     "collect-all": "npm run collect-all:runner",
