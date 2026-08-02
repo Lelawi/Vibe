@@ -4,8 +4,10 @@ on:
   schedule:
     # Wöchentlich statt wie collect-all.yml zweimal täglich — Öffnungszeiten
     # in OpenStreetMap ändern sich selten, ein häufigerer Lauf brächte
-    # keinen Mehrwert.
-    - cron: '0 5 * * 1'
+    # keinen Mehrwert. Minute bewusst nicht :00 — siehe google-ratings.yml/
+    # collect-all.yml: volle Stunden sind laut GitHub-Doku am ehesten von
+    # Scheduling-Verzögerung betroffen.
+    - cron: '11 5 * * 1'
   workflow_dispatch:
 
 jobs:
