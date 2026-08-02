@@ -54,6 +54,7 @@ interface PlaceDetails {
   count: number | null;
   website: string | null;
   phone: string | null;
+  businessStatus: string | null;
 }
 
 function startOfCurrentMonthUtc(): string {
@@ -140,10 +141,10 @@ async function fetchDetails(apiKey: string, placeId: string): Promise<PlaceDetai
   const res = await fetch(`${PLACES_API_BASE}/places/${placeId}`, {
     headers: {
       'X-Goog-Api-Key': apiKey,
-      // websiteUri/nationalPhoneNumber gehören zum selben Enterprise-Tier
-      // wie rating — kein zusätzlicher Kostenfaktor, da ohnehin schon der
-      // teuerste SKU für dieses Requests bezahlt wird.
-      'X-Goog-FieldMask': 'rating,userRatingCount,websiteUri,nationalPhoneNumber',
+      // websiteUri/nationalPhoneNumber/businessStatus gehören alle zum
+      // selben Enterprise-Tier wie rating — kein zusätzlicher Kostenfaktor,
+      // da ohnehin schon der teuerste SKU für diesen Request bezahlt wird.
+      'X-Goog-FieldMask': 'rating,userRatingCount,websiteUri,nationalPhoneNumber,businessStatus',
     },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
@@ -156,12 +157,14 @@ async function fetchDetails(apiKey: string, placeId: string): Promise<PlaceDetai
     userRatingCount?: number;
     websiteUri?: string;
     nationalPhoneNumber?: string;
+    businessStatus?: string;
   };
   return {
     rating: data.rating ?? null,
     count: data.userRatingCount ?? null,
     website: data.websiteUri ?? null,
     phone: data.nationalPhoneNumber ?? null,
+    businessStatus: data.businessStatus ?? null,
   };
 }
 
@@ -190,13 +193,46 @@ export async function run() {
   console.log(`[google-ratings] used ${usedThisMonth ?? 0}/${MONTHLY_BUDGET} this month, processing ${batchSize} now`);
   if (batchSize <= 0) { console.log('[google-ratings] monthly budget exhausted — skipping until next month'); return; }
 
-  const { data: venues, error: fetchError } = await supabase
-    .from('venues')
-    .select('id,name,address,latitude,longitude,website,phone,google_place_id')
-    .order('google_rating_checked_at', { ascending: true, nullsFirst: true })
-    .limit(batchSize);
-  if (fetchError) { console.error('[google-ratings] could not fetch venues', fetchError); return; }
-  if (!venues || venues.length === 0) { console.log('[google-ratings] no venues found'); return; }
+  // Venues mit einer offenen Schließungsmeldung (venue_closure_reports,
+  // status='pending') gehen jeden Tag zuerst in den Batch — das gibt der
+  // Closure-Review-Routine (siehe collectors/scripts/review-closures.ts)
+  // ein frisches google_business_status als zusätzliches Signal, statt
+  // Wochen auf die normale "am längsten nicht geprüft"-Rotation zu warten.
+  // Kein Extra-Budget/-Key nötig, verdrängt nur reguläre Rotations-Slots —
+  // unkritisch, da Schließungsmeldungen selten sind (einstellig/Monat).
+  const VENUE_COLUMNS = 'id,name,address,latitude,longitude,website,phone,google_place_id';
+  const { data: pendingReports } = await supabase
+    .from('venue_closure_reports')
+    .select('venue_id')
+    .eq('status', 'pending');
+  const priorityIds = [...new Set((pendingReports ?? []).map((r) => r.venue_id as string))];
+
+  let venues: RatingVenue[] = [];
+  if (priorityIds.length > 0) {
+    const { data: priorityVenues, error: priorityError } = await supabase
+      .from('venues')
+      .select(VENUE_COLUMNS)
+      .in('id', priorityIds)
+      .limit(batchSize);
+    if (priorityError) console.warn('[google-ratings] could not fetch priority (reported) venues', priorityError);
+    else venues = priorityVenues ?? [];
+  }
+
+  if (venues.length < batchSize) {
+    const { data: rest, error: fetchError } = await supabase
+      .from('venues')
+      .select(VENUE_COLUMNS)
+      .order('google_rating_checked_at', { ascending: true, nullsFirst: true })
+      .limit(batchSize - venues.length + priorityIds.length);
+    if (fetchError) { console.error('[google-ratings] could not fetch venues', fetchError); return; }
+    const existingIds = new Set(venues.map((v) => v.id));
+    for (const v of rest ?? []) {
+      if (venues.length >= batchSize) break;
+      if (!existingIds.has(v.id)) venues.push(v);
+    }
+  }
+  if (venues.length === 0) { console.log('[google-ratings] no venues found'); return; }
+  if (priorityIds.length > 0) console.log(`[google-ratings] prioritizing ${Math.min(priorityIds.length, batchSize)} reported venue(s) this run`);
 
   let found = 0;
   let notFound = 0;
@@ -227,6 +263,7 @@ export async function run() {
         google_place_id: placeId,
         google_rating: details?.rating ?? null,
         google_rating_count: details?.count ?? null,
+        google_business_status: details?.businessStatus ?? null,
         google_rating_checked_at: new Date().toISOString(),
       };
       // Nur auffüllen, nie überschreiben — siehe Kommentar am Dateianfang.
