@@ -1146,9 +1146,15 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           }
           const favoriteButton = renderFavoriteButton(false);
 
-          const ratingNode = item.google_rating != null && (
-            <Text style={styles.lunchBadge}>
-              ⭐ {item.google_rating.toFixed(1).replace('.', ',')}
+          // Direkt neben dem Namen statt als eigene Zeile weiter unten bei
+          // Bierpreis/Mittagskarte/WLAN — dort war es per Nutzer-Feedback
+          // schon zu voll (alles in derselben Farbe/Zeilenoptik). Als
+          // verschachtelter <Text> im Namen bleibt der Zeilenumbruch/
+          // flexShrink des umgebenden venueName-Texts erhalten.
+          const ratingInline = item.google_rating != null && (
+            <Text style={styles.ratingInline}>
+              {'  ⭐ '}
+              {item.google_rating.toFixed(1).replace('.', ',')}
               {item.google_rating_count != null ? ` (${item.google_rating_count})` : ''}
             </Text>
           );
@@ -1216,7 +1222,10 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   </View>
                 </View>
                 <View style={styles.cardsBody}>
-                  <Text style={styles.venueName}>{item.effectiveName}</Text>
+                  <Text style={styles.venueName}>
+                    {item.effectiveName}
+                    {ratingInline}
+                  </Text>
                   {(item.address || item.distanceKm != null || primaryCuisineLabel) && (
                     <Text style={styles.venueAddress}>
                       {primaryCuisineLabel ? `${primaryCuisineLabel} · ` : ''}
@@ -1226,7 +1235,6 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                     </Text>
                   )}
                   {hoursNode}
-                  {ratingNode}
                   {lunchNode}
                   {beerPriceNode}
                   {wifiNode}
@@ -1245,7 +1253,10 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               {image}
               <View style={styles.cardBody}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.venueName}>{item.effectiveName}</Text>
+                  <Text style={styles.venueName}>
+                    {item.effectiveName}
+                    {ratingInline}
+                  </Text>
                   <View style={styles.cardHeaderBadges}>
                     {item.open === true && <Text style={styles.openBadge}>{t('venues.open')}</Text>}
                     {item.open === false && <Text style={styles.closedBadge}>{t('venues.closed')}</Text>}
@@ -1261,7 +1272,6 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   </Text>
                 )}
                 {hoursNode}
-                {ratingNode}
                 {lunchNode}
                 {beerPriceNode}
                 {wifiNode}
@@ -1465,6 +1475,7 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   venueName: { color: '#fff', fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  ratingInline: { color: '#f2c94c', fontSize: 13, fontWeight: '600' },
   openBadge: {
     fontSize: 11,
     fontWeight: '700',
