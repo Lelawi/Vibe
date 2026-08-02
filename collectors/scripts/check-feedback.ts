@@ -67,6 +67,30 @@ async function run() {
     console.log(`- [${venue?.type ?? '?'}] ${venue?.name_override ?? venue?.name ?? c.venue_id} (${venue?.address ?? 'keine Adresse'}) — gemeldet ${c.reported_at}`);
   }
 
+  // Meldungen, die die Review-Routine explizit als "noch offen" bewertet hat
+  // (also NICHT aus der App entfernt wurden) — kein eigener Reviewzeitstempel
+  // in der Tabelle vorhanden (nur reported_at), daher hier bewusst ohne
+  // Zeitfenster: alle rejected-Zeilen, zum gelegentlichen Stichproben-Gegen-
+  // check, falls die Routine sich mal irrt (per Nutzer-Wunsch 2026-08-02).
+  const { data: rejected, error: rejectedError } = await supabase
+    .from('venue_closure_reports')
+    .select('venue_id,reported_at,status')
+    .eq('status', 'rejected')
+    .order('reported_at', { ascending: false });
+  if (rejectedError) console.error('[check-feedback] rejected venue_closure_reports fetch failed', rejectedError);
+
+  const rejectedVenueIds = (rejected ?? []).map((c) => c.venue_id);
+  const { data: rejectedVenues } = rejectedVenueIds.length
+    ? await supabase.from('venues').select('id,name,name_override,type,address').in('id', rejectedVenueIds)
+    : { data: [] as { id: string; name: string; name_override: string | null; type: string; address: string | null }[] };
+  const rejectedVenueById = new Map((rejectedVenues ?? []).map((v) => [v.id, v]));
+
+  console.log(`\n[check-feedback] rejected venue_closure_reports (zur Stichprobe, insgesamt): ${rejected?.length ?? 0}`);
+  for (const c of rejected ?? []) {
+    const venue = rejectedVenueById.get(c.venue_id);
+    console.log(`- [${venue?.type ?? '?'}] ${venue?.name_override ?? venue?.name ?? c.venue_id} (${venue?.address ?? 'keine Adresse'}) — gemeldet ${c.reported_at}`);
+  }
+
   const { data: venueReports, error: venueReportsError } = await supabase
     .from('venue_reports')
     .select('id,venue_id,reason,note,created_at')
