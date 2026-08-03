@@ -8,6 +8,10 @@ on:
     # GitHub-Doku sind exakte Stundenwechsel die überlastetsten Zeitpunkte
     # für scheduled workflows und Läufe können dort verzögert oder ganz
     # ausgelassen werden (am 2026-08-02 beobachtet: kein Lauf um 06:00 UTC).
+    # Cron am 2026-08-03 erneut angefasst (nur Neu-Registrierung erzwungen,
+    # Zeit unverändert) — der 06:17-Termin feuerte trotz des Wechsels weg von
+    # :00 zweimal nicht, ein bekannter GitHub-Bug bei kürzlich geänderten
+    # Zeitplänen lässt sich oft nur durch erneutes Anfassen/Pushen beheben.
     - cron: '17 6 * * *'
   workflow_dispatch:
 
