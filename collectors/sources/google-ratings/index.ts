@@ -41,6 +41,7 @@ interface RatingVenue {
   website: string | null;
   phone: string | null;
   google_place_id: string | null;
+  google_not_found_streak: number | null;
 }
 
 interface PlaceCandidate {
@@ -200,7 +201,7 @@ export async function run() {
   // Wochen auf die normale "am längsten nicht geprüft"-Rotation zu warten.
   // Kein Extra-Budget/-Key nötig, verdrängt nur reguläre Rotations-Slots —
   // unkritisch, da Schließungsmeldungen selten sind (einstellig/Monat).
-  const VENUE_COLUMNS = 'id,name,address,latitude,longitude,website,phone,google_place_id';
+  const VENUE_COLUMNS = 'id,name,address,latitude,longitude,website,phone,google_place_id,google_not_found_streak';
   const { data: pendingReports } = await supabase
     .from('venue_closure_reports')
     .select('venue_id')
@@ -252,7 +253,18 @@ export async function run() {
         if (!candidate || !looksLikeSameVenue(venue, candidate)) {
           if (candidate) rejectedMatch++;
           notFound++;
-          await supabase.from('venues').update({ google_rating_checked_at: new Date().toISOString() }).eq('id', venue.id);
+          // Streak nur hochzählen, nicht raten, wie viele Tage dazwischen
+          // liegen — bei Prioritäts-Venues (offene Schließungsmeldung) ist
+          // das täglich, bei der regulären Rotation seltener, aber die
+          // Closure-Review-Routine nutzt das Signal ohnehin nur für
+          // Venues mit einer offenen Meldung (siehe deren Prompt).
+          await supabase
+            .from('venues')
+            .update({
+              google_rating_checked_at: new Date().toISOString(),
+              google_not_found_streak: (venue.google_not_found_streak ?? 0) + 1,
+            })
+            .eq('id', venue.id);
           continue;
         }
         placeId = candidate.id;
@@ -265,6 +277,7 @@ export async function run() {
         google_rating_count: details?.count ?? null,
         google_business_status: details?.businessStatus ?? null,
         google_rating_checked_at: new Date().toISOString(),
+        google_not_found_streak: 0,
       };
       // Nur auffüllen, nie überschreiben — siehe Kommentar am Dateianfang.
       if (!venue.website && details?.website) update.website = details.website;
