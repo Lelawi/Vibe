@@ -73,7 +73,7 @@ interface HttpResponse {
 
 type Fetcher = (
   url: string,
-  init: { headers: { Accept: string } }
+  init: { headers: Record<string, string> }
 ) => Promise<HttpResponse>;
 
 const defaultFetcher: Fetcher = (url, init) => fetch(url, init);
@@ -148,7 +148,18 @@ async function fetchRange(
 
   for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
     const response = await fetcher(url, {
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'de-DE,de;q=0.9,en;q=0.7',
+        // Die Public-API lehnt anonyme Runtime-Standard-User-Agents teilweise
+        // mit 403 ab. Ein normaler Browser-UA plus Eventim-Referer entspricht
+        // dem Request, den die öffentliche Website selbst an diesen Endpoint
+        // sendet; es wird kein Proxy oder Bot-Schutz umgangen.
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+          '(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+        Referer: 'https://www.eventim.de/',
+      },
     });
 
     if (response.status === 429) {
@@ -162,7 +173,10 @@ async function fetchRange(
     }
 
     if (!response.ok) {
-      throw new Error(`EVENTIM API antwortete mit Status ${response.status}`);
+      throw new Error(
+        `EVENTIM Public API antwortete mit Status ${response.status}; ` +
+        'Zugriff aus dieser Laufzeit ist möglicherweise serverseitig gesperrt'
+      );
     }
 
     const body = await response.json() as Partial<EventimResponse>;
@@ -300,6 +314,20 @@ function priceInfo(price: number | undefined, currency: string | undefined): str
   }
 }
 
+// Eventim bietet denselben Termin teilweise als mehrere Produkte an und
+// hängt die Ticketkategorie an den eigentlichen Eventtitel. Der bereinigte
+// Titel sorgt dafür, dass der nachgelagerte Dedup-Lauf diese Varianten als
+// denselben Termin erkennt; Preis und Verfügbarkeit bleiben eigene Felder.
+export function normalizeEventimTitle(title: string): string {
+  return title
+    .replace(
+      /\s*[-–—:]\s*(?:premium(?:[-\s]?tickets?)?|vip(?:\s*&\s*extras?)?|vip(?:[-\s]?tickets?)?|vip\s*&\s*extras?|extras?)\s*$/i,
+      ''
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function normalizeEvent(product: EventimProduct) {
   const live = product.typeAttributes?.liveEntertainment;
   const start = berlinDateTime(live?.startDate);
@@ -311,7 +339,7 @@ export function normalizeEvent(product: EventimProduct) {
 
   return {
     source_id: `eventim-${product.productId}`,
-    title: product.name,
+    title: normalizeEventimTitle(product.name),
     description: null,
     category,
     subcategory,

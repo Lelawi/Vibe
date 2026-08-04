@@ -672,11 +672,6 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     return venuesMatchingOtherFilters
       .filter((v) => !onlyOpen || v.open === true)
       .sort((a, b) => {
-        // Favoriten immer zuerst — der Grund, warum man einen Ort favorisiert
-        // hat, ändert sich nicht danach, ob er gerade offen hat oder wie weit
-        // er weg ist.
-        const favDiff = Number(isFavorite(b.id)) - Number(isFavorite(a.id));
-        if (favDiff !== 0) return favDiff;
         // Bei aktiver Nähe-Suche zählt nur die Entfernung — der eigentliche
         // Zweck ist "was ist gleich um die Ecke", ein offener Ort 3km weiter
         // weg soll einen geschlossenen direkt nebenan nicht überstimmen.
@@ -685,7 +680,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         if (priorityDiff !== 0) return priorityDiff;
         return a.effectiveName.localeCompare(b.effectiveName, 'de');
       });
-  }, [venuesMatchingOtherFilters, onlyOpen, favorites]);
+  }, [venuesMatchingOtherFilters, onlyOpen]);
 
   // Damit die Karte (VenueMapNative.web.tsx) exakt dieselben Treffer zeigen
   // kann wie die gerade aktive Filterkombination hier, ohne die komplette

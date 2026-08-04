@@ -119,6 +119,18 @@ function formatEndDateSuffix(startDate: string, endDate: string | null): string 
   return ` – bis ${day}.${month}.`;
 }
 
+// Mehrwöchige Ausstellungen und andere Dauerläufer bleiben auffindbar,
+// stehen im allgemeinen Feed aber hinter punktuellen bzw. kurzen Events.
+// Vierzehn Tage trennt typische Festivals/Messen von monatelangen Einträgen,
+// ohne ein normales langes Wochenende abzuwerten.
+const LONG_RUNNING_DAYS = 14;
+function isLongRunningEvent(event: Pick<Event, 'start_date' | 'end_date'>): boolean {
+  if (!event.end_date) return false;
+  const start = Date.parse(`${event.start_date}T00:00:00Z`);
+  const end = Date.parse(`${event.end_date}T00:00:00Z`);
+  return Number.isFinite(start) && Number.isFinite(end) && (end - start) / 86_400_000 >= LONG_RUNNING_DAYS;
+}
+
 // "YYYY-MM-DD" -> "DD.MM." und "DD.MM.YYYY", damit die Suche auch das in
 // Deutschland übliche numerische Format findet (formatDate() liefert nur
 // den ausgeschriebenen Wochentag/Monat, z.B. "Di., 25. Aug.", worin "25.08"
@@ -717,6 +729,8 @@ export default function EventListScreen() {
     const groups = Array.from(map.values()).map((evts) =>
       [...evts].sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
     );
+    const longRunningDiff = (a: Event[], b: Event[]) =>
+      Number(isLongRunningEvent(a[0])) - Number(isLongRunningEvent(b[0]));
 
     if (userLocation) {
       // Events ohne Koordinaten ans Ende, Rest nach Entfernung aufsteigend.
@@ -724,32 +738,17 @@ export default function EventListScreen() {
         e.latitude !== null && e.longitude !== null
           ? distanceKm(userLocation.lat, userLocation.lng, e.latitude, e.longitude)
           : Infinity;
-      groups.sort((a, b) => dist(a[0]) - dist(b[0]));
+      groups.sort((a, b) => longRunningDiff(a, b) || dist(a[0]) - dist(b[0]));
       if (nearbyRadiusKm !== null) {
         // Events ohne Koordinaten (dist === Infinity) fallen bei aktivem
         // Umkreis automatisch raus, da ihre Entfernung nicht bestimmbar ist.
         return groups.filter((g) => dist(g[0]) <= nearbyRadiusKm);
       }
     } else {
-      groups.sort((a, b) => sortKey(a[0]).localeCompare(sortKey(b[0])));
+      groups.sort((a, b) => longRunningDiff(a, b) || sortKey(a[0]).localeCompare(sortKey(b[0])));
     }
     return groups;
   }, [filteredEvents, userLocation, nearbyRadiusKm]);
-
-  // Genre-Profil aus den eigenen Favoriten: welche Genres tauchen unter den
-  // (noch bevorstehenden) favorisierten Events am häufigsten auf. Ohne Login/
-  // Accounts ist das die einzige verfügbare "Geschmacks"-Information — nur
-  // aus aktuell geladenen (=künftigen) Events ableitbar, bereits vergangene
-  // Favoriten fließen nicht ein, da sie gar nicht mehr geladen werden.
-  const favoriteGenreProfile = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const e of enrichedEvents) {
-      if (favorites.includes(e.id)) {
-        counts.set(e.eventGenre, (counts.get(e.eventGenre) ?? 0) + 1);
-      }
-    }
-    return counts;
-  }, [enrichedEvents, favorites]);
 
   // "Empfohlen"-Leiste nach dem Vorbild von Apps wie Posh/DICE: statt einer
   // reinen chronologischen Liste ein paar Bild-starke Highlights zum
@@ -757,17 +756,19 @@ export default function EventListScreen() {
   // Termin (group[0]) und verlangt ein Bild, sonst wäre die Leiste optisch
   // nicht von der Liste unterscheidbar.
   //
-  // Tatsächlich personalisiert statt nur chronologisch: eigene Favoriten
-  // zuerst, dann Events von gefolgten Veranstaltern ("Lieblingskünstler"),
-  // dann Events, deren Genre häufig unter den eigenen Favoriten vorkommt,
-  // erst danach schlicht chronologisch. Innerhalb jeder Stufe bleibt die
+  // Events von gefolgten Veranstaltern zuerst, danach chronologisch. Eigene
+  // Favoriten beeinflussen diese Leiste bewusst nicht: Sie sollen nur beim
+  // explizit aktivierten Favoriten-Filter isoliert werden. Innerhalb jeder
+  // Stufe bleibt die
   // bisherige Sortierung (Datum bzw. Nähe) erhalten — Array.sort ist seit
   // ES2019 stabil, ein reiner Score-Vergleich verändert die Reihenfolge
   // gleich bewerteter Events also nicht. Zusätzlich ein Diversitäts-Deckel
   // (max. 2 pro Veranstalter/Location), damit ein einzelner Anbieter mit
   // vielen Terminen nicht die ganze Leiste füllt.
   const featuredEvents = useMemo(() => {
-    const candidates = eventGroups.map((g) => g[0]).filter((e) => e.image_url);
+    const candidates = eventGroups
+      .map((g) => g[0])
+      .filter((e) => e.image_url && !isLongRunningEvent(e));
 
     // eventGroups ist als Event[] getypt (verliert die eventGenre/
     // eventCanonicalLocation-Zusatzfelder von enrichedEvents auf
@@ -775,9 +776,7 @@ export default function EventListScreen() {
     // die (zur Laufzeit zwar vorhandenen, statisch aber unbekannten) Felder
     // anzusprechen — bei einer Handvoll Kandidaten kein Performance-Thema.
     function score(e: (typeof candidates)[number]): number {
-      if (favorites.includes(e.id)) return 3;
-      if (e.organizer && followedOrganizers.includes(e.organizer)) return 2;
-      if (favoriteGenreProfile.has(normalizeGenreGroup(e.subcategory ?? e.category))) return 1;
+      if (e.organizer && followedOrganizers.includes(e.organizer)) return 1;
       return 0;
     }
 
@@ -794,7 +793,7 @@ export default function EventListScreen() {
       if (result.length >= 10) break;
     }
     return result;
-  }, [eventGroups, favorites, followedOrganizers, favoriteGenreProfile]);
+  }, [eventGroups, followedOrganizers]);
 
   // Muss vor dem frühen "if (loading) return"-Block unten stehen — Hooks
   // dürfen laut React-Regeln nie bedingt übersprungen werden. Stand hier

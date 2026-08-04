@@ -22,7 +22,6 @@
     "gasteig-hp8": "tsx sources/gasteig_hp8/index.ts",
     "unter-deck": "tsx sources/unter_deck/index.ts",
     "bahnwaerter-thiel": "tsx sources/bahnwaerter_thiel/index.ts",
-    "blitz-club": "tsx sources/blitz_club/index.ts",
     "tonhalle": "tsx sources/tonhalle/index.ts",
     "volkstheater": "tsx sources/volkstheater/index.ts",
     "residenztheater": "tsx sources/residenztheater/index.ts",
@@ -40,6 +39,7 @@
     "eventim": "tsx sources/eventim/index.ts",
     "wannda": "tsx sources/wannda/index.ts",
     "kino-mond-sterne": "tsx sources/kino_mond_sterne/index.ts",
+    "theatron": "tsx sources/theatron/index.ts",
     "bars": "tsx sources/bars/index.ts",
     "restaurants": "tsx sources/restaurants/index.ts",
     "spaetis": "tsx sources/spaetis/index.ts",
@@ -48,6 +48,7 @@
     "check-feedback": "tsx scripts/check-feedback.ts",
     "check-app-feedback": "tsx scripts/check-app-feedback.ts",
     "test:eventim": "tsx --test sources/eventim/index.test.ts",
+    "test:theatron": "tsx --test sources/theatron/index.test.ts",
     "send-notifications": "tsx notifications/index.ts",
     "collect-all": "npm run collect-all:runner",
     "collect-all:runner": "tsx collect-all.ts"

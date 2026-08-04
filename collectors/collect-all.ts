@@ -20,7 +20,6 @@ import { run as runTechnikum } from './sources/technikum/index.js';
 import { run as runGasteigHp8 } from './sources/gasteig_hp8/index.js';
 import { run as runUnterDeck } from './sources/unter_deck/index.js';
 import { run as runBahnwaerterThiel } from './sources/bahnwaerter_thiel/index.js';
-import { run as runBlitzClub } from './sources/blitz_club/index.js';
 import { run as runTonhalle } from './sources/tonhalle/index.js';
 import { run as runVolkstheater } from './sources/volkstheater/index.js';
 import { run as runResidenztheater } from './sources/residenztheater/index.js';
@@ -38,6 +37,7 @@ import { run as runEintrittfreiMuenchen } from './sources/eintrittfrei_muenchen/
 import { run as runEventim } from './sources/eventim/index.js';
 import { run as runWannda } from './sources/wannda/index.js';
 import { run as runKinoMondSterne } from './sources/kino_mond_sterne/index.js';
+import { run as runTheatron } from './sources/theatron/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -81,9 +81,10 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // gemeinsamer Host, also auch keine Drossel-Pause nötig).
 //
 // Hinweis zu in-muenchen.de-basierten Quellen (p1, muenchen-de, feierwerk,
-// rote-sonne, technikum, gasteig-hp8, unter-deck, blitz-club, tonhalle,
+// rote-sonne, technikum, gasteig-hp8, unter-deck, tonhalle,
 // volkstheater, residenztheater): Lauf vom 2026-07-29
-// (Commit 8743e52) lieferte nur von blitz-club (1) und residenztheater (1)
+// (Commit 8743e52) lieferte nur von residenztheater (1) sowie der inzwischen
+// entfernten Quelle blitz-club (1)
 // überhaupt Events, alle anderen 0 — trotz direkt verifizierter, echter
 // Event-Daten auf jeder einzelnen Seite. Der Code ist also nicht das
 // Problem. Wahrscheinlichste Ursache: in-muenchen.de blockt oder drosselt
@@ -101,7 +102,8 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // in der Produktion (siehe Kommentar oben) erklären könnte.
 // UPDATE 2026-07-29: auch nach der 4s-Pause liefern die in-muenchen.de-
 // Quellen in Produktion weiterhin fast nur 0 Events (Live-Datenstand
-// geprüft: nur blitz-club und residenztheater mit je 1 Event, alle
+// geprüft: nur residenztheater sowie die inzwischen entfernte Quelle
+// blitz-club mit je 1 Event, alle
 // anderen — inkl. muenchen-de — komplett leer), während ein direkter
 // Abruf derselben Seiten von einem normalen (nicht-GH-Actions-)Rechner aus
 // weiterhin anstandslos funktioniert (200, echte Events im HTML). Das
@@ -128,6 +130,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'eventim', run: runEventim, host: 'public-api.eventim.com' },
   { name: 'wannda', run: runWannda },
   { name: 'kino-mond-sterne', run: runKinoMondSterne },
+  { name: 'theatron', run: runTheatron },
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.
@@ -139,7 +142,6 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'gasteig-hp8', run: runGasteigHp8, host: 'in-muenchen.de' },
   { name: 'unter-deck', run: runUnterDeck, host: 'in-muenchen.de' },
   { name: 'bahnwaerter-thiel', run: runBahnwaerterThiel },
-  { name: 'blitz-club', run: runBlitzClub, host: 'in-muenchen.de' },
   { name: 'tonhalle', run: runTonhalle, host: 'in-muenchen.de' },
   { name: 'volkstheater', run: runVolkstheater, host: 'in-muenchen.de' },
   { name: 'residenztheater', run: runResidenztheater, host: 'in-muenchen.de' },

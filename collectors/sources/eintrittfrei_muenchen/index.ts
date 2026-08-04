@@ -71,6 +71,10 @@ export async function run() {
 
       for (const ev of events) {
         if (!ev.name || !ev.startDate || !ev.url) continue;
+        // Das offizielle Theatron-Programm wird slotweise vom eigenen
+        // Collector erfasst; dieses mehrwöchige Gesamtevent nicht parallel
+        // erneut anlegen.
+        if (/^theatron musik\s*-?\s*sommer/i.test(ev.name)) continue;
         if (seenUrls.has(ev.url)) continue;
         seenUrls.add(ev.url);
 

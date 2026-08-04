@@ -66,3 +66,27 @@ export async function submitFeedback(
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
+
+export type MissingItemInput = {
+  kind: 'event' | 'location';
+  name: string;
+  eventDate?: string;
+  location?: string;
+  sourceUrl?: string;
+  note?: string;
+  pageContext: string;
+};
+
+export async function submitMissingItem(input: MissingItemInput): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from('missing_items').insert({
+    kind: input.kind,
+    name: input.name.trim(),
+    event_date: input.kind === 'event' && input.eventDate?.trim() ? input.eventDate.trim() : null,
+    location: input.location?.trim() || null,
+    source_url: input.sourceUrl?.trim() || null,
+    note: input.note?.trim() || null,
+    page_context: input.pageContext,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}

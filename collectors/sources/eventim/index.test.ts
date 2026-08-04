@@ -4,6 +4,7 @@ import {
   collectUpcomingProducts,
   berlinToday,
   normalizeEvent,
+  normalizeEventimTitle,
   type EventimProduct,
 } from './index';
 
@@ -51,9 +52,11 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
   let activeRequests = 0;
   let maxActiveRequests = 0;
   let rateLimited = true;
-  const fetcher = async (url: string) => {
+  const requestHeaders: Record<string, string>[] = [];
+  const fetcher = async (url: string, init: { headers: Record<string, string> }) => {
     const parsed = new URL(url);
     urls.push(parsed);
+    requestHeaders.push(init.headers);
     activeRequests += 1;
     maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
     await Promise.resolve();
@@ -106,6 +109,8 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
   );
 
   assert.equal(urls.length, 7);
+  assert.match(requestHeaders[0]['User-Agent'], /Mozilla/);
+  assert.equal(requestHeaders[0].Referer, 'https://www.eventim.de/');
   assert.equal(maxActiveRequests, 1);
   assert.deepEqual(sleeps, [0]);
   assert.equal(urls.filter((url) => url.searchParams.has('time_from')).length, 3);
@@ -133,4 +138,10 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
     longitude: 11.521,
   });
   assert.equal(normalizeEvent({ ...result[0], price: undefined })?.price_info, null);
+});
+
+test('bereinigt Ticketvarianten, ohne normale Eventtitel zu verändern', () => {
+  assert.equal(normalizeEventimTitle('Jurassic World: The Experience - Premium-Ticket'), 'Jurassic World: The Experience');
+  assert.equal(normalizeEventimTitle('Jurassic World: The Experience – VIP & Extras'), 'Jurassic World: The Experience');
+  assert.equal(normalizeEventimTitle('VIP Club Night'), 'VIP Club Night');
 });

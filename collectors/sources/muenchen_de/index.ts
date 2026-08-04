@@ -58,6 +58,7 @@ export async function run() {
         }
       }
       if (!ev.name || !start_date || start_date < today) continue;
+      if (/^theatron musik\s*-?\s*sommer/i.test(ev.name)) continue;
 
       const eventUrl = ev.url ?? MUENCHEN_DE_URL;
       const sourceId = buildStableSourceId('muenchen-de', String(eventUrl), start_date);

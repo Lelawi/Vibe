@@ -202,11 +202,24 @@ export async function run() {
   // Kein Extra-Budget/-Key nötig, verdrängt nur reguläre Rotations-Slots —
   // unkritisch, da Schließungsmeldungen selten sind (einstellig/Monat).
   const VENUE_COLUMNS = 'id,name,address,latitude,longitude,website,phone,google_place_id,google_not_found_streak';
-  const { data: pendingReports } = await supabase
+  // Bestätigt geschlossene Venues werden in der App bereits ausgeblendet und
+  // dürfen deshalb auch kein knappes Google-Places-Budget mehr verbrauchen.
+  // Der bestehende Closure-Status ist hier die Quelle der Wahrheit; ein
+  // separates deleted_at-Feld besitzt das aktuelle venues-Schema nicht.
+  const { data: closureReports, error: closureReportsError } = await supabase
     .from('venue_closure_reports')
-    .select('venue_id')
-    .eq('status', 'pending');
-  const priorityIds = [...new Set((pendingReports ?? []).map((r) => r.venue_id as string))];
+    .select('venue_id,status')
+    .in('status', ['pending', 'confirmed']);
+  if (closureReportsError) {
+    console.error('[google-ratings] could not determine inactive venues — aborting', closureReportsError);
+    return;
+  }
+  const priorityIds = [...new Set(
+    (closureReports ?? []).filter((r) => r.status === 'pending').map((r) => r.venue_id as string)
+  )];
+  const inactiveIds = new Set(
+    (closureReports ?? []).filter((r) => r.status === 'confirmed').map((r) => r.venue_id as string)
+  );
 
   let venues: RatingVenue[] = [];
   if (priorityIds.length > 0) {
@@ -216,7 +229,7 @@ export async function run() {
       .in('id', priorityIds)
       .limit(batchSize);
     if (priorityError) console.warn('[google-ratings] could not fetch priority (reported) venues', priorityError);
-    else venues = priorityVenues ?? [];
+    else venues = (priorityVenues ?? []).filter((venue) => !inactiveIds.has(venue.id));
   }
 
   if (venues.length < batchSize) {
@@ -224,12 +237,14 @@ export async function run() {
       .from('venues')
       .select(VENUE_COLUMNS)
       .order('google_rating_checked_at', { ascending: true, nullsFirst: true })
-      .limit(batchSize - venues.length + priorityIds.length);
+      // Genügend Zeilen laden, damit lokal herausgefilterte, bestätigt
+      // geschlossene Venues den Batch nicht verkleinern.
+      .limit(batchSize - venues.length + priorityIds.length + inactiveIds.size);
     if (fetchError) { console.error('[google-ratings] could not fetch venues', fetchError); return; }
     const existingIds = new Set(venues.map((v) => v.id));
     for (const v of rest ?? []) {
       if (venues.length >= batchSize) break;
-      if (!existingIds.has(v.id)) venues.push(v);
+      if (!existingIds.has(v.id) && !inactiveIds.has(v.id)) venues.push(v);
     }
   }
   if (venues.length === 0) { console.log('[google-ratings] no venues found'); return; }
