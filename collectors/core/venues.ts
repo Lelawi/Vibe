@@ -46,6 +46,78 @@ interface OverpassElement {
   tags?: Record<string, string>;
 }
 
+type NearbyVenueCandidate = {
+  osm_id: number;
+  name: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  website?: string | null;
+  phone?: string | null;
+  opening_hours_raw?: string | null;
+};
+
+function normalizedVenueName(value: string): string {
+  return value
+    .toLocaleLowerCase('de')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function distanceMeters(a: NearbyVenueCandidate, b: NearbyVenueCandidate): number {
+  const toRadians = (degrees: number) => degrees * Math.PI / 180;
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+  const deltaLat = lat2 - lat1;
+  const deltaLon = toRadians(b.longitude - a.longitude);
+  const h = Math.sin(deltaLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
+}
+
+function venueCompletenessScore(venue: NearbyVenueCandidate): number {
+  return (venue.address ? 2 : 0)
+    + (/\b\d{5}\b/.test(venue.address ?? '') ? 1 : 0)
+    + (/m(?:ü|u)nchen/i.test(venue.address ?? '') ? 2 : 0)
+    + (venue.website ? 1 : 0)
+    + (venue.phone ? 1 : 0)
+    + (venue.opening_hours_raw ? 1 : 0);
+}
+
+// OSM enthält gelegentlich zwei Nodes für denselben realen Ort. Nur bei
+// identischem normalisiertem Namen UND unmittelbarer räumlicher Nähe wird
+// zusammengeführt, damit gleichnamige Filialen erhalten bleiben. Der
+// vollständigere Node gewinnt; fehlende Sachfelder werden vom zweiten Node
+// ergänzt. Bei Gleichstand stabil den kleineren OSM-Identifier behalten.
+export function dedupeNearbyVenues<T extends NearbyVenueCandidate>(venues: T[], maxDistanceMeters = 30): T[] {
+  const result: T[] = [];
+  for (const venue of venues) {
+    const duplicateIndex = result.findIndex((candidate) =>
+      normalizedVenueName(candidate.name) === normalizedVenueName(venue.name)
+      && distanceMeters(candidate, venue) <= maxDistanceMeters
+    );
+    if (duplicateIndex < 0) {
+      result.push(venue);
+      continue;
+    }
+
+    const current = result[duplicateIndex];
+    const venueWins = venueCompletenessScore(venue) > venueCompletenessScore(current)
+      || (venueCompletenessScore(venue) === venueCompletenessScore(current) && venue.osm_id < current.osm_id);
+    const winner = venueWins ? venue : current;
+    const fallback = venueWins ? current : venue;
+    result[duplicateIndex] = {
+      ...fallback,
+      ...winner,
+      address: winner.address ?? fallback.address,
+      website: winner.website ?? fallback.website,
+      phone: winner.phone ?? fallback.phone,
+      opening_hours_raw: winner.opening_hours_raw ?? fallback.opening_hours_raw,
+    };
+  }
+  return result;
+}
+
 function buildAddress(tags: Record<string, string>): string | null {
   const streetLine = [tags['addr:street'], tags['addr:housenumber']].filter(Boolean).join(' ');
   const cityLine = [tags['addr:postcode'], tags['addr:city']].filter(Boolean).join(' ');
@@ -875,7 +947,7 @@ out body;
       }
     }
     if (!data) { console.warn(`[${label}] overpass fetch failed after ${OVERPASS_ATTEMPTS} attempts — skipping this run`); return; }
-    const rawVenues = data.elements
+    const rawVenues = dedupeNearbyVenues(data.elements
       .filter((el) => el.tags?.name && !EXCLUDED_VENUE_OSM_IDS.has(el.id))
       .map((el) => {
         const tags = el.tags!;
@@ -912,7 +984,7 @@ out body;
           type,
           updated_at: new Date().toISOString(),
         };
-      });
+      }));
 
     if (rawVenues.length === 0) { console.log(`[${label}] no venues parsed`); return; }
 
