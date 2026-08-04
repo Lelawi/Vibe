@@ -279,12 +279,11 @@ function getDateRange(filter: DateFilter): { from: string; to: string | null } {
   return { from: todayStr, to: null };
 }
 
-const DATE_FILTERS: { key: DateFilter; labelKey: string }[] = [
+const PRIMARY_DATE_FILTERS: { key: DateFilter; labelKey: string }[] = [
   { key: 'all', labelKey: 'events.dateFilter.all' },
   { key: 'today', labelKey: 'events.dateFilter.today' },
   { key: 'tomorrow', labelKey: 'events.dateFilter.tomorrow' },
   { key: 'week', labelKey: 'events.dateFilter.week' },
-  { key: 'weekend', labelKey: 'events.dateFilter.weekend' },
 ];
 
 registerStrings({
@@ -295,11 +294,15 @@ registerStrings({
   'events.dateFilter.all': { de: 'Alle', en: 'All' },
   'events.dateFilter.today': { de: 'Heute', en: 'Today' },
   'events.dateFilter.tomorrow': { de: 'Morgen', en: 'Tomorrow' },
-  'events.dateFilter.week': { de: 'Diese Woche', en: 'This week' },
+  'events.dateFilter.week': { de: 'Woche', en: 'Week' },
   'events.dateFilter.weekend': { de: 'Wochenende', en: 'Weekend' },
   'events.chooseDate': { de: 'Datum wählen', en: 'Choose date' },
   'events.daysCount': { de: 'Tage', en: 'days' },
   'events.filter': { de: 'Filter', en: 'Filter' },
+  'events.period': { de: 'Zeitraum', en: 'Date range' },
+  'events.more': { de: 'Mehr', en: 'More' },
+  'events.quickFilters': { de: 'Schnellfilter', en: 'Quick filters' },
+  'events.distance': { de: 'Umkreis', en: 'Distance' },
   'events.tonight': { de: 'Heute Abend', en: 'Tonight' },
   'events.savedSearches': { de: 'Gespeicherte Suchen', en: 'Saved searches' },
   'events.savedSearchesHint': { de: 'Gespeicherte Filter lassen sich jederzeit erneut anwenden. Benachrichtigungen werden nur für exakt passende, neue Events verschickt.', en: 'Saved filters can be applied again at any time. Notifications are only sent for exact new matches.' },
@@ -395,6 +398,8 @@ export default function EventListScreen() {
     return { year: d.getFullYear(), month: d.getMonth() };
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showPeriodModal, setShowPeriodModal] = useState(false);
+  const [showMoreModal, setShowMoreModal] = useState(false);
   const [filterTab, setFilterTab] = useState<'category' | 'genre' | 'location'>('category');
   const [locationSearch, setLocationSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<Event[] | null>(null);
@@ -918,7 +923,14 @@ export default function EventListScreen() {
     return `${selectedDates.length} ${t('events.daysCount')}`;
   }
 
-  const contentFilterCount = selectedCategories.length + selectedGenres.length + selectedLocations.length;
+  const contentFilterCount =
+    selectedCategories.length +
+    selectedGenres.length +
+    selectedLocations.length +
+    Number(showFavoritesOnly) +
+    Number(showFreeOnly) +
+    Number(showMultiDayOnly) +
+    Number(userLocation !== null);
   const hasAnyActiveFilter =
     search.trim() !== '' ||
     contentFilterCount > 0 ||
@@ -986,10 +998,16 @@ export default function EventListScreen() {
     else if (filterTab === 'genre') setSelectedGenres((prev) => toggleInSet(prev, value));
     else setSelectedLocations((prev) => toggleInSet(prev, value));
   };
-  const resetActiveFilterTab = () => {
-    if (filterTab === 'category') setSelectedCategories([]);
-    else if (filterTab === 'genre') setSelectedGenres([]);
-    else setSelectedLocations([]);
+  const resetContentFilters = () => {
+    setSelectedCategories([]);
+    setSelectedGenres([]);
+    setSelectedLocations([]);
+    setShowFavoritesOnly(false);
+    setShowFreeOnly(false);
+    setShowMultiDayOnly(false);
+    setUserLocation(null);
+    setNearbyRadiusKm(null);
+    setLocationStatus('idle');
   };
 
   if (loading) {
@@ -1028,10 +1046,9 @@ export default function EventListScreen() {
 
   // Banner (Titel/Karte-Button) und Offline-Hinweis sind bewusst NICHT Teil
   // des gepinnten Headers — sie scrollen als erste Zeile normal weg. Nur
-  // Suche/Datum/Aktions-Buttons bleiben angeheftet. Grund: mit inzwischen 6
-  // Aktions-Buttons plus Banner wurde der komplett gepinnte Header auf dem
-  // Handy so hoch, dass für die eigentliche Event-Liste darunter kaum noch
-  // Platz blieb.
+  // Suche und die kompakte Datumszeile bleiben angeheftet. Banner und selten
+  // benötigte Verwaltungsaktionen scrollen weg, damit auf dem Handy möglichst
+  // viel Platz für die eigentliche Event-Liste bleibt.
   const bannerSection = (
     <View>
       <LinearGradient
@@ -1047,6 +1064,14 @@ export default function EventListScreen() {
           </View>
           <View style={styles.headerActions}>
             <FeedbackButton />
+            <TouchableOpacity
+              style={styles.headerIconButton}
+              onPress={() => setShowMoreModal(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('events.more')}
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
+            </TouchableOpacity>
             <LanguageToggle />
           </View>
         </View>
@@ -1066,32 +1091,46 @@ export default function EventListScreen() {
   const listHeader = (
     <View style={styles.listHeaderWrap}>
       <View style={styles.stickyControls}>
-      <View style={styles.searchWrap}>
-        <TextInput
-          style={[styles.search, styles.searchInput]}
-          placeholder={t('events.searchPlaceholder')}
-          placeholderTextColor="#666"
-          value={search}
-          onChangeText={setSearch}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity style={styles.searchClearBtn} onPress={() => setSearch('')}>
-            <Text style={styles.searchClearBtnText}>✕</Text>
+        <View style={styles.searchControlsRow}>
+          <View style={styles.searchWrap}>
+            <TextInput
+              style={[styles.search, styles.searchInput]}
+              placeholder={t('events.searchPlaceholder')}
+              placeholderTextColor="#666"
+              value={search}
+              onChangeText={setSearch}
+            />
+            {search.length > 0 && (
+              <TouchableOpacity
+                style={styles.searchClearBtn}
+                onPress={() => setSearch('')}
+                accessibilityRole="button"
+                accessibilityLabel={t('events.resetAll')}
+              >
+                <Text style={styles.searchClearBtnText}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            style={[styles.compactFilterButton, contentFilterCount > 0 && styles.filterChipActive]}
+            onPress={() => setShowFilterModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`${t('events.filter')}${contentFilterCount > 0 ? `, ${contentFilterCount}` : ''}`}
+          >
+            <Ionicons name="options-outline" size={21} color={contentFilterCount > 0 ? '#000' : '#bbb'} />
+            {contentFilterCount > 0 && (
+              <View style={styles.filterCountBadge}>
+                <Text style={styles.filterCountBadgeText}>{contentFilterCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
 
-      <View style={styles.controlRow}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.dateScrollContent}
-          style={styles.dateScroll}
-        >
-          {DATE_FILTERS.map((f) => (
+        <View style={styles.primaryDateRow}>
+          {PRIMARY_DATE_FILTERS.map((f) => (
             <TouchableOpacity
               key={f.key}
-              style={[styles.filterChip, dateFilter === f.key && styles.filterChipActive]}
+              style={[styles.primaryDateButton, dateFilter === f.key && !showTonightOnly && styles.filterChipActive]}
               onPress={() => {
                 setDateFilter(f.key);
                 setSelectedDates([]);
@@ -1100,9 +1139,10 @@ export default function EventListScreen() {
             >
               <Text
                 style={[
-                  styles.filterChipText,
-                  dateFilter === f.key && styles.filterChipTextActive,
+                  styles.primaryDateButtonText,
+                  dateFilter === f.key && !showTonightOnly && styles.filterChipTextActive,
                 ]}
+                numberOfLines={1}
               >
                 {t(f.labelKey)}
               </Text>
@@ -1110,185 +1150,33 @@ export default function EventListScreen() {
           ))}
 
           <TouchableOpacity
-            style={[styles.filterChip, dateFilter === 'custom' && styles.filterChipActive]}
-            onPress={openCalendar}
+            style={[
+              styles.primaryDateButton,
+              styles.primaryDateMoreButton,
+              (dateFilter === 'weekend' || dateFilter === 'custom' || showTonightOnly) && styles.filterChipActive,
+            ]}
+            onPress={() => setShowPeriodModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('events.period')}
           >
-            <Text
-              style={[
-                styles.filterChipText,
-                dateFilter === 'custom' && styles.filterChipTextActive,
-              ]}
-            >
-              {customDateLabel()}
-            </Text>
+            <Ionicons
+              name="calendar-outline"
+              size={19}
+              color={dateFilter === 'weekend' || dateFilter === 'custom' || showTonightOnly ? '#000' : '#999'}
+            />
           </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* Horizontal scrollbar statt umbrechend: mit inzwischen 7 Buttons
-          (Filter/Favoriten/Kostenlos/Ausstellungen/Nähe/Benachrichtigungen/
-          Erinnerung) fraß eine umbrechende Reihe auf dem Handy zu viel von
-          der gepinnten Kopfzeile — wächst mit jedem künftigen Button weiter
-          in die Höhe. Eine scrollbare Zeile bleibt dagegen dauerhaft auf
-          einer Zeilenhöhe, Filter/Favoriten stehen als erste Buttons sofort
-          sichtbar. Das Fade-Overlay am rechten Rand signalisiert, dass noch
-          mehr Buttons folgen — sonst wirkt die Reihe wie vollständig
-          sichtbar und der letzte Button (aktuell "Erinnerung") bleibt
-          unentdeckt. */}
-      <View style={styles.actionButtonRowWrap}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.actionButtonRow}
-      >
-        <TouchableOpacity
-          style={[styles.filterButton, contentFilterCount > 0 && styles.filterChipActive]}
-          onPress={() => setShowFilterModal(true)}
-        >
-          <Ionicons name="options-outline" size={16} color={contentFilterCount > 0 ? '#000' : '#999'} />
-          <Text style={[styles.filterButtonText, contentFilterCount > 0 && styles.filterChipTextActive]}>
-            {t('events.filter')}{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterButton, showTonightOnly && styles.filterChipActive]}
-          onPress={() => {
-            setShowTonightOnly((active) => !active);
-            setDateFilter('all');
-            setSelectedDates([]);
-          }}
-        >
-          <Ionicons name="moon-outline" size={16} color={showTonightOnly ? '#000' : '#999'} />
-          <Text style={[styles.filterButtonText, showTonightOnly && styles.filterChipTextActive]}>
-            {t('events.tonight')}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.filterButton}
-          onPress={() => setShowSavedSearchModal(true)}
-        >
-          <Ionicons name="bookmark-outline" size={16} color="#999" />
-          <Text style={styles.filterButtonText}>
-            {t('events.savedSearches')}{savedSearches.length > 0 ? ` (${savedSearches.length})` : ''}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterButton, showFavoritesOnly && styles.filterChipActive]}
-          onPress={() => setShowFavoritesOnly((v) => !v)}
-        >
-          <Ionicons
-            name={showFavoritesOnly ? 'heart' : 'heart-outline'}
-            size={16}
-            color={showFavoritesOnly ? '#000' : '#999'}
-          />
-          <Text style={[styles.filterButtonText, showFavoritesOnly && styles.filterChipTextActive]}>
-            {t('events.favorites')}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterButton, showFreeOnly && styles.filterChipActive]}
-          onPress={() => setShowFreeOnly((v) => !v)}
-        >
-          <Ionicons name="pricetag-outline" size={16} color={showFreeOnly ? '#000' : '#999'} />
-          <Text style={[styles.filterButtonText, showFreeOnly && styles.filterChipTextActive]}>
-            {t('events.free')}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterButton, showMultiDayOnly && styles.filterChipActive]}
-          onPress={() => setShowMultiDayOnly((v) => !v)}
-        >
-          <Ionicons name="layers-outline" size={16} color={showMultiDayOnly ? '#000' : '#999'} />
-          <Text style={[styles.filterButtonText, showMultiDayOnly && styles.filterChipTextActive]}>
-            {t('events.multiDay')}
-          </Text>
-        </TouchableOpacity>
-
-        {Platform.OS === 'web' && (
-          <TouchableOpacity
-            style={[styles.filterButton, styles.nearbyButtonRow, userLocation && styles.filterChipActive]}
-            onPress={toggleNearby}
-            disabled={locationStatus === 'loading'}
-          >
-            {locationStatus === 'loading' ? (
-              <ActivityIndicator size="small" color="#999" style={styles.nearbyButtonSpinner} />
-            ) : (
-              <Ionicons name="location-outline" size={16} color={userLocation ? '#000' : '#999'} />
-            )}
-            <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
-              {locationStatus === 'loading' ? t('events.loadingLocation') : t('events.nearby')}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {isPushSupported() && (
-          <TouchableOpacity
-            style={[styles.filterButton, pushEnabled && styles.filterChipActive]}
-            onPress={togglePush}
-            disabled={pushBusy}
-          >
-            {pushBusy ? (
-              <ActivityIndicator size="small" color="#999" style={styles.nearbyButtonSpinner} />
-            ) : (
-              <Ionicons
-                name={pushEnabled ? 'notifications' : 'notifications-off-outline'}
-                size={16}
-                color={pushEnabled ? '#000' : '#999'}
-              />
-            )}
-            <Text style={[styles.filterButtonText, pushEnabled && styles.filterChipTextActive]}>
-              {pushEnabled ? t('events.notificationsOn') : t('events.notifications')}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {isPushSupported() && pushEnabled && (
-          <TouchableOpacity
-            style={styles.filterButton}
-            onPress={() => setShowReminderModal(true)}
-          >
-            <Ionicons name="time-outline" size={16} color="#999" />
-            <Text style={styles.filterButtonText}>
-              {t('events.reminder')}{reminderOffsets.length > 0 ? ` (${reminderOffsets.length})` : ''}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Ersetzt echtes Pull-to-refresh, das auf react-native-web nicht
-            funktioniert (RefreshControl ist dort ein reiner No-op-Stub). */}
-        <TouchableOpacity style={styles.filterButton} onPress={() => loadEvents(true)} disabled={refreshing}>
-          {refreshing ? (
-            <ActivityIndicator size="small" color="#999" />
-          ) : (
-            <Ionicons name="refresh-outline" size={16} color="#999" />
-          )}
-          <Text style={styles.filterButtonText}>{t('events.refresh')}</Text>
-        </TouchableOpacity>
-      </ScrollView>
-      <LinearGradient
-        pointerEvents="none"
-        colors={['#0000', '#000']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.actionButtonRowFade}
-      />
-      </View>
+        </View>
       </View>
     </View>
   );
 
   // Ergebniszähler/Radius-Chips/aktive-Filter-Pillen scrollen bewusst NICHT
   // mehr mit (siehe listData unten, kind: 'filterInfo') — sie standen vorher
-  // alle im selben angehefteten stickyControls-Block wie Suche/Datum/Aktions-
-  // Buttons, wodurch auf dem Handy bei mehreren aktiven Filtern (Nähe +
+  // alle im selben angehefteten stickyControls-Block wie Suche und Datum,
+  // wodurch auf dem Handy bei mehreren aktiven Filtern (Nähe +
   // mehrere Kategorien) bis zu sechs Zeilen dauerhaft den Bildschirm
   // blockierten, bevor überhaupt eine einzige Veranstaltung sichtbar war
-  // (per Nutzer-Screenshot gemeldet). Nur Suche/Datum/Aktions-Buttons bleiben
+  // (per Nutzer-Screenshot gemeldet). Nur Suche und Datum bleiben
   // angeheftet — das war die ursprüngliche Absicht laut Kommentar oben an
   // stickyHeaderIndices, ist aber durch nachträglich hier reingewachsene
   // Abschnitte aufgeweicht worden.
@@ -1309,32 +1197,6 @@ export default function EventListScreen() {
         <Text style={styles.locationHint}>
           {t('events.locationDenied')}
         </Text>
-      )}
-
-      {userLocation && (
-        <View style={styles.controlRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.dateScrollContent}
-            style={styles.dateScroll}
-          >
-            {RADIUS_PRESETS_KM.map((km) => {
-              const active = km === null ? nearbyRadiusKm === null : nearbyRadiusKm === km;
-              return (
-                <TouchableOpacity
-                  key={km ?? 'all'}
-                  style={[styles.filterChip, active && styles.filterChipActive]}
-                  onPress={() => setNearbyRadiusKm(km)}
-                >
-                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                    {km === null ? t('events.radiusAll') : `${km} km`}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
       )}
 
       <Modal
@@ -1456,14 +1318,31 @@ export default function EventListScreen() {
               <Text style={styles.activePillText}>{l} ✕</Text>
             </TouchableOpacity>
           ))}
+          {showFavoritesOnly && (
+            <TouchableOpacity style={styles.activePill} onPress={() => setShowFavoritesOnly(false)}>
+              <Text style={styles.activePillText}>{t('events.favorites')} ✕</Text>
+            </TouchableOpacity>
+          )}
+          {showFreeOnly && (
+            <TouchableOpacity style={styles.activePill} onPress={() => setShowFreeOnly(false)}>
+              <Text style={styles.activePillText}>{t('events.free')} ✕</Text>
+            </TouchableOpacity>
+          )}
+          {showMultiDayOnly && (
+            <TouchableOpacity style={styles.activePill} onPress={() => setShowMultiDayOnly(false)}>
+              <Text style={styles.activePillText}>{t('events.multiDay')} ✕</Text>
+            </TouchableOpacity>
+          )}
+          {userLocation && (
+            <TouchableOpacity style={styles.activePill} onPress={toggleNearby}>
+              <Text style={styles.activePillText}>
+                {t('events.nearby')}{nearbyRadiusKm !== null ? ` · ${nearbyRadiusKm} km` : ''} ✕
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.activePillResetAll}
-            onPress={() => {
-              setSearch('');
-              setSelectedCategories([]);
-              setSelectedGenres([]);
-              setSelectedLocations([]);
-            }}
+            onPress={resetAllFilters}
           >
             <Text style={styles.activePillResetAllText}>{t('events.resetAll')}</Text>
           </TouchableOpacity>
@@ -1486,7 +1365,7 @@ export default function EventListScreen() {
         // position:"sticky" auf einem verschachtelten View — letzteres griff
         // innerhalb von FlatLists Web-DOM-Struktur nicht zuverlässig (Buttons
         // blieben beim Herunterscrollen unerreichbar). Pinnt NUR noch
-        // Suche/Datum/Aktions-Buttons (siehe listHeader) — Banner und Titel
+        // Suche und Datum (siehe listHeader) — Banner und Titel
         // scrollen als normale erste Zeile weg (row.kind === 'banner'),
         // damit der gepinnte Bereich auf dem Handy nicht zu viel Platz frisst.
         stickyHeaderIndices={[0]}
@@ -1633,6 +1512,141 @@ export default function EventListScreen() {
         }}
       />
 
+      <Modal
+        visible={showPeriodModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPeriodModal(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowPeriodModal(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.compactModalCard} onPress={() => {}}>
+            <Text style={[styles.modalTitle, styles.compactModalTitle]}>{t('events.period')}</Text>
+            <TouchableOpacity
+              style={[styles.modalRow, dateFilter === 'weekend' && styles.modalRowActive]}
+              onPress={() => {
+                setDateFilter('weekend');
+                setSelectedDates([]);
+                setShowTonightOnly(false);
+                setShowPeriodModal(false);
+              }}
+            >
+              <View style={styles.modalRowLabel}>
+                <Ionicons name="calendar-outline" size={19} color={dateFilter === 'weekend' ? '#0af' : '#aaa'} />
+                <Text style={[styles.modalRowText, dateFilter === 'weekend' && styles.modalRowTextActive]}>
+                  {t('events.dateFilter.weekend')}
+                </Text>
+              </View>
+              {dateFilter === 'weekend' && <Ionicons name="checkmark" size={20} color="#0af" />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalRow, showTonightOnly && styles.modalRowActive]}
+              onPress={() => {
+                setShowTonightOnly(true);
+                setDateFilter('all');
+                setSelectedDates([]);
+                setShowPeriodModal(false);
+              }}
+            >
+              <View style={styles.modalRowLabel}>
+                <Ionicons name="moon-outline" size={19} color={showTonightOnly ? '#0af' : '#aaa'} />
+                <Text style={[styles.modalRowText, showTonightOnly && styles.modalRowTextActive]}>{t('events.tonight')}</Text>
+              </View>
+              {showTonightOnly && <Ionicons name="checkmark" size={20} color="#0af" />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalRow, dateFilter === 'custom' && styles.modalRowActive]}
+              onPress={() => {
+                setShowPeriodModal(false);
+                setTimeout(openCalendar, 0);
+              }}
+            >
+              <View style={styles.modalRowLabel}>
+                <Ionicons name="calendar-number-outline" size={19} color={dateFilter === 'custom' ? '#0af' : '#aaa'} />
+                <Text style={[styles.modalRowText, dateFilter === 'custom' && styles.modalRowTextActive]}>
+                  {dateFilter === 'custom' ? customDateLabel() : t('events.chooseDate')}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={19} color="#777" />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={showMoreModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowMoreModal(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowMoreModal(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.compactModalCard} onPress={() => {}}>
+            <Text style={[styles.modalTitle, styles.compactModalTitle]}>{t('events.more')}</Text>
+            <TouchableOpacity
+              style={styles.modalRow}
+              onPress={() => {
+                setShowMoreModal(false);
+                setShowSavedSearchModal(true);
+              }}
+            >
+              <View style={styles.modalRowLabel}>
+                <Ionicons name="bookmark-outline" size={19} color="#aaa" />
+                <Text style={styles.modalRowText}>{t('events.savedSearches')}</Text>
+              </View>
+              {savedSearches.length > 0 && <Text style={styles.utilityCount}>{savedSearches.length}</Text>}
+            </TouchableOpacity>
+            {isPushSupported() && (
+              <TouchableOpacity
+                style={[styles.modalRow, pushEnabled && styles.modalRowActive]}
+                onPress={() => {
+                  setShowMoreModal(false);
+                  togglePush();
+                }}
+                disabled={pushBusy}
+              >
+                <View style={styles.modalRowLabel}>
+                  {pushBusy ? (
+                    <ActivityIndicator size="small" color="#999" />
+                  ) : (
+                    <Ionicons name={pushEnabled ? 'notifications' : 'notifications-off-outline'} size={19} color={pushEnabled ? '#0af' : '#aaa'} />
+                  )}
+                  <Text style={[styles.modalRowText, pushEnabled && styles.modalRowTextActive]}>
+                    {pushEnabled ? t('events.notificationsOn') : t('events.notifications')}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+            {isPushSupported() && pushEnabled && (
+              <TouchableOpacity
+                style={styles.modalRow}
+                onPress={() => {
+                  setShowMoreModal(false);
+                  setShowReminderModal(true);
+                }}
+              >
+                <View style={styles.modalRowLabel}>
+                  <Ionicons name="time-outline" size={19} color="#aaa" />
+                  <Text style={styles.modalRowText}>{t('events.reminder')}</Text>
+                </View>
+                {reminderOffsets.length > 0 && <Text style={styles.utilityCount}>{reminderOffsets.length}</Text>}
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.modalRow}
+              onPress={() => {
+                setShowMoreModal(false);
+                loadEvents(true);
+              }}
+              disabled={refreshing}
+            >
+              <View style={styles.modalRowLabel}>
+                {refreshing ? <ActivityIndicator size="small" color="#999" /> : <Ionicons name="refresh-outline" size={19} color="#aaa" />}
+                <Text style={styles.modalRowText}>{t('events.refresh')}</Text>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Kombiniertes Filter-Modal: Kategorie/Genre/Ort als Tabs statt drei
           separater, gleich aussehender Buttons+Modals. */}
       <Modal
@@ -1649,12 +1663,70 @@ export default function EventListScreen() {
           <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitle}>{t('events.filterModalTitle')}</Text>
-              {activeFilterTabSelected.length > 0 && (
-                <TouchableOpacity onPress={resetActiveFilterTab}>
+              {contentFilterCount > 0 && (
+                <TouchableOpacity onPress={resetContentFilters}>
                   <Text style={styles.modalResetLink}>{t('events.filterModalReset')}</Text>
                 </TouchableOpacity>
               )}
             </View>
+
+            <Text style={styles.filterSectionLabel}>{t('events.quickFilters')}</Text>
+            <View style={styles.quickFilterGrid}>
+              {[
+                { key: 'favorites', label: t('events.favorites'), icon: 'heart-outline' as const, active: showFavoritesOnly, toggle: () => setShowFavoritesOnly((v) => !v) },
+                { key: 'free', label: t('events.free'), icon: 'pricetag-outline' as const, active: showFreeOnly, toggle: () => setShowFreeOnly((v) => !v) },
+                { key: 'multiDay', label: t('events.multiDay'), icon: 'layers-outline' as const, active: showMultiDayOnly, toggle: () => setShowMultiDayOnly((v) => !v) },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[styles.quickFilterButton, option.active && styles.filterChipActive]}
+                  onPress={option.toggle}
+                >
+                  <Ionicons name={option.icon} size={17} color={option.active ? '#000' : '#999'} />
+                  <Text style={[styles.quickFilterButtonText, option.active && styles.filterChipTextActive]} numberOfLines={1}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {Platform.OS === 'web' && (
+                <TouchableOpacity
+                  style={[styles.quickFilterButton, userLocation !== null && styles.filterChipActive]}
+                  onPress={toggleNearby}
+                  disabled={locationStatus === 'loading'}
+                >
+                  {locationStatus === 'loading' ? (
+                    <ActivityIndicator size="small" color="#999" />
+                  ) : (
+                    <Ionicons name="location-outline" size={17} color={userLocation ? '#000' : '#999'} />
+                  )}
+                  <Text style={[styles.quickFilterButtonText, userLocation && styles.filterChipTextActive]} numberOfLines={1}>
+                    {locationStatus === 'loading' ? t('events.loadingLocation') : t('events.nearby')}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {userLocation && (
+              <View style={styles.radiusSection}>
+                <Text style={styles.filterSectionLabel}>{t('events.distance')}</Text>
+                <View style={styles.radiusGrid}>
+                  {RADIUS_PRESETS_KM.map((km) => {
+                    const active = km === null ? nearbyRadiusKm === null : nearbyRadiusKm === km;
+                    return (
+                      <TouchableOpacity
+                        key={km ?? 'all'}
+                        style={[styles.radiusButton, active && styles.filterChipActive]}
+                        onPress={() => setNearbyRadiusKm(km)}
+                      >
+                        <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                          {km === null ? t('events.radiusAll') : `${km} km`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             <View style={styles.filterTabRow}>
               {(
@@ -1687,6 +1759,7 @@ export default function EventListScreen() {
             )}
 
             <FlatList
+              style={styles.filterOptionsList}
               data={activeFilterTabData}
               keyExtractor={(item) => item}
               renderItem={({ item }) => {
@@ -1964,6 +2037,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2012,10 +2095,16 @@ const styles = StyleSheet.create({
     // und das Layout muss danach manuell zurückgezoomt werden.
     fontSize: 16,
   },
-  searchWrap: {
+  searchControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 14,
+    gap: 10,
+  },
+  searchWrap: {
+    flex: 1,
     position: 'relative',
     justifyContent: 'center',
   },
@@ -2030,48 +2119,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   searchClearBtnText: { color: '#888', fontSize: 15, fontWeight: '700' },
-  controlRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingLeft: 16,
-    marginBottom: 8,
-  },
-  dateScroll: { flex: 1 },
-  dateScrollContent: { paddingRight: 8, alignItems: 'center' },
-  filterChip: {
+  compactFilterButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     backgroundColor: '#141414',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginRight: 8,
-  },
-  actionButtonRowWrap: { position: 'relative' },
-  actionButtonRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-    gap: 10,
+    justifyContent: 'center',
+    position: 'relative',
   },
-  actionButtonRowFade: {
+  filterCountBadge: {
     position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 8,
-    width: 28,
+    top: -5,
+    right: -5,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#000',
   },
-  filterButton: {
+  filterCountBadgeText: { color: '#000', fontSize: 11, fontWeight: '800' },
+  primaryDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
     gap: 6,
-    backgroundColor: '#141414',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
   },
-  filterButtonText: { color: '#999', fontSize: 13, fontWeight: '600' },
-  nearbyButtonRow: { flexDirection: 'row', alignItems: 'center' },
-  nearbyButtonSpinner: { marginRight: 6 },
+  primaryDateButton: {
+    flex: 1,
+    minWidth: 0,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#141414',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  primaryDateMoreButton: { flexGrow: 0, flexBasis: 42 },
+  primaryDateButtonText: { color: '#999', fontSize: 12, fontWeight: '700' },
   locationHint: {
     color: '#888',
     fontSize: 12,
@@ -2197,6 +2287,7 @@ const styles = StyleSheet.create({
   filterTabRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
+    marginTop: 14,
     marginBottom: 8,
     gap: 8,
   },
@@ -2369,6 +2460,14 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     maxHeight: '75%',
   },
+  compactModalCard: {
+    backgroundColor: '#0a0a0a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
+  },
+  compactModalTitle: { paddingHorizontal: 20, marginBottom: 10 },
   modalHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2392,6 +2491,64 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 10,
   },
+  modalRowLabel: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  utilityCount: {
+    color: '#aaa',
+    fontSize: 12,
+    fontWeight: '700',
+    backgroundColor: '#1d1d1d',
+    borderRadius: 10,
+    minWidth: 20,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    textAlign: 'center',
+  },
+  filterSectionLabel: {
+    color: '#777',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  quickFilterGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  quickFilterButton: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    minWidth: 130,
+    height: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+  },
+  quickFilterButtonText: { color: '#999', fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  radiusSection: { marginBottom: 4 },
+  radiusGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    gap: 7,
+  },
+  radiusButton: {
+    minWidth: 55,
+    backgroundColor: '#141414',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  filterOptionsList: { minHeight: 100 },
   savedSearchTitle: { paddingHorizontal: 16, marginBottom: 6 },
   savedSearchList: { maxHeight: 430 },
   savedSearchEmpty: { color: '#666', paddingHorizontal: 16, paddingVertical: 16 },
