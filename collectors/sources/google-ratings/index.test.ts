@@ -31,4 +31,11 @@ test('normalisiert Mitternacht und durchgehend geöffnete Tage', () => {
 test('verwirft fehlende oder ungültige Perioden', () => {
   assert.equal(googleOpeningHoursToOsm(undefined), null);
   assert.equal(googleOpeningHoursToOsm([{ open: { day: 9, hour: 9, minute: 0 } }]), null);
+  assert.equal(
+    googleOpeningHoursToOsm([
+      { open: { day: 4, hour: 9, minute: 0 }, close: { day: 4, hour: 19, minute: 0 } },
+      { open: { day: 4, hour: 20, minute: 0 }, close: { hour: 20, minute: 0 } },
+    ]),
+    'Mo-We off; Th 09:00-19:00; Fr-Su off'
+  );
 });

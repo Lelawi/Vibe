@@ -95,6 +95,11 @@ export function googleOpeningHoursToOsm(periods: GooglePlacePeriod[] | null | un
       let closes = formatGoogleTime(period.close);
       if (!closes) continue;
       const closeDay = period.close.day;
+      // Reale Google-Antwort bei Andys Seehäusl enthielt zusätzlich
+      // 20:00-20:00 am selben Tag. Das ist ein leeres/ungültiges Intervall,
+      // nicht "24 Stunden geöffnet" und muss verworfen werden, bevor der
+      // OSM-Parser end<=start als Über-Mitternacht-Regel interpretiert.
+      if (closes === opens) continue;
       if (closes === '00:00' && Number.isInteger(closeDay) && closeDay === (openDay! + 1) % 7) closes = '24:00';
       range = `${opens}-${closes}`;
     }
@@ -233,6 +238,10 @@ export async function run() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  const requestedVenueIds = (process.env.GOOGLE_RATINGS_VENUE_IDS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
   if (!supabaseUrl || !supabaseKey) { console.log('[google-ratings] missing supabase envs — skipping'); return; }
   if (!apiKey) { console.log('[google-ratings] missing GOOGLE_PLACES_API_KEY — skipping'); return; }
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -249,8 +258,8 @@ export async function run() {
   if (countError) { console.error('[google-ratings] could not determine monthly usage — aborting', countError); return; }
 
   const remainingBudget = Math.max(0, MONTHLY_BUDGET - (usedThisMonth ?? 0));
-  const batchSize = Math.min(DAILY_BATCH, remainingBudget);
-  console.log(`[google-ratings] used ${usedThisMonth ?? 0}/${MONTHLY_BUDGET} this month, processing ${batchSize} now`);
+  const batchSize = Math.min(DAILY_BATCH, remainingBudget, requestedVenueIds.length || DAILY_BATCH);
+  console.log(`[google-ratings] used ${usedThisMonth ?? 0}/${MONTHLY_BUDGET} this month, processing ${batchSize} now${requestedVenueIds.length ? ' (targeted)' : ''}`);
   if (batchSize <= 0) { console.log('[google-ratings] monthly budget exhausted — skipping until next month'); return; }
 
   // Offene Schließungsmeldungen werden NICHT mehr täglich bevorzugt erneut
@@ -276,27 +285,42 @@ export async function run() {
   );
 
   let venues: RatingVenue[] = [];
-  // Direkt nach Einführung der Öffnungszeiten zuerst bereits eindeutig mit
-  // Google verknüpfte Venues nachziehen. Der separate Checked-Zeitpunkt ist
-  // wichtig: null kann sowohl "Google kennt keine Zeiten" als auch "noch
-  // nie abgefragt" bedeuten und darf deshalb nicht allein als Queue dienen.
-  const { data: missingHours, error: missingHoursError } = await supabase
-    .from('venues')
-    .select(VENUE_COLUMNS)
-    .not('google_place_id', 'is', null)
-    .is('google_opening_hours_checked_at', null)
-    .order('google_rating_checked_at', { ascending: false, nullsFirst: false })
-    .limit(batchSize + inactiveIds.size);
-  if (missingHoursError) {
-    console.error('[google-ratings] could not determine opening-hours backfill — aborting', missingHoursError);
-    return;
-  }
-  for (const venue of missingHours ?? []) {
-    if (venues.length >= batchSize) break;
-    if (!inactiveIds.has(venue.id as string)) venues.push(venue as RatingVenue);
+  if (requestedVenueIds.length > 0) {
+    // Gezielte Nachprüfung einzelner Feedback-/Diagnosefälle, ohne dafür
+    // einen vollständigen 30er-Batch zu verbrauchen. Derselbe Budgetdeckel
+    // und dieselbe Match-/Speicherlogik gelten weiterhin.
+    const { data: requested, error: requestedError } = await supabase
+      .from('venues')
+      .select(VENUE_COLUMNS)
+      .in('id', requestedVenueIds.slice(0, batchSize));
+    if (requestedError) {
+      console.error('[google-ratings] could not fetch targeted venues — aborting', requestedError);
+      return;
+    }
+    venues = (requested ?? []).filter((venue) => !inactiveIds.has(venue.id as string)) as RatingVenue[];
+  } else {
+    // Direkt nach Einführung der Öffnungszeiten zuerst bereits eindeutig mit
+    // Google verknüpfte Venues nachziehen. Der separate Checked-Zeitpunkt ist
+    // wichtig: null kann sowohl "Google kennt keine Zeiten" als auch "noch
+    // nie abgefragt" bedeuten und darf deshalb nicht allein als Queue dienen.
+    const { data: missingHours, error: missingHoursError } = await supabase
+      .from('venues')
+      .select(VENUE_COLUMNS)
+      .not('google_place_id', 'is', null)
+      .is('google_opening_hours_checked_at', null)
+      .order('google_rating_checked_at', { ascending: false, nullsFirst: false })
+      .limit(batchSize + inactiveIds.size);
+    if (missingHoursError) {
+      console.error('[google-ratings] could not determine opening-hours backfill — aborting', missingHoursError);
+      return;
+    }
+    for (const venue of missingHours ?? []) {
+      if (venues.length >= batchSize) break;
+      if (!inactiveIds.has(venue.id as string)) venues.push(venue as RatingVenue);
+    }
   }
 
-  if (venues.length < batchSize) {
+  if (requestedVenueIds.length === 0 && venues.length < batchSize) {
     const { data: rest, error: fetchError } = await supabase
       .from('venues')
       .select(VENUE_COLUMNS)
