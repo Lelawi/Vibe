@@ -140,8 +140,8 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
   assert.equal(normalizeEvent({ ...result[0], price: undefined })?.price_info, null);
 });
 
-test('bereinigt Ticketvarianten, ohne normale Eventtitel zu verändern', () => {
-  assert.equal(normalizeEventimTitle('Jurassic World: The Experience - Premium-Ticket'), 'Jurassic World: The Experience');
-  assert.equal(normalizeEventimTitle('Jurassic World: The Experience – VIP & Extras'), 'Jurassic World: The Experience');
+test('erhält Ticketvarianten für die gemeinsame Darstellung am Event', () => {
+  assert.equal(normalizeEventimTitle('Jurassic World: The Experience - Premium-Ticket'), 'Jurassic World: The Experience - Premium-Ticket');
+  assert.equal(normalizeEventimTitle('Jurassic World: The Experience – VIP & Extras'), 'Jurassic World: The Experience – VIP & Extras');
   assert.equal(normalizeEventimTitle('VIP Club Night'), 'VIP Club Night');
 });

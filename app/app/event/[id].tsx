@@ -38,7 +38,7 @@ registerStrings({
   'event.until': { de: 'bis', en: 'until' },
   'event.price': { de: 'Preis', en: 'Price' },
   'event.noPriceInfo': { de: 'Keine Preisinfo verfügbar', en: 'No price info available' },
-  'event.moreTicketOptions': { de: 'Weitere Ticketoptionen', en: 'More ticket options' },
+  'event.ticketOptions': { de: 'Ticketoptionen', en: 'Ticket options' },
   'event.soldOut': { de: 'Ausverkauft', en: 'Sold out' },
   'event.where': { de: 'Wo', en: 'Where' },
   'event.genre': { de: 'Genre', en: 'Genre' },
@@ -113,6 +113,7 @@ type TicketOption = {
   source_url: string;
   price_info: string | null;
   start_time: string | null;
+  sold_out: boolean | null;
 };
 
 function sourceLabel(sourceId: string | null | undefined): string {
@@ -212,7 +213,7 @@ export default function EventDetailScreen() {
         const [{ data: relationRows }, { data: changeRows }, duplicateResult] = await Promise.all([
           supabase.from('event_artists').select('artist_id').eq('event_id', id),
           supabase.from('event_changes').select('changed_fields,created_at').eq('event_id', id).order('created_at', { ascending: false }).limit(3),
-          supabase.from('events').select('title').eq('duplicate_of', id),
+          supabase.from('events').select('title,source_url').eq('duplicate_of', id),
         ]);
         const artistIds = (relationRows ?? []).map((row) => row.artist_id as string);
         if (artistIds.length > 0) {
@@ -223,23 +224,21 @@ export default function EventDetailScreen() {
         // Premium-/Flextickets sind Kaufoptionen derselben Quelle, keine
         // unabhängige Bestätigung der Eventdaten.
         setConfirmingSourceCount(
-          1 + (duplicateResult.data ?? []).filter((row) => ticketVariantKind(row.title) === null).length
+          1 + (duplicateResult.data ?? []).filter((row) => ticketVariantKind(row.title, row.source_url) === null).length
         );
 
         if (data.location_name && data.start_date) {
           const { data: ticketRows, error: ticketError } = await supabase
             .from('events')
-            .select('id,title,source_url,price_info,start_time,start_date,end_date')
+            .select('id,title,source_url,price_info,sold_out,start_time,start_date,end_date')
             .eq('location_name', data.location_name)
             .lte('start_date', data.start_date)
             .or(`start_date.eq.${data.start_date},end_date.gte.${data.start_date}`);
           if (!ticketError) {
             const baseTitle = ticketBaseTitle(data.title);
-            const currentIsVariant = ticketVariantKind(data.title) !== null;
             const seenUrls = new Set<string>();
             const options = (ticketRows ?? []).filter((row) => {
-              if (row.id === data.id || !row.source_url || ticketBaseTitle(row.title) !== baseTitle) return false;
-              if (!currentIsVariant && ticketVariantKind(row.title) === null) return false;
+              if (!row.source_url || ticketBaseTitle(row.title) !== baseTitle) return false;
               if (seenUrls.has(row.source_url)) return false;
               seenUrls.add(row.source_url);
               return true;
@@ -249,12 +248,14 @@ export default function EventDetailScreen() {
               source_url: row.source_url as string,
               price_info: row.price_info as string | null,
               start_time: row.start_time as string | null,
+              sold_out: row.sold_out as boolean | null,
             }));
             options.sort((a, b) => {
-              const rank = (option: TicketOption) => ticketVariantKind(option.title) === 'premium' ? 0 : 1;
+              const rank = (option: TicketOption) => ticketVariantKind(option.title, option.source_url) === null ? 0 : 1;
               return rank(a) - rank(b);
             });
-            setTicketOptions(options);
+            const containsVariant = options.some((option) => ticketVariantKind(option.title, option.source_url) !== null);
+            setTicketOptions(containsVariant && options.length > 1 ? options : []);
           }
         }
       }
@@ -401,7 +402,7 @@ export default function EventDetailScreen() {
             ) : null}
           </View>
 
-          {(event.price_info || event.sold_out !== null) && (
+          {ticketOptions.length === 0 && (event.price_info || event.sold_out !== null) && (
             <View style={styles.infoBlock}>
               <Text style={styles.infoLabel}>{t('event.price')}</Text>
               <View style={styles.priceRow}>
@@ -418,7 +419,7 @@ export default function EventDetailScreen() {
 
           {ticketOptions.length > 0 && (
             <View style={styles.infoBlock}>
-              <Text style={styles.infoLabel}>{t('event.moreTicketOptions')}</Text>
+              <Text style={styles.infoLabel}>{t('event.ticketOptions')}</Text>
               <View style={styles.ticketOptionList}>
                 {ticketOptions.map((option) => (
                   <TouchableOpacity
@@ -427,12 +428,16 @@ export default function EventDetailScreen() {
                     onPress={() => openExternalUrl(option.source_url)}
                   >
                     <View style={styles.ticketOptionTextWrap}>
-                      <Text style={styles.ticketOptionTitle}>{ticketVariantLabel(option.title)}</Text>
+                      <Text style={styles.ticketOptionTitle}>{ticketVariantLabel(option.title, option.source_url)}</Text>
                       <Text style={styles.ticketOptionMeta}>
                         {[option.price_info, option.start_time ? `${option.start_time.slice(0, 5)} Uhr` : null].filter(Boolean).join(' · ')}
                       </Text>
                     </View>
-                    <Ionicons name="open-outline" size={17} color="#0af" />
+                    {option.sold_out === true ? (
+                      <Text style={styles.ticketOptionSoldOut}>{t('event.soldOut')}</Text>
+                    ) : (
+                      <Ionicons name="open-outline" size={17} color="#0af" />
+                    )}
                   </TouchableOpacity>
                 ))}
               </View>
@@ -725,6 +730,7 @@ const styles = StyleSheet.create({
   ticketOptionTextWrap: { flex: 1 },
   ticketOptionTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
   ticketOptionMeta: { color: '#83d7a0', fontSize: 12, marginTop: 3 },
+  ticketOptionSoldOut: { color: '#ff4d4d', fontSize: 12, fontWeight: '700' },
   organizerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   organizerFollowBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   organizerFollowLink: { fontSize: 13, color: '#0af', fontWeight: '600' },

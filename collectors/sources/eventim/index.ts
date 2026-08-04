@@ -314,18 +314,12 @@ function priceInfo(price: number | undefined, currency: string | undefined): str
   }
 }
 
-// Eventim bietet denselben Termin teilweise als mehrere Produkte an und
-// hängt die Ticketkategorie an den eigentlichen Eventtitel. Der bereinigte
-// Titel sorgt dafür, dass der nachgelagerte Dedup-Lauf diese Varianten als
-// denselben Termin erkennt; Preis und Verfügbarkeit bleiben eigene Felder.
+// Eventim bietet denselben Termin teilweise als mehrere Produkte an. Die
+// Ticketkategorie bleibt im Titel erhalten, damit die Detailansicht Standard,
+// Premium und VIP benennen kann. Der Dedup-Lauf bereinigt sie nur für den
+// Vergleich und blendet die Varianten im Feed aus.
 export function normalizeEventimTitle(title: string): string {
-  return title
-    .replace(
-      /\s*[-–—:]\s*(?:premium(?:[-\s]?tickets?)?|vip(?:\s*&\s*extras?)?|vip(?:[-\s]?tickets?)?|vip\s*&\s*extras?|extras?)\s*$/i,
-      ''
-    )
-    .replace(/\s+/g, ' ')
-    .trim();
+  return title.replace(/\s+/g, ' ').trim();
 }
 
 export function normalizeEvent(product: EventimProduct) {
