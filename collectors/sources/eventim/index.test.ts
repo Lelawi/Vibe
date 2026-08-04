@@ -145,3 +145,12 @@ test('erhält Ticketvarianten für die gemeinsame Darstellung am Event', () => {
   assert.equal(normalizeEventimTitle('Jurassic World: The Experience – VIP & Extras'), 'Jurassic World: The Experience – VIP & Extras');
   assert.equal(normalizeEventimTitle('VIP Club Night'), 'VIP Club Night');
 });
+
+test('behandelt ein datiertes Zeitfensterticket nicht als Monats-Dauerevent', () => {
+  const timeSlot = product('1');
+  timeSlot.name = 'Jurassic World: The Experience';
+  timeSlot.link = 'https://www.eventim.de/event/jurassic-world-the-experience-zeitfenstertickets-kleine-olympiahalle-21062334/';
+  timeSlot.typeAttributes!.liveEntertainment!.endDate = '2026-08-31T18:00:00+02:00';
+
+  assert.equal(normalizeEvent(timeSlot)?.end_date, null);
+});

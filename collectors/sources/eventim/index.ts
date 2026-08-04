@@ -330,6 +330,14 @@ export function normalizeEvent(product: EventimProduct) {
   const location = live?.location;
   const { category, subcategory } = categoryFields(product.categories);
   const unavailableStatus = /cancel|unavailable|sold.?out/i.test(product.status ?? '');
+  // Eventim liefert bei einzelnen Jurassic-World-Zeitfenstertickets vereinzelt
+  // das Ende des gesamten Monats als endDate. Das macht einen bereits
+  // vergangenen Tag fälschlich zu einem laufenden Mehrtages-Event und hält
+  // dessen abgelaufenen Produktlink im Feed. Flextickets behalten dagegen
+  // bewusst ihren echten Monatszeitraum.
+  const isDateSpecificTimeSlot = /zeitfenstertickets/i.test(product.link);
+  const normalizedEndDate =
+    isDateSpecificTimeSlot && end?.date !== start.date ? null : end?.date ?? null;
 
   return {
     source_id: `eventim-${product.productId}`,
@@ -339,7 +347,7 @@ export function normalizeEvent(product: EventimProduct) {
     subcategory,
     start_date: start.date,
     start_time: start.time,
-    end_date: end?.date ?? null,
+    end_date: normalizedEndDate,
     location_name: location?.name ?? null,
     address: null,
     city: location?.city ?? 'München',
