@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+import path from 'path';
 import { fileURLToPath } from 'url';
 
 // Bewusst kein automatisierter Verifikations-Heuristik (z.B. "Website gibt
@@ -13,8 +15,11 @@ import { fileURLToPath } from 'url';
 //
 // Nutzung:
 //   npm run review-closures                  -- listet offene ("pending") Meldungen
-//   npm run review-closures -- confirm <id>   -- Venue wird in der App ausgeblendet
-//   npm run review-closures -- reject <id>    -- Meldung verworfen, Venue bleibt normal sichtbar
+//   npm run review-closures -- confirm <id> [Notiz] -- Venue wird ausgeblendet
+//   npm run review-closures -- reject <id> [Notiz]  -- Meldung wird verworfen
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '../../app/.env') });
 
 export async function run() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -22,12 +27,17 @@ export async function run() {
   if (!supabaseUrl || !supabaseKey) { console.log('[review-closures] missing supabase envs — skipping'); return; }
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const [, , action, venueId] = process.argv;
+  const [, , action, venueId, ...noteParts] = process.argv;
 
   if (action === 'confirm' || action === 'reject') {
     if (!venueId) { console.error(`[review-closures] usage: ${action} <venue_id>`); return; }
     const status = action === 'confirm' ? 'confirmed' : 'rejected';
-    const { error } = await supabase.from('venue_closure_reports').update({ status }).eq('venue_id', venueId);
+    const reviewNote = noteParts.join(' ').trim() || null;
+    const { error } = await supabase
+      .from('venue_closure_reports')
+      .update({ status, review_note: reviewNote })
+      .eq('venue_id', venueId)
+      .eq('status', 'pending');
     if (error) console.error('[review-closures] update failed', error);
     else console.log(`[review-closures] ${venueId} -> ${status}`);
     return;

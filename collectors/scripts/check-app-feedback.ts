@@ -3,10 +3,9 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Manueller Schnellüberblick über app_feedback (0025_app_feedback.sql) für
-// den Nutzer selbst, ohne Supabase direkt aufzumachen — die eigentliche
-// Bearbeitung läuft über die tägliche "Vibe - Review app feedback"-Routine
-// (Claude Code), dieses Skript ist nur ein Read-Only-Nebenwerkzeug.
+// Veralteter Einzelüberblick. Der npm-Befehl check-app-feedback verweist seit
+// Migration 0033 auf weekly-review.ts. Dieses Skript bleibt vorerst nur als
+// historische Diagnosehilfe bestehen.
 //
 // Nutzung: npx tsx collectors/scripts/check-app-feedback.ts
 

@@ -3,7 +3,11 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Für den täglichen Cron-Check (siehe /loop-artige Erinnerung) statt einer
+// Veralteter, zeitlich begrenzter Einzelcheck. Der npm-Befehl check-feedback
+// verweist seit Migration 0033 auf weekly-review.ts, damit wirklich alle
+// offenen Einträge bis zu einer manuellen Entscheidung erhalten bleiben.
+// Dieses Skript bleibt vorerst nur als historische Diagnosehilfe bestehen.
+// Ursprünglich für den täglichen Cron-Check statt einer
 // echten Hintergrund-Automatisierung: fasst neue event_reports (Nutzer-
 // Meldungen zu fehlerhaften Event-Daten, 0003_add_event_reports.sql), offene
 // venue_closure_reports (Bars & Restaurants, 0012/0013/0015) und neue

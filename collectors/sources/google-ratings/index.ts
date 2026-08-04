@@ -194,13 +194,11 @@ export async function run() {
   console.log(`[google-ratings] used ${usedThisMonth ?? 0}/${MONTHLY_BUDGET} this month, processing ${batchSize} now`);
   if (batchSize <= 0) { console.log('[google-ratings] monthly budget exhausted — skipping until next month'); return; }
 
-  // Venues mit einer offenen Schließungsmeldung (venue_closure_reports,
-  // status='pending') gehen jeden Tag zuerst in den Batch — das gibt der
-  // Closure-Review-Routine (siehe collectors/scripts/review-closures.ts)
-  // ein frisches google_business_status als zusätzliches Signal, statt
-  // Wochen auf die normale "am längsten nicht geprüft"-Rotation zu warten.
-  // Kein Extra-Budget/-Key nötig, verdrängt nur reguläre Rotations-Slots —
-  // unkritisch, da Schließungsmeldungen selten sind (einstellig/Monat).
+  // Offene Schließungsmeldungen werden NICHT mehr täglich bevorzugt erneut
+  // abgefragt: drei identische Google-Nichttreffer an drei Folgetagen sind
+  // keine drei unabhängigen Belege. Ungeklärte Fälle bleiben bis zur
+  // wöchentlichen manuellen Entscheidung offen (weekly-review.ts). Die
+  // normale Rotation darf weiterhin gelegentlich frische Evidenz liefern.
   const VENUE_COLUMNS = 'id,name,address,latitude,longitude,website,phone,google_place_id,google_not_found_streak';
   // Bestätigt geschlossene Venues werden in der App bereits ausgeblendet und
   // dürfen deshalb auch kein knappes Google-Places-Budget mehr verbrauchen.
@@ -209,29 +207,16 @@ export async function run() {
   const { data: closureReports, error: closureReportsError } = await supabase
     .from('venue_closure_reports')
     .select('venue_id,status')
-    .in('status', ['pending', 'confirmed']);
+    .eq('status', 'confirmed');
   if (closureReportsError) {
     console.error('[google-ratings] could not determine inactive venues — aborting', closureReportsError);
     return;
   }
-  const priorityIds = [...new Set(
-    (closureReports ?? []).filter((r) => r.status === 'pending').map((r) => r.venue_id as string)
-  )];
   const inactiveIds = new Set(
-    (closureReports ?? []).filter((r) => r.status === 'confirmed').map((r) => r.venue_id as string)
+    (closureReports ?? []).map((r) => r.venue_id as string)
   );
 
   let venues: RatingVenue[] = [];
-  if (priorityIds.length > 0) {
-    const { data: priorityVenues, error: priorityError } = await supabase
-      .from('venues')
-      .select(VENUE_COLUMNS)
-      .in('id', priorityIds)
-      .limit(batchSize);
-    if (priorityError) console.warn('[google-ratings] could not fetch priority (reported) venues', priorityError);
-    else venues = (priorityVenues ?? []).filter((venue) => !inactiveIds.has(venue.id));
-  }
-
   if (venues.length < batchSize) {
     const { data: rest, error: fetchError } = await supabase
       .from('venues')
@@ -239,7 +224,7 @@ export async function run() {
       .order('google_rating_checked_at', { ascending: true, nullsFirst: true })
       // Genügend Zeilen laden, damit lokal herausgefilterte, bestätigt
       // geschlossene Venues den Batch nicht verkleinern.
-      .limit(batchSize - venues.length + priorityIds.length + inactiveIds.size);
+      .limit(batchSize - venues.length + inactiveIds.size);
     if (fetchError) { console.error('[google-ratings] could not fetch venues', fetchError); return; }
     const existingIds = new Set(venues.map((v) => v.id));
     for (const v of rest ?? []) {
@@ -248,7 +233,6 @@ export async function run() {
     }
   }
   if (venues.length === 0) { console.log('[google-ratings] no venues found'); return; }
-  if (priorityIds.length > 0) console.log(`[google-ratings] prioritizing ${Math.min(priorityIds.length, batchSize)} reported venue(s) this run`);
 
   let found = 0;
   let notFound = 0;
@@ -268,16 +252,13 @@ export async function run() {
         if (!candidate || !looksLikeSameVenue(venue, candidate)) {
           if (candidate) rejectedMatch++;
           notFound++;
-          // Streak nur hochzählen, nicht raten, wie viele Tage dazwischen
-          // liegen — bei Prioritäts-Venues (offene Schließungsmeldung) ist
-          // das täglich, bei der regulären Rotation seltener, aber die
-          // Closure-Review-Routine nutzt das Signal ohnehin nur für
-          // Venues mit einer offenen Meldung (siehe deren Prompt).
+          // Der frühere Drei-Treffer-Streak wird bewusst nicht fortgeführt:
+          // wiederholte Nichtzuordnung ist keine sichere Schließungsbestätigung.
           await supabase
             .from('venues')
             .update({
               google_rating_checked_at: new Date().toISOString(),
-              google_not_found_streak: (venue.google_not_found_streak ?? 0) + 1,
+              google_not_found_streak: 0,
             })
             .eq('id', venue.id);
           continue;
