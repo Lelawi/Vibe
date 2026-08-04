@@ -25,6 +25,14 @@ interface DayRule {
   days: number[];
   ranges: TimeRange[];
   closed: boolean;
+  // OSM-Monatswochen-Selektor, z.B. Sa[1] = erster Samstag oder
+  // Su[-1] = letzter Sonntag des Monats. null = jede Monatswoche.
+  monthWeeks: number[] | null;
+}
+
+interface DaySelection {
+  days: number[];
+  monthWeeks: number[] | null;
 }
 
 function parseTimeToMinutes(time: string): number | null {
@@ -50,9 +58,19 @@ function parseTimeToMinutes(time: string): number | null {
 // ihre echten Wochentage gültig, nur der zusätzliche Feiertags-Sonderfall
 // wird (mangels Datenquelle) ignoriert. Das ist an ca. 10 Tagen im Jahr
 // potenziell ungenau, aber weit besser als an 365 Tagen "unbekannt" zu zeigen.
-function parseDayToken(token: string): number[] | null {
-  if (/^ph$/i.test(token)) return [];
-  const rangeMatch = token.match(/^([A-Za-z]{2})-([A-Za-z]{2})$/);
+function parseDayToken(token: string): DaySelection | null {
+  let dayToken = token;
+  let monthWeeks: number[] | null = null;
+  const weekMatch = token.match(/^(.+?)\[(-?\d+(?:,-?\d+)*)\]$/);
+  if (weekMatch) {
+    const parsedWeeks = weekMatch[2].split(',').map(Number);
+    if (parsedWeeks.some((week) => !Number.isInteger(week) || week === 0 || week < -5 || week > 5)) return null;
+    dayToken = weekMatch[1];
+    monthWeeks = parsedWeeks;
+  }
+
+  if (/^ph$/i.test(dayToken)) return { days: [], monthWeeks };
+  const rangeMatch = dayToken.match(/^([A-Za-z]{2})-([A-Za-z]{2})$/);
   if (rangeMatch) {
     const start = DAY_INDEX[rangeMatch[1]];
     const end = DAY_INDEX[rangeMatch[2]];
@@ -66,10 +84,10 @@ function parseDayToken(token: string): number[] | null {
       // Notbremse gegen eine Endlosschleife bei unerwarteter Eingabe.
       if (days.length > 7) return null;
     }
-    return days;
+    return { days, monthWeeks };
   }
-  const single = DAY_INDEX[token];
-  return single === undefined ? null : [single];
+  const single = DAY_INDEX[dayToken];
+  return single === undefined ? null : { days: [single], monthWeeks };
 }
 
 function parseTimeRangeToken(token: string): TimeRange | null {
@@ -88,11 +106,33 @@ function isClosedKeyword(rest: string): boolean {
   return /^(off|closed)$/i.test(rest);
 }
 
+function splitRuleParts(segment: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  let bracketDepth = 0;
+  let quoted = false;
+  for (let i = 0; i < segment.length; i++) {
+    const char = segment[i];
+    if (char === '"') quoted = !quoted;
+    else if (!quoted && char === '[') bracketDepth++;
+    else if (!quoted && char === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+    else if (!quoted && bracketDepth === 0 && char === ',') {
+      parts.push(segment.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(segment.slice(start));
+  return parts;
+}
+
 export function parseOpeningHours(raw: string | null | undefined): DayRule[] | null {
-  const source = raw?.trim();
+  // Ein rein beschreibender OSM-Fallback wie `|| "und nach Vereinbarung"`
+  // enthält keinen maschinenprüfbaren Öffnungszeitraum. Die davor stehenden
+  // regulären Zeiten bleiben trotzdem vollständig nutzbar.
+  const source = raw?.trim().replace(/\s*\|\|\s*"[^"]*"\s*$/, '').trim();
   if (!source) return null;
   if (source === '24/7') {
-    return [{ days: [0, 1, 2, 3, 4, 5, 6], ranges: [{ startMinutes: 0, endMinutes: 24 * 60 }], closed: false }];
+    return [{ days: [0, 1, 2, 3, 4, 5, 6], ranges: [{ startMinutes: 0, endMinutes: 24 * 60 }], closed: false, monthWeeks: null }];
   }
 
   const rules: DayRule[] = [];
@@ -114,8 +154,9 @@ export function parseOpeningHours(raw: string | null | undefined): DayRule[] | n
     // — dafür merkt sich lastRule die zuletzt erzeugte offene Regel dieses
     // Blocks, an die weitere Zeitbereiche angehängt werden.
     let pendingDays: number[] = [];
+    let pendingMonthWeeks: number[] | null = null;
     let lastRule: DayRule | null = null;
-    for (const part of segment.split(',')) {
+    for (const part of splitRuleParts(segment)) {
       const piece = part.trim();
       if (!piece) continue;
       const tokens = piece.split(/\s+/);
@@ -129,7 +170,7 @@ export function parseOpeningHours(raw: string | null | undefined): DayRule[] | n
         if (bareRange && !lastRule && pendingDays.length === 0 && rules.length === 0) {
           // Nirgends im gesamten String bisher ein Tages-Selektor gesehen ->
           // OSM-Kurzform für "jeden Tag" (z.B. reines "07:00-24:00").
-          lastRule = { days: [0, 1, 2, 3, 4, 5, 6], ranges: [bareRange], closed: false };
+          lastRule = { days: [0, 1, 2, 3, 4, 5, 6], ranges: [bareRange], closed: false, monthWeeks: null };
           rules.push(lastRule);
           continue;
         }
@@ -155,23 +196,28 @@ export function parseOpeningHours(raw: string | null | undefined): DayRule[] | n
 
       if (rest === '') {
         // Nur Tage, keine Zeit -> für das nächste Teilstück mit Zeit vormerken.
-        pendingDays.push(...days);
+        if (pendingDays.length > 0 && JSON.stringify(pendingMonthWeeks) !== JSON.stringify(days.monthWeeks)) return null;
+        pendingDays.push(...days.days);
+        pendingMonthWeeks = days.monthWeeks;
         lastRule = null;
         continue;
       }
 
-      const allDays = [...new Set([...pendingDays, ...days])];
+      if (pendingDays.length > 0 && JSON.stringify(pendingMonthWeeks) !== JSON.stringify(days.monthWeeks)) return null;
+      const allDays = [...new Set([...pendingDays, ...days.days])];
+      const monthWeeks = pendingDays.length > 0 ? pendingMonthWeeks : days.monthWeeks;
       pendingDays = [];
+      pendingMonthWeeks = null;
 
       if (isClosedKeyword(rest)) {
-        lastRule = { days: allDays, ranges: [], closed: true };
+        lastRule = { days: allDays, ranges: [], closed: true, monthWeeks };
         rules.push(lastRule);
         continue;
       }
 
       const range = parseTimeRangeToken(rest);
       if (!range) return null;
-      lastRule = { days: allDays, ranges: [range], closed: false };
+      lastRule = { days: allDays, ranges: [range], closed: false, monthWeeks };
       rules.push(lastRule);
     }
     // Tage ohne je eine zugeordnete Zeit übrig (Block endet mitten in einer
@@ -184,17 +230,29 @@ export function parseOpeningHours(raw: string | null | undefined): DayRule[] | n
 
 // Prüft einen Zeitpunkt gegen alle Regeln — inklusive der Regeln vom
 // VORTAG, deren Zeitbereich über Mitternacht in den aktuellen Tag hineinreicht.
-function isWithinRules(rules: DayRule[], weekday: number, minutesOfDay: number): boolean {
+function matchesMonthWeek(rule: DayRule, date: Date): boolean {
+  if (!rule.monthWeeks) return true;
+  const positiveWeek = Math.ceil(date.getDate() / 7);
+  const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const negativeWeek = -Math.ceil((daysInMonth - date.getDate() + 1) / 7);
+  return rule.monthWeeks.includes(positiveWeek) || rule.monthWeeks.includes(negativeWeek);
+}
+
+function isWithinRules(rules: DayRule[], at: Date): boolean {
+  const weekday = at.getDay();
+  const minutesOfDay = at.getHours() * 60 + at.getMinutes();
+  const previousDate = new Date(at);
+  previousDate.setDate(at.getDate() - 1);
   for (const rule of rules) {
     if (rule.closed) continue;
-    if (rule.days.includes(weekday)) {
+    if (rule.days.includes(weekday) && matchesMonthWeek(rule, at)) {
       for (const range of rule.ranges) {
         if (minutesOfDay >= range.startMinutes && minutesOfDay < range.endMinutes) return true;
       }
     }
     // Vortag-Regel, deren Über-Mitternacht-Bereich noch in den aktuellen Tag reicht.
     const previousWeekday = (weekday + 6) % 7;
-    if (rule.days.includes(previousWeekday)) {
+    if (rule.days.includes(previousWeekday) && matchesMonthWeek(rule, previousDate)) {
       for (const range of rule.ranges) {
         if (range.endMinutes > 24 * 60 && minutesOfDay < range.endMinutes - 24 * 60) return true;
       }
@@ -206,9 +264,7 @@ function isWithinRules(rules: DayRule[], weekday: number, minutesOfDay: number):
 export function isOpenNow(raw: string | null | undefined, at: Date = new Date()): boolean | null {
   const rules = parseOpeningHours(raw);
   if (!rules) return null;
-  const weekday = at.getDay();
-  const minutesOfDay = at.getHours() * 60 + at.getMinutes();
-  return isWithinRules(rules, weekday, minutesOfDay);
+  return isWithinRules(rules, at);
 }
 
 // Kurzer, menschenlesbarer Hinweis für "heute" — z.B. "10:00-24:00" oder
@@ -223,7 +279,7 @@ export function todayLabel(
   const rules = parseOpeningHours(raw);
   if (!rules) return null;
   const weekday = at.getDay();
-  const todayRules = rules.filter((r) => r.days.includes(weekday));
+  const todayRules = rules.filter((r) => r.days.includes(weekday) && matchesMonthWeek(r, at));
   if (todayRules.length === 0) return null;
   if (todayRules.every((r) => r.closed)) return language === 'de' ? 'Geschlossen' : 'Closed';
 
