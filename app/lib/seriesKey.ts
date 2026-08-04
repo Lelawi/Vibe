@@ -6,6 +6,11 @@ function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
     .replace(/\(.*?\)/g, ' ')
+    // Ticketanbieter hängen Line-ups oft an den eigentlichen Haupttitel an,
+    // z.B. „Less Than Jake – Supports: …“. Für Gruppierung/Deduplizierung ist
+    // das weiterhin dasselbe Event; ein beliebiger Untertitel ohne dieses
+    // eindeutige Markerwort wird dagegen nicht abgeschnitten.
+    .replace(/\s*[-–—|]\s*(?:supports?|support acts?|special guests?|guests?)\s*:?.*$/i, ' ')
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
