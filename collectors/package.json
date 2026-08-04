@@ -48,9 +48,13 @@
     "check-feedback": "tsx scripts/weekly-review.ts",
     "check-app-feedback": "tsx scripts/weekly-review.ts",
     "review-weekly": "tsx scripts/weekly-review.ts",
+    "routine-feedback-inbox": "tsx scripts/routine-feedback-inbox.ts",
+    "precheck-structured": "tsx scripts/precheck-structured-reports.ts",
+    "cleanup-feedback-screenshots": "tsx scripts/cleanup-feedback-screenshots.ts",
     "test:eventim": "tsx --test sources/eventim/index.test.ts",
     "test:theatron": "tsx --test sources/theatron/index.test.ts",
     "test:filters": "tsx --test core/savedSearchFilter.test.ts",
+    "test:feedback": "tsx --test core/urlProbe.test.ts",
     "send-notifications": "tsx notifications/index.ts",
     "collect-all": "npm run collect-all:runner",
     "collect-all:runner": "tsx collect-all.ts"

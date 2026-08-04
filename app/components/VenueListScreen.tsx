@@ -512,7 +512,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           .is('duplicate_of', null)
           .not('location_name', 'is', null)
           .limit(1000),
-        supabase.from('venue_closure_reports').select('venue_id,status'),
+        supabase.from('venue_closure_statuses').select('venue_id,status'),
       ]);
       const sortedVenues = venuesData.sort((a, b) =>
         (a.name_override ?? a.name).localeCompare(b.name_override ?? b.name, 'de')
@@ -540,10 +540,8 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   // nicht sofort und endgültig verschwinden lassen — daher 1) eine Rückfrage
   // vor dem Melden, und 2) selbst nach Bestätigung nur ein "pending"-Status
   // statt direktem Ausblenden. Der Eintrag bleibt sichtbar (mit Hinweis-
-  // Badge), bis die Meldung geprüft wurde — das übernimmt vorerst manuell
-  // Claude auf Zuruf (siehe collectors/scripts/review-closures.ts), da es
-  // keine freie Datenquelle gibt, die "existiert nicht mehr" verlässlich
-  // automatisch bestätigen könnte.
+  // Badge), bis die automatische Vorprüfung belastbare Evidenz gefunden hat
+  // oder der Fall in der manuellen Wochenliste entschieden wurde.
   function confirmReportClosed(venueId: string, venueName: string) {
     const message = REPORT_PROMPT[type](venueName, language);
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -567,9 +565,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
 
   async function reportClosed(venueId: string, venueName: string) {
     setClosureStatusByVenue((prev) => new Map(prev).set(venueId, 'pending'));
-    const { error } = await supabase
-      .from('venue_closure_reports')
-      .upsert({ venue_id: venueId, status: 'pending' }, { onConflict: 'venue_id' });
+    const { error } = await supabase.rpc('submit_venue_closure_report', { p_venue_id: venueId });
     const failureMessage =
       language === 'de' ? `Melden von "${venueName}" ist fehlgeschlagen.` : `Reporting "${venueName}" failed.`;
     if (error && Platform.OS === 'web' && typeof window !== 'undefined') {

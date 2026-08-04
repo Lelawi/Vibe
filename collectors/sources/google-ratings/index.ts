@@ -32,7 +32,7 @@ const DAILY_BATCH = 30;
 // Antwort, aber verhindert einen unbegrenzten Hänger.
 const REQUEST_TIMEOUT_MS = 10_000;
 
-interface RatingVenue {
+export interface RatingVenue {
   id: string;
   name: string;
   address: string | null;
@@ -44,13 +44,13 @@ interface RatingVenue {
   google_not_found_streak: number | null;
 }
 
-interface PlaceCandidate {
+export interface PlaceCandidate {
   id: string;
   name: string;
   address: string | null;
 }
 
-interface PlaceDetails {
+export interface PlaceDetails {
   rating: number | null;
   count: number | null;
   website: string | null;
@@ -89,7 +89,7 @@ function extractPostcode(s: string | null): string | null {
 // garantiert keinen korrekten Treffer. Bewusst kein hartes Ausschlusskriterium
 // bei fehlender Adresse (viele Spätis haben in unserer DB gar keine) — dann
 // verlässt sich die Prüfung nur auf den Namen.
-function looksLikeSameVenue(venue: RatingVenue, candidate: PlaceCandidate): boolean {
+export function looksLikeSameVenue(venue: RatingVenue, candidate: PlaceCandidate): boolean {
   const a = normalize(venue.name);
   const b = normalize(candidate.name);
   if (!a || !b) return false;
@@ -104,7 +104,7 @@ function looksLikeSameVenue(venue: RatingVenue, candidate: PlaceCandidate): bool
   return true;
 }
 
-async function resolvePlaceCandidate(apiKey: string, venue: RatingVenue): Promise<PlaceCandidate | null> {
+export async function resolvePlaceCandidate(apiKey: string, venue: RatingVenue): Promise<PlaceCandidate | null> {
   const body: Record<string, unknown> = {
     textQuery: venue.address ? `${venue.name}, ${venue.address}` : `${venue.name}, München`,
   };
@@ -138,7 +138,7 @@ async function resolvePlaceCandidate(apiKey: string, venue: RatingVenue): Promis
   return { id: place.id, name: place.displayName?.text ?? '', address: place.formattedAddress ?? null };
 }
 
-async function fetchDetails(apiKey: string, placeId: string): Promise<PlaceDetails | null> {
+export async function fetchDetails(apiKey: string, placeId: string): Promise<PlaceDetails | null> {
   const res = await fetch(`${PLACES_API_BASE}/places/${placeId}`, {
     headers: {
       'X-Goog-Api-Key': apiKey,

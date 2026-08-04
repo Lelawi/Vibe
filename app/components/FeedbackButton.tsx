@@ -12,6 +12,10 @@ registerStrings({
     en: 'What did you notice? Bug, idea, praise — all welcome.',
   },
   'feedback.attach': { de: 'Screenshot anhängen', en: 'Attach screenshot' },
+  'feedback.aiNotice': {
+    de: 'Text und Screenshot werden automatisch analysiert, um eindeutige Hinweise direkt zu prüfen. Bilder werden privat gespeichert und nach der Bearbeitung gelöscht.',
+    en: 'Text and screenshot are analyzed automatically to verify clear reports. Images are stored privately and deleted after processing.',
+  },
   'feedback.remove': { de: 'Entfernen', en: 'Remove' },
   'feedback.send': { de: 'Absenden', en: 'Send' },
   'feedback.sending': { de: 'Wird gesendet…', en: 'Sending…' },
@@ -158,6 +162,8 @@ export default function FeedbackButton() {
                   </TouchableOpacity>
                 ))}
 
+                {mode === 'general' && <Text style={styles.aiNotice}>{t('feedback.aiNotice')}</Text>}
+
                 {status === 'error' && <Text style={styles.errorText}>{t('feedback.error')}</Text>}
 
                 <View style={styles.actionsRow}>
@@ -235,6 +241,7 @@ const styles = StyleSheet.create({
   preview: { width: 120, height: 120, borderRadius: 12, backgroundColor: '#000' },
   removeLink: { color: '#ff6b6b', fontSize: 13, fontWeight: '600' },
   errorText: { color: '#ff6b6b', fontSize: 13, marginTop: 10 },
+  aiNotice: { color: '#777', fontSize: 11, lineHeight: 16, marginTop: 12 },
   actionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
   cancelBtn: { paddingVertical: 12, paddingHorizontal: 16 },
   cancelBtnText: { color: '#888', fontSize: 14, fontWeight: '600' },

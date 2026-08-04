@@ -51,5 +51,7 @@ Begründung oder Beschreibung der vorgenommenen Änderung gehört in
 `review_note`.
 
 Der Wochenbericht selbst enthält potenziell Nutzereingaben und wird deshalb
-nicht als öffentliches GitHub-Actions-Artefakt veröffentlicht. Der private
-Zustellkanal für eine vollautomatische Erinnerung wird separat festgelegt.
+nicht als öffentliches GitHub-Actions-Artefakt veröffentlicht. Nach der
+automatischen Vorprüfung wird er einmal wöchentlich von der privaten
+Claude-Code-Routine vorgelegt. Details stehen in
+[`automated-feedback-review.md`](./automated-feedback-review.md).

@@ -130,7 +130,7 @@ export default function VenueMapNative({
         }),
         // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
         // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
-        supabase.from('venue_closure_reports').select('venue_id,status').eq('status', 'confirmed'),
+        supabase.from('venue_closure_statuses').select('venue_id,status').eq('status', 'confirmed'),
       ]);
       setVenues(venuesData.filter((v) => v.latitude != null && v.longitude != null));
       setClosedIds(new Set((reportsRes.data ?? []).map((r) => r.venue_id as string)));

@@ -24,6 +24,8 @@ export function pickScreenshot(): Promise<File | null> {
 // Handyfotos) direkt hochzuladen — hält das kostenlose 1GB-Supabase-
 // Storage-Kontingent bei vielen Meldungen deutlich länger nutzbar.
 async function compressImage(file: File, maxWidth = 1600, quality = 0.8): Promise<Blob> {
+  if (!file.type.startsWith('image/')) throw new Error('Bitte eine Bilddatei auswählen');
+  if (file.size > 15 * 1024 * 1024) throw new Error('Das Bild darf höchstens 15 MB groß sein');
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxWidth / bitmap.width);
   const canvas = document.createElement('canvas');
@@ -42,25 +44,27 @@ export async function submitFeedback(
   screenshot: File | null,
   pageContext: string
 ): Promise<{ ok: boolean; error?: string }> {
-  let screenshotUrl: string | null = null;
+  const feedbackId = crypto.randomUUID();
+  let screenshotPath: string | null = null;
   if (screenshot) {
     try {
       const blob = await compressImage(screenshot);
-      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+      if (blob.size > 5 * 1024 * 1024) throw new Error('Das komprimierte Bild ist noch zu groß');
+      const path = `${feedbackId}/screenshot.jpg`;
       const { error: uploadError } = await supabase.storage
         .from('feedback-screenshots')
         .upload(path, blob, { contentType: 'image/jpeg' });
       if (uploadError) return { ok: false, error: uploadError.message };
-      const { data } = supabase.storage.from('feedback-screenshots').getPublicUrl(path);
-      screenshotUrl = data.publicUrl;
+      screenshotPath = path;
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'Bild-Upload fehlgeschlagen' };
     }
   }
 
   const { error } = await supabase.from('app_feedback').insert({
+    id: feedbackId,
     message,
-    screenshot_url: screenshotUrl,
+    screenshot_path: screenshotPath,
     page_context: pageContext,
   });
   if (error) return { ok: false, error: error.message };
