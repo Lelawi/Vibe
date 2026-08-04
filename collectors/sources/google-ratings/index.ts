@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 
-// Google-Bewertungen (+ Website/Telefon als Nebenprodukt) für Venues
+// Google-Bewertungen (+ Öffnungszeiten/Website/Telefon als Nebenprodukt) für Venues
 // (bars/restaurants/spaetis) — bewusst über die offizielle Places API (New)
 // statt Scraping (verstößt gegen Googles Nutzungsbedingungen, siehe
 // Diskussion im Chat 2026-08-01). Das rating-Feld gehört zum teuersten
@@ -12,8 +12,9 @@ import { createClient } from '@supabase/supabase-js';
 // in der Google Cloud Console (nicht nur ein Budget-Alert, das nur
 // benachrichtigt statt zu blocken). Text Search zum Auflösen der place_id
 // läuft im viel günstigeren Tier und ist hier nie der Flaschenhals.
-// website/phone werden mit demselben Enterprise-Call kostenlos mitgeliefert
-// (gehören bereits zum bezahlten Tier) und nur dann übernommen, wenn wir
+// Öffnungszeiten/website/phone werden mit demselben Enterprise-Call
+// mitgeliefert (gehören bereits zum bezahlten Tier). Website/Telefon werden
+// nur dann übernommen, wenn wir
 // dafür noch keinen Wert haben — Google ist im Schnitt aktueller als OSM
 // (siehe Feder-Bar-Fall), aber überschreibt nichts, um Bestandsdaten nicht
 // versehentlich durch einen Text-Search-Fehltreffer zu ersetzen.
@@ -56,6 +57,62 @@ export interface PlaceDetails {
   website: string | null;
   phone: string | null;
   businessStatus: string | null;
+  openingHours: string | null;
+}
+
+type GooglePlaceTime = { day?: number; hour?: number; minute?: number };
+type GooglePlacePeriod = { open?: GooglePlaceTime; close?: GooglePlaceTime };
+
+const GOOGLE_DAY_ABBR = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as const;
+const OSM_DAY_ORDER = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'] as const;
+
+function formatGoogleTime(time: GooglePlaceTime): string | null {
+  if (!Number.isInteger(time.hour) || !Number.isInteger(time.minute)) return null;
+  if (time.hour! < 0 || time.hour! > 23 || time.minute! < 0 || time.minute! > 59) return null;
+  return `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}`;
+}
+
+// Google liefert strukturierte Perioden mit Sonntag=0. Die App verwendet
+// bewusst bereits überall OSM-opening_hours-Syntax; deshalb hier einmalig
+// verlustfrei normalisieren, inklusive Pausen, Über-Mitternacht-Zeiten und
+// expliziten Schließtagen.
+export function googleOpeningHoursToOsm(periods: GooglePlacePeriod[] | null | undefined): string | null {
+  if (!periods?.length) return null;
+  const rangesByDay = new Map<string, string[]>();
+  for (const period of periods) {
+    const openDay = period.open?.day;
+    if (!Number.isInteger(openDay) || openDay! < 0 || openDay! > 6 || !period.open) continue;
+    const day = GOOGLE_DAY_ABBR[openDay!];
+    const opens = formatGoogleTime(period.open);
+    if (!opens) continue;
+    let range: string;
+    if (!period.close) {
+      // Laut Places-API wird ein durchgehend geöffneter Tag ohne close
+      // repräsentiert. Nur Mitternacht ist dafür ein plausibler Start.
+      if (opens !== '00:00') continue;
+      range = '00:00-24:00';
+    } else {
+      let closes = formatGoogleTime(period.close);
+      if (!closes) continue;
+      const closeDay = period.close.day;
+      if (closes === '00:00' && Number.isInteger(closeDay) && closeDay === (openDay! + 1) % 7) closes = '24:00';
+      range = `${opens}-${closes}`;
+    }
+    if (!rangesByDay.has(day)) rangesByDay.set(day, []);
+    rangesByDay.get(day)!.push(range);
+  }
+  if (rangesByDay.size === 0) return null;
+
+  const schedules = OSM_DAY_ORDER.map((day) => rangesByDay.get(day)?.join(',') ?? 'off');
+  const blocks: string[] = [];
+  for (let start = 0; start < OSM_DAY_ORDER.length;) {
+    let end = start;
+    while (end + 1 < OSM_DAY_ORDER.length && schedules[end + 1] === schedules[start]) end++;
+    const dayToken = start === end ? OSM_DAY_ORDER[start] : `${OSM_DAY_ORDER[start]}-${OSM_DAY_ORDER[end]}`;
+    blocks.push(`${dayToken} ${schedules[start]}`);
+    start = end + 1;
+  }
+  return blocks.join('; ');
 }
 
 function startOfCurrentMonthUtc(): string {
@@ -142,10 +199,10 @@ export async function fetchDetails(apiKey: string, placeId: string): Promise<Pla
   const res = await fetch(`${PLACES_API_BASE}/places/${placeId}`, {
     headers: {
       'X-Goog-Api-Key': apiKey,
-      // websiteUri/nationalPhoneNumber/businessStatus gehören alle zum
-      // selben Enterprise-Tier wie rating — kein zusätzlicher Kostenfaktor,
-      // da ohnehin schon der teuerste SKU für diesen Request bezahlt wird.
-      'X-Goog-FieldMask': 'rating,userRatingCount,websiteUri,nationalPhoneNumber,businessStatus',
+      // regularOpeningHours/websiteUri/nationalPhoneNumber gehören zum
+      // selben Enterprise-Tier wie rating — kein höherer SKU, da ohnehin
+      // bereits dieser Tarif für den Request ausgelöst wird.
+      'X-Goog-FieldMask': 'rating,userRatingCount,websiteUri,nationalPhoneNumber,businessStatus,regularOpeningHours.periods',
     },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
@@ -159,6 +216,7 @@ export async function fetchDetails(apiKey: string, placeId: string): Promise<Pla
     websiteUri?: string;
     nationalPhoneNumber?: string;
     businessStatus?: string;
+    regularOpeningHours?: { periods?: GooglePlacePeriod[] };
   };
   return {
     rating: data.rating ?? null,
@@ -166,6 +224,7 @@ export async function fetchDetails(apiKey: string, placeId: string): Promise<Pla
     website: data.websiteUri ?? null,
     phone: data.nationalPhoneNumber ?? null,
     businessStatus: data.businessStatus ?? null,
+    openingHours: googleOpeningHoursToOsm(data.regularOpeningHours?.periods),
   };
 }
 
@@ -217,6 +276,26 @@ export async function run() {
   );
 
   let venues: RatingVenue[] = [];
+  // Direkt nach Einführung der Öffnungszeiten zuerst bereits eindeutig mit
+  // Google verknüpfte Venues nachziehen. Der separate Checked-Zeitpunkt ist
+  // wichtig: null kann sowohl "Google kennt keine Zeiten" als auch "noch
+  // nie abgefragt" bedeuten und darf deshalb nicht allein als Queue dienen.
+  const { data: missingHours, error: missingHoursError } = await supabase
+    .from('venues')
+    .select(VENUE_COLUMNS)
+    .not('google_place_id', 'is', null)
+    .is('google_opening_hours_checked_at', null)
+    .order('google_rating_checked_at', { ascending: false, nullsFirst: false })
+    .limit(batchSize + inactiveIds.size);
+  if (missingHoursError) {
+    console.error('[google-ratings] could not determine opening-hours backfill — aborting', missingHoursError);
+    return;
+  }
+  for (const venue of missingHours ?? []) {
+    if (venues.length >= batchSize) break;
+    if (!inactiveIds.has(venue.id as string)) venues.push(venue as RatingVenue);
+  }
+
   if (venues.length < batchSize) {
     const { data: rest, error: fetchError } = await supabase
       .from('venues')
@@ -272,7 +351,9 @@ export async function run() {
         google_rating: details?.rating ?? null,
         google_rating_count: details?.count ?? null,
         google_business_status: details?.businessStatus ?? null,
+        google_opening_hours: details?.openingHours ?? null,
         google_rating_checked_at: new Date().toISOString(),
+        google_opening_hours_checked_at: new Date().toISOString(),
         google_not_found_streak: 0,
       };
       // Nur auffüllen, nie überschreiben — siehe Kommentar am Dateianfang.

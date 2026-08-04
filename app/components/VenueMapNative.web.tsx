@@ -32,6 +32,7 @@ type RawVenue = {
   longitude: number | null;
   opening_hours_raw: string | null;
   opening_hours_override: string | null;
+  google_opening_hours: string | null;
   website: string | null;
   image_url: string | null;
   lunch_available: boolean | null;
@@ -101,7 +102,7 @@ export default function VenueMapNative({
       // 2263 Restaurants hätte ein einfaches .select() über die Hälfte
       // verschluckt (siehe app/lib/fetchAllVenues.ts).
       const venuesColumns =
-        'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count';
+        'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,google_opening_hours,website,image_url,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count';
       const [venuesData, reportsRes] = await Promise.all([
         fetchAllVenues<RawVenue>(type, venuesColumns).catch(async (err) => {
           // name_override (0023)/dinner_menu_url (0021)/beer_price_eur
@@ -111,22 +112,32 @@ export default function VenueMapNative({
           // Info) statt vom Direktaufruf der Karte (ohne Listen-
           // Filterkontext, siehe getFilteredVenuesForMap oben) komplett leer
           // zu bleiben.
-          console.warn(
-            '[VenueMapNative] retrying without name_override/dinner_menu_url/beer_price_eur/wifi/google_rating columns',
-            err
-          );
-          const fallback = await fetchAllVenues<
-            Omit<RawVenue, 'name_override' | 'dinner_menu_url' | 'beer_price_eur' | 'wifi' | 'google_rating' | 'google_rating_count'>
-          >(type, 'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url');
-          return fallback.map((v) => ({
-            ...v,
-            name_override: null,
-            dinner_menu_url: null,
-            beer_price_eur: null,
-            wifi: null,
-            google_rating: null,
-            google_rating_count: null,
-          }));
+          console.warn('[VenueMapNative] retrying without google_opening_hours', err);
+          try {
+            const fallback = await fetchAllVenues<Omit<RawVenue, 'google_opening_hours'>>(
+              type,
+              'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count'
+            );
+            return fallback.map((v) => ({ ...v, google_opening_hours: null }));
+          } catch (legacyErr) {
+            console.warn(
+              '[VenueMapNative] retrying without name_override/dinner_menu_url/beer_price_eur/wifi/google_rating columns',
+              legacyErr
+            );
+            const fallback = await fetchAllVenues<
+              Omit<RawVenue, 'name_override' | 'google_opening_hours' | 'dinner_menu_url' | 'beer_price_eur' | 'wifi' | 'google_rating' | 'google_rating_count'>
+            >(type, 'id,name,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url');
+            return fallback.map((v) => ({
+              ...v,
+              name_override: null,
+              google_opening_hours: null,
+              dinner_menu_url: null,
+              beer_price_eur: null,
+              wifi: null,
+              google_rating: null,
+              google_rating_count: null,
+            }));
+          }
         }),
         // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
         // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
@@ -144,9 +155,8 @@ export default function VenueMapNative({
     return venues
       .filter((v) => !closedIds.has(v.id))
       .map((v) => {
-        // Vom Betreiber gepflegte Öffnungszeiten (Website) sind
-        // zuverlässiger als der oft ungenaue/veraltete OSM-Tag.
-        const effectiveHours = v.opening_hours_override ?? v.opening_hours_raw;
+        // Betreiber-Website > Google Places > OpenStreetMap.
+        const effectiveHours = v.opening_hours_override ?? v.google_opening_hours ?? v.opening_hours_raw;
         return {
           id: v.id,
           name: v.name_override ?? v.name,

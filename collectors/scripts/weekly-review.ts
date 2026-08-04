@@ -34,7 +34,7 @@ export async function run(write: (value: string) => void = console.log): Promise
   const venueIds = [...new Set([...closures.map((row) => row.venue_id), ...venueReports.map((row) => row.venue_id)])];
   const eventIds = [...new Set(eventReports.map((row) => row.event_id))];
   const { data: venues, error: venuesError } = venueIds.length
-    ? await supabase.from('venues').select('id,name,name_override,type,address,website,opening_hours_raw,opening_hours_override,beer_price_eur,google_business_status,google_rating_checked_at,google_not_found_streak').in('id', venueIds)
+    ? await supabase.from('venues').select('id,name,name_override,type,address,website,opening_hours_raw,opening_hours_override,google_opening_hours,beer_price_eur,google_business_status,google_rating_checked_at,google_not_found_streak').in('id', venueIds)
     : { data: [], error: null };
   const { data: events, error: eventsError } = eventIds.length
     ? await supabase.from('events').select('id,title,start_date,start_time,location_name,source_url').in('id', eventIds)
@@ -77,7 +77,7 @@ export async function run(write: (value: string) => void = console.log): Promise
     write(`### venue:${report.id} — ${venue?.name_override ?? venue?.name ?? report.venue_id}`);
     if (reports.length > 1) write(`- ${reports.length} gleichlautende Meldungen: ${reports.map((row) => row.id).join(', ')}`);
     write(`- Meldung: ${line(report.reason)} · ${line(report.note)}`);
-    write(`- Aktuell: Bierpreis ${line(venue?.beer_price_eur)} € · Öffnungszeiten ${line(venue?.opening_hours_override ?? venue?.opening_hours_raw)}`);
+    write(`- Aktuell: Bierpreis ${line(venue?.beer_price_eur)} € · Öffnungszeiten ${line(venue?.opening_hours_override ?? venue?.google_opening_hours ?? venue?.opening_hours_raw)}`);
     write(`- Website: ${line(venue?.website)}`);
     write(`- Vorprüfung: ${line(report.analysis_summary)} · Status ${line(report.analysis_status)} · Konfidenz ${line(report.analysis_confidence)}`);
     const received = reports.map((row) => date(row.created_at));

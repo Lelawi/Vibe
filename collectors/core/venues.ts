@@ -88,14 +88,28 @@ async function reverseGeocodeAddress(lat: number, lon: number): Promise<string |
 // wird als opening_hours_override gespeichert (nimmt in der App Vorrang
 // vor opening_hours_raw, siehe app/lib/openingHours.ts-Aufrufer).
 const DAY_ABBR: Record<string, string> = {
-  Monday: 'Mo', Tuesday: 'Tu', Wednesday: 'We', Thursday: 'Th', Friday: 'Fr', Saturday: 'Sa', Sunday: 'Su',
+  monday: 'Mo', tuesday: 'Tu', wednesday: 'We', thursday: 'Th', friday: 'Fr', saturday: 'Sa', sunday: 'Su',
+  montag: 'Mo', dienstag: 'Tu', mittwoch: 'We', donnerstag: 'Th', freitag: 'Fr', samstag: 'Sa', sonntag: 'Su',
 };
 const DAY_ORDER = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
 function dayNameToAbbr(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const name = value.split('/').pop() ?? value;
-  return DAY_ABBR[name] ?? null;
+  return DAY_ABBR[name.toLocaleLowerCase('de-DE')] ?? null;
+}
+
+// schema.org erlaubt openingHours auch als einfachen String. WordPress-
+// Plugins schreiben dort häufig ausgeschriebene Tagesnamen hinein (real bei
+// Andys Seehäusl: "Monday,Tuesday,... 09:00-17:00"), während unser Parser
+// bewusst OSM-Abkürzungen erwartet. Vor der Validierung beide verbreiteten
+// Sprachvarianten normalisieren.
+export function normalizeSchemaOpeningHours(value: string): string {
+  let normalized = value.trim();
+  for (const [dayName, abbr] of Object.entries(DAY_ABBR)) {
+    normalized = normalized.replace(new RegExp(`\\b${dayName}\\b`, 'giu'), abbr);
+  }
+  return normalized;
 }
 
 // Fasst Tage mit identischer Öffnungszeit zu Bereichen zusammen (z.B. [Mo,Tu,We]
@@ -385,9 +399,12 @@ function extractOpeningHoursOverride($: cheerio.CheerioAPI): string | null {
       let candidate: string | null = null;
 
       if (typeof n.openingHours === 'string' && n.openingHours.trim()) {
-        candidate = n.openingHours.trim();
+        candidate = normalizeSchemaOpeningHours(n.openingHours);
       } else if (Array.isArray(n.openingHours) && n.openingHours.length) {
-        const joined = n.openingHours.filter((v): v is string => typeof v === 'string').join('; ');
+        const joined = n.openingHours
+          .filter((v): v is string => typeof v === 'string')
+          .map(normalizeSchemaOpeningHours)
+          .join('; ');
         if (joined) candidate = joined;
       } else if (n.openingHoursSpecification) {
         const specs = Array.isArray(n.openingHoursSpecification) ? n.openingHoursSpecification : [n.openingHoursSpecification];

@@ -16,6 +16,7 @@ type Venue = {
   longitude: number | null;
   opening_hours_raw: string | null;
   opening_hours_override: string | null;
+  google_opening_hours: string | null;
   website: string | null;
   image_url: string | null;
   google_rating: number | null;
@@ -69,8 +70,14 @@ export default function VenueMapNative({
       const [venuesData, reportsRes] = await Promise.all([
         fetchAllVenues<Venue>(
           type,
-          'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,google_rating,google_rating_count'
-        ),
+          'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,google_opening_hours,website,image_url,google_rating,google_rating_count'
+        ).catch(async () => {
+          const fallback = await fetchAllVenues<Omit<Venue, 'google_opening_hours'>>(
+            type,
+            'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,google_rating,google_rating_count'
+          );
+          return fallback.map((venue) => ({ ...venue, google_opening_hours: null }));
+        }),
         // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
         // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
         supabase.from('venue_closure_statuses').select('venue_id,status').eq('status', 'confirmed'),
@@ -87,9 +94,8 @@ export default function VenueMapNative({
       venues
         .filter((v) => !confirmedClosedIds.has(v.id))
         .map((v) => {
-          // Vom Betreiber gepflegte Öffnungszeiten (Website) sind
-          // zuverlässiger als der oft ungenaue/veraltete OSM-Tag.
-          const effectiveHours = v.opening_hours_override ?? v.opening_hours_raw;
+          // Betreiber-Website > Google Places > OpenStreetMap.
+          const effectiveHours = v.opening_hours_override ?? v.google_opening_hours ?? v.opening_hours_raw;
           return {
             ...v,
             name: v.name_override ?? v.name,

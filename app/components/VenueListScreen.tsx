@@ -50,6 +50,7 @@ type Venue = {
   longitude: number | null;
   opening_hours_raw: string | null;
   opening_hours_override: string | null;
+  google_opening_hours: string | null;
   website: string | null;
   phone: string | null;
   image_url: string | null;
@@ -78,8 +79,12 @@ type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
 async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
   const attempts: { columns: string; fill: (v: Record<string, unknown>) => Venue }[] = [
     {
-      columns: `${VENUE_BASE_COLUMNS},name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count`,
+      columns: `${VENUE_BASE_COLUMNS},google_opening_hours,name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count`,
       fill: (v) => v as unknown as Venue,
+    },
+    {
+      columns: `${VENUE_BASE_COLUMNS},name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count`,
+      fill: (v) => ({ ...v, google_opening_hours: null } as unknown as Venue),
     },
     {
       columns: `${VENUE_BASE_COLUMNS},name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi`,
@@ -598,10 +603,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       // versehentlicher Klick nichts unwiderruflich verschwinden lässt.
       .filter((v) => closureStatusByVenue.get(v.id) !== 'confirmed')
       .map((v) => {
-        // Vom Betreiber gepflegte Öffnungszeiten (von der Website gescrapt)
-        // sind zuverlässiger als der oft ungenaue/veraltete OSM-
-        // opening_hours-Tag — wo vorhanden, hat der Override Vorrang.
-        const effectiveHours = v.opening_hours_override ?? v.opening_hours_raw;
+        // Klare Quellenpriorität: Betreiber-Website vor Google Places vor
+        // dem oft ungenauen/veralteten OSM-opening_hours-Tag.
+        const effectiveHours = v.opening_hours_override ?? v.google_opening_hours ?? v.opening_hours_raw;
         // Manuell korrigierter Name (z.B. wenn eine Bar umbenannt wurde, OSM
         // das aber noch nicht nachgezogen hat) hat Vorrang vor dem vom
         // Collector aus dem OSM-Tag übernommenen Namen — gleiches Override-
