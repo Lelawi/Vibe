@@ -25,6 +25,7 @@ import { registerStrings, useTranslation } from '../../lib/strings';
 import { categoryLabel } from '../../lib/eventCategories';
 import { openExternalUrl } from '../../lib/openExternalUrl';
 import type { Language } from '../../lib/language';
+import { ticketBaseTitle, ticketVariantKind, ticketVariantLabel } from '../../lib/ticketVariants';
 
 registerStrings({
   'event.back': { de: '‹ Übersicht', en: '‹ Overview' },
@@ -37,6 +38,7 @@ registerStrings({
   'event.until': { de: 'bis', en: 'until' },
   'event.price': { de: 'Preis', en: 'Price' },
   'event.noPriceInfo': { de: 'Keine Preisinfo verfügbar', en: 'No price info available' },
+  'event.moreTicketOptions': { de: 'Weitere Ticketoptionen', en: 'More ticket options' },
   'event.soldOut': { de: 'Ausverkauft', en: 'Sold out' },
   'event.where': { de: 'Wo', en: 'Where' },
   'event.genre': { de: 'Genre', en: 'Genre' },
@@ -105,6 +107,13 @@ type EventDetail = {
 
 type ArtistLink = { id: string; name: string };
 type EventChange = { changed_fields: string[]; created_at: string };
+type TicketOption = {
+  id: string;
+  title: string;
+  source_url: string;
+  price_info: string | null;
+  start_time: string | null;
+};
 
 function sourceLabel(sourceId: string | null | undefined): string {
   if (!sourceId) return 'Unbekannt';
@@ -172,6 +181,7 @@ export default function EventDetailScreen() {
   const [artists, setArtists] = useState<ArtistLink[]>([]);
   const [changes, setChanges] = useState<EventChange[]>([]);
   const [confirmingSourceCount, setConfirmingSourceCount] = useState(1);
+  const [ticketOptions, setTicketOptions] = useState<TicketOption[]>([]);
   const { isFavorite, toggleFavorite } = useFavorites();
   const { isFollowing, toggleFollow } = useFollowedOrganizers();
   const { isFollowingArtist, toggleArtist } = useFollowedArtists();
@@ -202,7 +212,7 @@ export default function EventDetailScreen() {
         const [{ data: relationRows }, { data: changeRows }, duplicateResult] = await Promise.all([
           supabase.from('event_artists').select('artist_id').eq('event_id', id),
           supabase.from('event_changes').select('changed_fields,created_at').eq('event_id', id).order('created_at', { ascending: false }).limit(3),
-          supabase.from('events').select('id', { count: 'exact', head: true }).eq('duplicate_of', id),
+          supabase.from('events').select('title').eq('duplicate_of', id),
         ]);
         const artistIds = (relationRows ?? []).map((row) => row.artist_id as string);
         if (artistIds.length > 0) {
@@ -210,7 +220,43 @@ export default function EventDetailScreen() {
           setArtists((artistRows ?? []).map((artist) => ({ id: artist.id as string, name: artist.display_name as string })));
         }
         setChanges((changeRows ?? []) as EventChange[]);
-        setConfirmingSourceCount(1 + (duplicateResult.count ?? 0));
+        // Premium-/Flextickets sind Kaufoptionen derselben Quelle, keine
+        // unabhängige Bestätigung der Eventdaten.
+        setConfirmingSourceCount(
+          1 + (duplicateResult.data ?? []).filter((row) => ticketVariantKind(row.title) === null).length
+        );
+
+        if (data.location_name && data.start_date) {
+          const { data: ticketRows, error: ticketError } = await supabase
+            .from('events')
+            .select('id,title,source_url,price_info,start_time,start_date,end_date')
+            .eq('location_name', data.location_name)
+            .lte('start_date', data.start_date)
+            .or(`start_date.eq.${data.start_date},end_date.gte.${data.start_date}`);
+          if (!ticketError) {
+            const baseTitle = ticketBaseTitle(data.title);
+            const currentIsVariant = ticketVariantKind(data.title) !== null;
+            const seenUrls = new Set<string>();
+            const options = (ticketRows ?? []).filter((row) => {
+              if (row.id === data.id || !row.source_url || ticketBaseTitle(row.title) !== baseTitle) return false;
+              if (!currentIsVariant && ticketVariantKind(row.title) === null) return false;
+              if (seenUrls.has(row.source_url)) return false;
+              seenUrls.add(row.source_url);
+              return true;
+            }).map((row) => ({
+              id: row.id as string,
+              title: row.title as string,
+              source_url: row.source_url as string,
+              price_info: row.price_info as string | null,
+              start_time: row.start_time as string | null,
+            }));
+            options.sort((a, b) => {
+              const rank = (option: TicketOption) => ticketVariantKind(option.title) === 'premium' ? 0 : 1;
+              return rank(a) - rank(b);
+            });
+            setTicketOptions(options);
+          }
+        }
       }
       setLoading(false);
     }
@@ -366,6 +412,29 @@ export default function EventDetailScreen() {
                     <Text style={styles.soldOutTagText}>{t('event.soldOut')}</Text>
                   </View>
                 )}
+              </View>
+            </View>
+          )}
+
+          {ticketOptions.length > 0 && (
+            <View style={styles.infoBlock}>
+              <Text style={styles.infoLabel}>{t('event.moreTicketOptions')}</Text>
+              <View style={styles.ticketOptionList}>
+                {ticketOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={styles.ticketOptionRow}
+                    onPress={() => openExternalUrl(option.source_url)}
+                  >
+                    <View style={styles.ticketOptionTextWrap}>
+                      <Text style={styles.ticketOptionTitle}>{ticketVariantLabel(option.title)}</Text>
+                      <Text style={styles.ticketOptionMeta}>
+                        {[option.price_info, option.start_time ? `${option.start_time.slice(0, 5)} Uhr` : null].filter(Boolean).join(' · ')}
+                      </Text>
+                    </View>
+                    <Ionicons name="open-outline" size={17} color="#0af" />
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
           )}
@@ -648,6 +717,14 @@ const styles = StyleSheet.create({
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   soldOutTag: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   soldOutTagText: { color: '#ff4d4d', fontSize: 13, fontWeight: '700' },
+  ticketOptionList: { gap: 8 },
+  ticketOptionRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#141414', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11,
+  },
+  ticketOptionTextWrap: { flex: 1 },
+  ticketOptionTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  ticketOptionMeta: { color: '#83d7a0', fontSize: 12, marginTop: 3 },
   organizerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   organizerFollowBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   organizerFollowLink: { fontSize: 13, color: '#0af', fontWeight: '600' },
