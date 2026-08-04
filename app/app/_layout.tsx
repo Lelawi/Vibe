@@ -84,6 +84,7 @@ export default function Layout() {
             Links ohne Navigations-Historie) — der native Header-Pfeil würde
             bei normaler Navigation nur doppelt und verwirrend danebenstehen. */}
         <Stack.Screen name="event/[id]" options={{ title: 'Event', headerShown: false }} />
+        <Stack.Screen name="artist/[id]" options={{ title: 'Künstler', headerShown: false }} />
         <Stack.Screen name="map" options={{ title: 'Karte' }} />
         {/* Eigener "‹ Übersicht"-Button im Screen selbst, gleiches Muster wie
             bei event/[id] — kein natives Header nötig. */}

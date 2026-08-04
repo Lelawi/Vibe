@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { linkStructuredArtists } from '../../core/artists';
 
 const PROGRAM_URL = 'https://theatron.net/mec_calendars/theatron-programm/';
 const LOCATION = 'Theatron im Olympiapark';
@@ -67,6 +68,14 @@ export function parseTheatronProgram(html: string): TheatronEvent[] {
   return events;
 }
 
+export function artistNamesFromProgramTitle(title: string): string[] {
+  if (/(theatron|programm|highlight|feuerwerk|festival)/i.test(title)) return [];
+  return title
+    .split(/\s+(?:\||\/|&amp;)\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 2 && part.length <= 80);
+}
+
 export async function run() {
   console.log('[theatron] starting');
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -107,6 +116,21 @@ export async function run() {
 
   const { error } = await supabase.from('events').upsert(rows, { onConflict: 'source_id' });
   if (error) throw error;
+
+  try {
+    await linkStructuredArtists(
+      supabase,
+      upcoming.map((event) => ({
+        sourceId: `theatron-${event.externalId}-${event.date}`,
+        names: artistNamesFromProgramTitle(event.title),
+      })),
+      'theatron-program-title'
+    );
+  } catch (artistError) {
+    // Die Event-Erfassung darf während eines gestaffelten Deployments nicht
+    // ausfallen, nur weil Migration 0030 noch nicht angewendet wurde.
+    console.warn('[theatron] artist links could not be saved', artistError);
+  }
 
   // Die beiden bisherigen Quellen liefern nur ein Festival-Gesamtevent bzw.
   // generische Wochentermine. Erst nach erfolgreichem Speichern der echten

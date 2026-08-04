@@ -49,6 +49,7 @@
     "check-app-feedback": "tsx scripts/check-app-feedback.ts",
     "test:eventim": "tsx --test sources/eventim/index.test.ts",
     "test:theatron": "tsx --test sources/theatron/index.test.ts",
+    "test:filters": "tsx --test core/savedSearchFilter.test.ts",
     "send-notifications": "tsx notifications/index.ts",
     "collect-all": "npm run collect-all:runner",
     "collect-all:runner": "tsx collect-all.ts"

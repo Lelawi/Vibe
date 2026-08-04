@@ -19,6 +19,7 @@ import { addEventToCalendar } from '../../lib/calendar';
 import { shareEvent } from '../../lib/share';
 import { useFavorites } from '../../lib/favorites';
 import { useFollowedOrganizers } from '../../lib/followedOrganizers';
+import { useFollowedArtists } from '../../lib/followedArtists';
 import { isPushSupported } from '../../lib/pushNotifications';
 import { registerStrings, useTranslation } from '../../lib/strings';
 import { categoryLabel } from '../../lib/eventCategories';
@@ -39,11 +40,18 @@ registerStrings({
   'event.soldOut': { de: 'Ausverkauft', en: 'Sold out' },
   'event.where': { de: 'Wo', en: 'Where' },
   'event.genre': { de: 'Genre', en: 'Genre' },
+  'event.artists': { de: 'Künstler', en: 'Artists' },
   'event.organizer': { de: 'Veranstalter', en: 'Organizer' },
   'event.following': { de: 'Gefolgt', en: 'Following' },
   'event.follow': { de: 'Folgen', en: 'Follow' },
   'event.moreFrom': { de: 'Weitere Events von', en: 'More events from' },
   'event.description': { de: 'Beschreibung', en: 'Description' },
+  'event.dataQuality': { de: 'Datenqualität', en: 'Data quality' },
+  'event.source': { de: 'Quelle', en: 'Source' },
+  'event.lastChecked': { de: 'Zuletzt geprüft', en: 'Last checked' },
+  'event.confirmedSources': { de: 'Bestätigende Quellen', en: 'Confirming sources' },
+  'event.lastChange': { de: 'Letzte relevante Änderung', en: 'Last relevant change' },
+  'event.noRecordedChange': { de: 'Keine Änderung protokolliert', en: 'No change recorded' },
   'event.linkCopied': { de: 'Link kopiert', en: 'Link copied' },
   'event.share': { de: 'Teilen', en: 'Share' },
   'event.saveToCalendar': { de: 'In Kalender speichern', en: 'Save to calendar' },
@@ -90,7 +98,43 @@ type EventDetail = {
   sold_out: boolean | null;
   latitude: number | null;
   longitude: number | null;
+  source_id?: string | null;
+  source_checked_at?: string | null;
+  last_changed_at?: string | null;
 };
+
+type ArtistLink = { id: string; name: string };
+type EventChange = { changed_fields: string[]; created_at: string };
+
+function sourceLabel(sourceId: string | null | undefined): string {
+  if (!sourceId) return 'Unbekannt';
+  const prefix = sourceId.split('-').slice(0, 2).join('-');
+  const labels: Record<string, string> = {
+    'theatron': 'Theatron', 'eventim': 'Eventim', 'muenchenticket': 'München Ticket',
+    'muenchen-de': 'muenchen.de', 'eintrittfrei-muenchen': 'Eintritt frei München',
+  };
+  return labels[prefix] ?? labels[sourceId.split('-')[0]] ?? sourceId.split('-')[0];
+}
+
+function formatCheckedAt(value: string, language: Language): string {
+  return new Date(value).toLocaleString(language === 'de' ? 'de-DE' : 'en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function changeFieldLabel(field: string, language: Language): string {
+  const de: Record<string, string> = {
+    start_date: 'Datum', start_time: 'Uhrzeit', end_date: 'Enddatum',
+    location_name: 'Ort', address: 'Adresse', price_info: 'Preis',
+    sold_out: 'Verfügbarkeit', source_url: 'Quelllink',
+  };
+  const en: Record<string, string> = {
+    start_date: 'date', start_time: 'time', end_date: 'end date',
+    location_name: 'venue', address: 'address', price_info: 'price',
+    sold_out: 'availability', source_url: 'source link',
+  };
+  return (language === 'de' ? de : en)[field] ?? field;
+}
 
 function formatDate(dateStr: string, timeStr: string | null, lang: Language) {
   const date = new Date(`${dateStr}T${timeStr ?? '00:00'}`);
@@ -125,23 +169,48 @@ export default function EventDetailScreen() {
   const [reportReason, setReportReason] = useState<string | null>(null);
   const [reportNote, setReportNote] = useState('');
   const [reportStatus, setReportStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [artists, setArtists] = useState<ArtistLink[]>([]);
+  const [changes, setChanges] = useState<EventChange[]>([]);
+  const [confirmingSourceCount, setConfirmingSourceCount] = useState(1);
   const { isFavorite, toggleFavorite } = useFavorites();
   const { isFollowing, toggleFollow } = useFollowedOrganizers();
+  const { isFollowingArtist, toggleArtist } = useFollowedArtists();
 
   useEffect(() => {
     async function loadEvent() {
-      const { data, error } = await supabase
+      const baseFields = 'id, title, description, category, subcategory, start_date, start_time, end_date, location_name, address, organizer, source_url, image_url, price_info, sold_out, latitude, longitude, source_id';
+      const enhancedResult = await supabase
         .from('events')
-        .select(
-          'id, title, description, category, subcategory, start_date, start_time, end_date, location_name, address, organizer, source_url, image_url, price_info, sold_out, latitude, longitude'
-        )
+        .select(`${baseFields}, source_checked_at, last_changed_at`)
         .eq('id', id)
         .single();
+      let data: any = enhancedResult.data;
+      let error = enhancedResult.error;
+
+      // Die App bleibt während des Rollouts kompatibel, falls Migration 0030
+      // noch nicht auf der produktiven Datenbank ausgeführt wurde.
+      if (error && /source_checked_at|last_changed_at/i.test(error.message)) {
+        const fallback = await supabase.from('events').select(baseFields).eq('id', id).single();
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (error) {
         console.error('Fehler beim Laden des Events:', error);
       } else {
-        setEvent(data);
+        setEvent(data as EventDetail);
+        const [{ data: relationRows }, { data: changeRows }, duplicateResult] = await Promise.all([
+          supabase.from('event_artists').select('artist_id').eq('event_id', id),
+          supabase.from('event_changes').select('changed_fields,created_at').eq('event_id', id).order('created_at', { ascending: false }).limit(3),
+          supabase.from('events').select('id', { count: 'exact', head: true }).eq('duplicate_of', id),
+        ]);
+        const artistIds = (relationRows ?? []).map((row) => row.artist_id as string);
+        if (artistIds.length > 0) {
+          const { data: artistRows } = await supabase.from('artists').select('id,display_name').in('id', artistIds);
+          setArtists((artistRows ?? []).map((artist) => ({ id: artist.id as string, name: artist.display_name as string })));
+        }
+        setChanges((changeRows ?? []) as EventChange[]);
+        setConfirmingSourceCount(1 + (duplicateResult.count ?? 0));
       }
       setLoading(false);
     }
@@ -328,6 +397,29 @@ export default function EventDetailScreen() {
             </View>
           )}
 
+          {artists.length > 0 && (
+            <View style={styles.infoBlock}>
+              <Text style={styles.infoLabel}>{t('event.artists')}</Text>
+              <View style={styles.artistList}>
+                {artists.map((artist) => {
+                  const following = isFollowingArtist(artist.id);
+                  return (
+                    <View key={artist.id} style={styles.artistChip}>
+                      <TouchableOpacity onPress={() => router.push(`/artist/${artist.id}`)}>
+                        <Text style={styles.artistChipText}>{artist.name}</Text>
+                      </TouchableOpacity>
+                      {isPushSupported() && (
+                        <TouchableOpacity onPress={() => toggleArtist(artist)}>
+                          <Ionicons name={following ? 'notifications' : 'notifications-outline'} size={15} color="#0af" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
           {event.organizer && (
             <View style={styles.infoBlock}>
               <Text style={styles.infoLabel}>{t('event.organizer')}</Text>
@@ -358,6 +450,27 @@ export default function EventDetailScreen() {
             <View style={styles.infoBlock}>
               <Text style={styles.infoLabel}>{t('event.description')}</Text>
               <Text style={styles.infoValue}>{event.description}</Text>
+            </View>
+          )}
+
+          {(event.source_checked_at || changes.length > 0) && (
+            <View style={[styles.infoBlock, styles.qualityBlock]}>
+              <View style={styles.qualityTitleRow}>
+                <Ionicons name="shield-checkmark-outline" size={17} color="#0af" />
+                <Text style={styles.qualityTitle}>{t('event.dataQuality')}</Text>
+              </View>
+              <Text style={styles.qualityLine}>{t('event.source')}: {sourceLabel(event.source_id)}</Text>
+              {event.source_checked_at && (
+                <Text style={styles.qualityLine}>{t('event.lastChecked')}: {formatCheckedAt(event.source_checked_at, language)}</Text>
+              )}
+              <Text style={styles.qualityLine}>{t('event.confirmedSources')}: {confirmingSourceCount}</Text>
+              {changes.length > 0 ? (
+                <Text style={styles.qualityLine}>
+                  {t('event.lastChange')}: {changes[0].changed_fields.map((field) => changeFieldLabel(field, language)).join(', ')} · {formatCheckedAt(changes[0].created_at, language)}
+                </Text>
+              ) : (
+                <Text style={styles.qualityMuted}>{t('event.noRecordedChange')}</Text>
+              )}
             </View>
           )}
 
@@ -539,6 +652,17 @@ const styles = StyleSheet.create({
   organizerFollowBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   organizerFollowLink: { fontSize: 13, color: '#0af', fontWeight: '600' },
   organizerMoreLink: { fontSize: 13, color: '#0af', fontWeight: '600', marginTop: 6 },
+  artistList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  artistChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#141414',
+    borderWidth: 1, borderColor: '#273846', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 8,
+  },
+  artistChipText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  qualityBlock: { backgroundColor: '#0b151c', borderRadius: 12, padding: 14, borderBottomWidth: 0 },
+  qualityTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 9 },
+  qualityTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  qualityLine: { color: '#b7c5cc', fontSize: 12, lineHeight: 19 },
+  qualityMuted: { color: '#6f8088', fontSize: 12, marginTop: 3 },
   linkValue: { color: '#0af', fontWeight: '600' },
   locationValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   infoSubValue: { fontSize: 14, color: '#999', marginTop: 2 },

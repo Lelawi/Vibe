@@ -3,12 +3,21 @@ import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { canonicalizeVenue } from '../core/canonicalizeVenue';
 import { normalizeGenreGroup } from '../core/genreGroup';
+import { matchesSavedSearch, type SavedSearchCriteria } from '../core/savedSearchFilter';
 
 // Vorlaufzeiten sind jetzt pro Subscription wählbar (push_reminder_settings,
 // siehe Migration 0010) statt fix — dieser Default greift nur, wenn eine
 // Subscription (noch) keine eigene Einstellung gespeichert hat, und
 // entspricht dem alten fest codierten Verhalten (3h vorher).
 const DEFAULT_OFFSETS_MINUTES = [180];
+
+function berlinDate(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('de-DE', {
+    timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
 
 async function sendPush(
   supabase: ReturnType<typeof createClient>,
@@ -160,18 +169,15 @@ async function sendFilterMatches(supabase: ReturnType<typeof createClient>) {
     const organizers: string[] = filterRow.organizers ?? [];
     if (categories.length === 0 && genres.length === 0 && locations.length === 0 && organizers.length === 0) continue;
 
-    // Bei genau einem Kriterium kann direkt in SQL vorgefiltert werden. Sind
-    // mehrere gesetzt (ODER-Semantik: irgendeins muss passen), muss breiter
-    // geladen und in JS gefiltert werden — genres/locations werden über
-    // clientseitige Heuristiken abgeglichen, die sich nicht als
-    // SQL-Bedingung ausdrücken lassen.
+    // Bestehende Installationen behalten diesen Legacy-Filter, aber auch hier
+    // gilt jetzt: ODER innerhalb einer Dimension, UND zwischen Dimensionen.
     let query = supabase
       .from('events')
-      .select('id, title, category, subcategory, location_name, organizer, start_date')
+      .select('id, title, category, subcategory, location_name, organizer, start_date, end_date')
       .gt('created_at', filterRow.last_checked_at)
       .is('duplicate_of', null)
-      .gte('start_date', today)
-      .limit(30);
+      .or(`start_date.gte.${today},end_date.gte.${today}`)
+      .limit(500);
     if (categories.length > 0 && genres.length === 0 && locations.length === 0 && organizers.length === 0) {
       query = query.in('category', categories);
     }
@@ -181,10 +187,10 @@ async function sendFilterMatches(supabase: ReturnType<typeof createClient>) {
 
     const matches = (newEvents ?? []).filter(
       (e: any) =>
-        (categories.length > 0 && categories.includes(e.category)) ||
-        (genres.length > 0 && genres.includes(normalizeGenreGroup(e.subcategory ?? e.category))) ||
-        (locations.length > 0 && locations.includes(canonicalizeVenue(e.location_name))) ||
-        (organizers.length > 0 && e.organizer && organizers.includes(e.organizer))
+        (categories.length === 0 || categories.includes(e.category)) &&
+        (genres.length === 0 || genres.includes(normalizeGenreGroup(e.subcategory ?? e.category))) &&
+        (locations.length === 0 || locations.includes(canonicalizeVenue(e.location_name))) &&
+        (organizers.length === 0 || Boolean(e.organizer && organizers.includes(e.organizer)))
     );
 
     if (matches.length > 0) {
@@ -210,6 +216,127 @@ async function sendFilterMatches(supabase: ReturnType<typeof createClient>) {
   console.log('[notifications] filter-match notifications sent:', sent);
 }
 
+async function sendSavedSearchMatches(supabase: ReturnType<typeof createClient>) {
+  const { data: rows, error } = await supabase
+    .from('push_saved_searches')
+    .select('id,subscription_id,name,categories,genres,locations,date_filter,free_only,available_only,last_checked_at,push_subscriptions(endpoint,p256dh,auth)')
+    .eq('enabled', true);
+  if (error) { console.error('[notifications] saved-search query error', error); return; }
+  if (!rows || rows.length === 0) return;
+
+  const now = new Date();
+  const today = berlinDate(now);
+  let sent = 0;
+  for (const row of rows as any[]) {
+    const sub = row.push_subscriptions;
+    if (!sub) continue;
+    const criteria: SavedSearchCriteria = {
+      categories: row.categories ?? [],
+      genres: row.genres ?? [],
+      locations: row.locations ?? [],
+      dateFilter: row.date_filter ?? 'all',
+      freeOnly: row.free_only ?? false,
+      availableOnly: row.available_only ?? true,
+    };
+    const { data: events, error: eventError } = await supabase
+      .from('events')
+      .select('id,title,category,subcategory,location_name,start_date,end_date,price_info,sold_out')
+      .gt('created_at', row.last_checked_at)
+      .is('duplicate_of', null)
+      .or(`start_date.gte.${today},end_date.gte.${today}`)
+      .order('start_date', { ascending: true })
+      .limit(500);
+    if (eventError) { console.warn('[notifications] saved-search event query error', eventError); continue; }
+
+    const matches = (events ?? []).filter((event: any) => matchesSavedSearch(event, criteria, today));
+    if (matches.length > 0) {
+      const first = matches[0];
+      const ok = await sendPush(supabase, sub, {
+        title: matches.length === 1 ? `Neu in „${row.name}“` : `${matches.length} neue Treffer: ${row.name}`,
+        body: matches.length === 1
+          ? `${first.title}${first.location_name ? ` · ${first.location_name}` : ''}`
+          : matches.slice(0, 3).map((event: any) => event.title).join(', '),
+        url: matches.length === 1 ? `/event/${first.id}` : '/',
+      });
+      if (ok) sent += 1;
+    }
+    await supabase.from('push_saved_searches').update({ last_checked_at: now.toISOString() }).eq('id', row.id);
+  }
+  console.log('[notifications] saved-search notifications sent:', sent);
+}
+
+async function sendArtistMatches(supabase: ReturnType<typeof createClient>) {
+  const { data: follows, error } = await supabase
+    .from('push_artist_follows')
+    .select('subscription_id,artist_id,last_checked_at,push_subscriptions(endpoint,p256dh,auth),artists(display_name)');
+  if (error) { console.error('[notifications] artist-follow query error', error); return; }
+  if (!follows || follows.length === 0) return;
+  const now = new Date().toISOString();
+  const today = berlinDate();
+  let sent = 0;
+  for (const follow of follows as any[]) {
+    const { data: links, error: linkError } = await supabase
+      .from('event_artists').select('event_id').eq('artist_id', follow.artist_id).gt('created_at', follow.last_checked_at);
+    if (linkError) { console.warn('[notifications] artist event-link query error', linkError); continue; }
+    const ids = [...new Set((links ?? []).map((link: any) => link.event_id as string))];
+    if (ids.length > 0 && follow.push_subscriptions) {
+      const { data: events, error: eventError } = await supabase
+        .from('events').select('id,title,start_date,end_date,location_name').in('id', ids)
+        .is('duplicate_of', null).or(`start_date.gte.${today},end_date.gte.${today}`).order('start_date');
+      if (eventError) { console.warn('[notifications] artist event query error', eventError); continue; }
+      if (events && events.length > 0) {
+        const first: any = events[0];
+        const name = follow.artists?.display_name ?? 'gefolgtem Künstler';
+        const ok = await sendPush(supabase, follow.push_subscriptions, {
+          title: `Neues Event von ${name}`,
+          body: `${first.title}${first.location_name ? ` · ${first.location_name}` : ''}`,
+          url: `/event/${first.id}`,
+        });
+        if (ok) sent += 1;
+      }
+    }
+    await supabase.from('push_artist_follows').update({ last_checked_at: now })
+      .match({ subscription_id: follow.subscription_id, artist_id: follow.artist_id });
+  }
+  console.log('[notifications] artist notifications sent:', sent);
+}
+
+async function sendFavoriteChanges(supabase: ReturnType<typeof createClient>) {
+  const { data: changes, error } = await supabase
+    .from('event_changes')
+    .select('id,event_id,changed_fields,new_values,events(title)')
+    .is('notified_at', null)
+    .order('created_at', { ascending: true })
+    .limit(100);
+  if (error) { console.error('[notifications] event-change query error', error); return; }
+  if (!changes || changes.length === 0) return;
+  let sent = 0;
+  const labels: Record<string, string> = {
+    start_date: 'Datum', start_time: 'Uhrzeit', end_date: 'Enddatum', location_name: 'Ort',
+    address: 'Adresse', price_info: 'Preis', sold_out: 'Verfügbarkeit', source_url: 'Ticketlink',
+  };
+  for (const change of changes as any[]) {
+    const { data: favorites, error: favoriteError } = await supabase
+      .from('push_favorites')
+      .select('push_subscriptions(endpoint,p256dh,auth)')
+      .eq('event_id', change.event_id);
+    if (favoriteError) { console.warn('[notifications] changed favorite query error', favoriteError); continue; }
+    const fields = (change.changed_fields as string[]).map((field) => labels[field] ?? field).join(', ');
+    const cancelled = change.changed_fields.includes('sold_out') && change.new_values?.sold_out === true;
+    for (const favorite of (favorites ?? []) as any[]) {
+      if (!favorite.push_subscriptions) continue;
+      const ok = await sendPush(supabase, favorite.push_subscriptions, {
+        title: cancelled ? `Nicht mehr verfügbar: ${change.events?.title}` : `Event aktualisiert: ${change.events?.title}`,
+        body: cancelled ? 'Der Anbieter meldet dieses Event als ausverkauft oder nicht verfügbar.' : `Geändert: ${fields}`,
+        url: `/event/${change.event_id}`,
+      });
+      if (ok) sent += 1;
+    }
+    await supabase.from('event_changes').update({ notified_at: new Date().toISOString() }).eq('id', change.id);
+  }
+  console.log('[notifications] favorite change notifications sent:', sent);
+}
+
 export async function run() {
   console.log('[notifications] starting');
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -225,6 +352,9 @@ export async function run() {
 
   await sendFavoriteReminders(supabase);
   await sendFilterMatches(supabase);
+  await sendSavedSearchMatches(supabase);
+  await sendArtistMatches(supabase);
+  await sendFavoriteChanges(supabase);
   console.log('[notifications] finished');
 }
 

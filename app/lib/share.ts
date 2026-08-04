@@ -10,16 +10,19 @@ export type ShareResult = 'shared' | 'copied' | 'unsupported' | 'cancelled';
 export async function shareEvent(title: string, fallbackUrl: string | null): Promise<ShareResult> {
   if (Platform.OS === 'web') {
     const url = typeof window !== 'undefined' ? window.location.href : fallbackUrl ?? '';
-    if (typeof navigator !== 'undefined' && 'share' in navigator) {
+    const webNavigator = typeof navigator !== 'undefined'
+      ? navigator as Navigator & { share?: (data: { title: string; url: string }) => Promise<void> }
+      : null;
+    if (webNavigator?.share) {
       try {
-        await (navigator as unknown as { share: (data: { title: string; url: string }) => Promise<void> }).share({ title, url });
+        await webNavigator.share({ title, url });
         return 'shared';
       } catch {
         return 'cancelled';
       }
     }
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(url);
+    if (webNavigator?.clipboard) {
+      await webNavigator.clipboard.writeText(url);
       return 'copied';
     }
     return 'unsupported';

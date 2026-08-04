@@ -1,11 +1,3 @@
-// 1:1-Kopie von app/lib/genreGroup.ts. App und
-// Collectors sind bewusst getrennte Node-Projekte, die nur über Supabase
-// kommunizieren (siehe CLAUDE.md) — ein direkter Import über die
-// Projektgrenze ist daher nicht vorgesehen (gleiches Muster wie
-// canonicalizeVenue.ts). Wird hier nur für den Genre-Abgleich in
-// collectors/notifications gebraucht (push_filters.genres wurde bisher vom
-// Client synced, aber serverseitig nie ausgewertet). Bei Änderungen an der
-// Gruppierung beide Stellen synchron halten.
 const GENRE_GROUPS: { label: string; patterns: RegExp[] }[] = [
   { label: 'Pop & Rock', patterns: [/pop/i, /rock/i, /alternative/i, /indie/i, /singer/i, /schlager/i] },
   { label: 'Electronic', patterns: [/house/i, /techno/i, /trance/i, /electro/i, /dance/i, /rave/i, /dnb/i, /drum & bass/i, /deep house/i, /tech-house/i, /dj/i] },
@@ -22,11 +14,8 @@ const GENRE_GROUPS: { label: string; patterns: RegExp[] }[] = [
 export function normalizeGenreGroup(value: string | null | undefined): string {
   const source = value?.trim();
   if (!source) return 'Sonstiges';
-
-  const normalized = source.toLowerCase();
   const match = GENRE_GROUPS.find((group) =>
-    group.patterns.some((pattern) => pattern.test(normalized))
+    group.patterns.some((pattern) => pattern.test(source.toLowerCase()))
   );
-
   return match ? match.label : 'Sonstiges';
 }

@@ -1,6 +1,8 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
+import type { SavedSearch } from './savedSearches';
+import type { FollowedArtist } from './followedArtists';
 
 // Push-Benachrichtigungen sind ausschließlich eine Web-/PWA-Funktion (Ziel-
 // distribution laut CLAUDE.md ist die PWA, kein natives Push-Setup vorhanden)
@@ -169,4 +171,59 @@ export async function syncFiltersToServer(filters: {
     { subscription_id: subId, ...filters },
     { onConflict: 'subscription_id' }
   );
+}
+
+export async function syncSavedSearchesToServer(searches: SavedSearch[]): Promise<void> {
+  const subId = await getCachedSubscriptionId();
+  if (!subId) return;
+  const { data: existing, error: readError } = await supabase
+    .from('push_saved_searches')
+    .select('id')
+    .eq('subscription_id', subId);
+  if (readError) { console.error('Gespeicherte Suchen konnten nicht synchronisiert werden:', readError); return; }
+
+  const nextIds = new Set(searches.map((search) => search.id));
+  const staleIds = (existing ?? []).map((row) => row.id as string).filter((id) => !nextIds.has(id));
+  if (staleIds.length > 0) {
+    await supabase.from('push_saved_searches').delete().eq('subscription_id', subId).in('id', staleIds);
+  }
+  if (searches.length === 0) return;
+  const { error } = await supabase.from('push_saved_searches').upsert(
+    searches.map((search) => ({
+      id: search.id,
+      subscription_id: subId,
+      name: search.name,
+      categories: search.criteria.categories,
+      genres: search.criteria.genres,
+      locations: search.criteria.locations,
+      date_filter: search.criteria.dateFilter,
+      free_only: search.criteria.freeOnly,
+      available_only: search.criteria.availableOnly,
+      enabled: search.enabled,
+    })),
+    { onConflict: 'id' }
+  );
+  if (error) console.error('Gespeicherte Suchen konnten nicht synchronisiert werden:', error);
+}
+
+export async function syncArtistFollowsToServer(artists: FollowedArtist[]): Promise<void> {
+  const subId = await getCachedSubscriptionId();
+  if (!subId) return;
+  const { data: existing, error: readError } = await supabase
+    .from('push_artist_follows')
+    .select('artist_id')
+    .eq('subscription_id', subId);
+  if (readError) { console.error('Künstler-Follows konnten nicht synchronisiert werden:', readError); return; }
+  const currentIds = new Set((existing ?? []).map((row) => row.artist_id as string));
+  const nextIds = new Set(artists.map((artist) => artist.id));
+  const removed = [...currentIds].filter((id) => !nextIds.has(id));
+  const added = [...nextIds].filter((id) => !currentIds.has(id));
+  if (removed.length > 0) {
+    await supabase.from('push_artist_follows').delete().eq('subscription_id', subId).in('artist_id', removed);
+  }
+  if (added.length > 0) {
+    await supabase.from('push_artist_follows').insert(
+      added.map((artist_id) => ({ subscription_id: subId, artist_id }))
+    );
+  }
 }

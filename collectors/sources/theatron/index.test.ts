@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseTheatronProgram } from './index';
+import { artistNamesFromProgramTitle, parseTheatronProgram } from './index';
 
 test('parst einzelne Theatron-Programmkarten mit stabiler Event-ID', () => {
   const html = `
@@ -33,4 +33,10 @@ test('parst einzelne Theatron-Programmkarten mit stabiler Event-ID', () => {
 test('verwirft Karten ohne stabile ID oder valides Datum', () => {
   const html = '<body><p>Programm 2026</p><article class="mec-event-article"><span class="mec-start-date-label">99. August</span><h4 class="mec-event-title"><a href="/x">X</a></h4></article></body>';
   assert.deepEqual(parseTheatronProgram(html), []);
+});
+
+test('übernimmt nur konkrete Programmkünstler und keine Festival-Sammeltitel', () => {
+  assert.deepEqual(artistNamesFromProgramTitle('Bowling Rubber | Vita'), ['Bowling Rubber', 'Vita']);
+  assert.deepEqual(artistNamesFromProgramTitle('Theatron MusikSommer Highlights'), []);
+  assert.deepEqual(artistNamesFromProgramTitle('Abschlussfeuerwerk'), []);
 });

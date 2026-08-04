@@ -29,8 +29,17 @@ import { fuzzyMatch } from '../lib/fuzzySearch';
 import { addEventsToCalendar } from '../lib/calendar';
 import { useFavorites } from '../lib/favorites';
 import { useFollowedOrganizers } from '../lib/followedOrganizers';
+import { useFollowedArtists } from '../lib/followedArtists';
 import { consumeOnboardingSeed } from '../lib/onboarding';
 import { useReminderSettings, REMINDER_OFFSET_OPTIONS } from '../lib/reminderSettings';
+import { normalizeGenreGroup } from '../lib/genreGroup';
+import {
+  hasSavedSearchCriteria,
+  matchesSavedSearch,
+  useSavedSearches,
+  type SavedSearch,
+  type SavedSearchCriteria,
+} from '../lib/savedSearches';
 import {
   isPushSupported,
   isPushEnabled,
@@ -38,6 +47,8 @@ import {
   disablePushNotifications,
   syncFavoritesToServer,
   syncFiltersToServer,
+  syncSavedSearchesToServer,
+  syncArtistFollowsToServer,
   syncReminderSettingsToServer,
 } from '../lib/pushNotifications';
 
@@ -160,6 +171,20 @@ function toLocalDateStr(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+// „Heute Abend“ bleibt bewusst eng gefasst: nur verfügbare Events mit einer
+// belastbaren Uhrzeit ab 17 Uhr. Einträge ohne Uhrzeit werden nicht pauschal
+// aufgenommen, weil dadurch früher vor allem Märkte und Dauerveranstaltungen
+// den eigentlich spontanen Abend-Feed überfüllt hätten.
+function isTonightEvent(event: Event, now = new Date()): boolean {
+  if (event.sold_out === true || !event.start_time) return false;
+  const today = toLocalDateStr(now);
+  // Laufende Mehrtages-Events werden nicht jeden Abend erneut als spontaner
+  // Tipp geführt; dafür bleiben die normalen Tagesfilter zuständig.
+  if (event.start_date !== today || event.start_time.slice(0, 5) < '17:00') return false;
+  const startsAt = new Date(`${event.start_date}T${event.start_time}`);
+  return Number.isFinite(startsAt.getTime()) && startsAt.getTime() >= now.getTime() - 90 * 60_000;
+}
+
 const WEEKDAY_LABELS_BY_LANG = {
   de: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
   en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -275,6 +300,18 @@ registerStrings({
   'events.chooseDate': { de: 'Datum wählen', en: 'Choose date' },
   'events.daysCount': { de: 'Tage', en: 'days' },
   'events.filter': { de: 'Filter', en: 'Filter' },
+  'events.tonight': { de: 'Heute Abend', en: 'Tonight' },
+  'events.savedSearches': { de: 'Gespeicherte Suchen', en: 'Saved searches' },
+  'events.savedSearchesHint': { de: 'Gespeicherte Filter lassen sich jederzeit erneut anwenden. Benachrichtigungen werden nur für exakt passende, neue Events verschickt.', en: 'Saved filters can be applied again at any time. Notifications are only sent for exact new matches.' },
+  'events.savedSearchName': { de: 'Name, z. B. „Kostenlose Konzerte“', en: 'Name, e.g. “Free concerts”' },
+  'events.saveCurrentSearch': { de: 'Aktuelle Filter speichern', en: 'Save current filters' },
+  'events.savedSearchPreview': { de: 'Aktuell passende Events', en: 'Currently matching events' },
+  'events.savedSearchNeedsFilter': { de: 'Wähle mindestens einen Kategorie-, Genre-, Orts-, Datums- oder Kostenlos-Filter.', en: 'Choose at least one category, genre, venue, date, or free filter.' },
+  'events.savedSearchStructuredOnly': { de: 'Freitext und frei gewählte Kalendertage können nicht zuverlässig überwacht werden. Nutze dafür die strukturierten Filter.', en: 'Free text and custom calendar days cannot be monitored reliably. Use the structured filters instead.' },
+  'events.apply': { de: 'Anwenden', en: 'Apply' },
+  'events.notify': { de: 'Benachrichtigen', en: 'Notify' },
+  'events.delete': { de: 'Löschen', en: 'Delete' },
+  'events.noSavedSearches': { de: 'Noch keine Suche gespeichert.', en: 'No saved searches yet.' },
   'events.favorites': { de: 'Favoriten', en: 'Favorites' },
   'events.free': { de: 'Kostenlos', en: 'Free' },
   'events.multiDay': { de: 'Ausstellungen', en: 'Exhibitions' },
@@ -318,35 +355,10 @@ registerStrings({
 // als ein schmaler Schieberegler.
 const RADIUS_PRESETS_KM: (number | null)[] = [null, 1, 2, 5, 10, 25];
 
-const GENRE_GROUPS: { label: string; patterns: RegExp[] }[] = [
-  { label: 'Pop & Rock', patterns: [/pop/i, /rock/i, /alternative/i, /indie/i, /singer/i, /schlager/i] },
-  { label: 'Electronic', patterns: [/house/i, /techno/i, /trance/i, /electro/i, /dance/i, /rave/i, /dnb/i, /drum & bass/i, /deep house/i, /tech-house/i, /dj/i] },
-  { label: 'Metal & Punk', patterns: [/metal/i, /punk/i, /hardcore/i, /screamo/i, /death metal/i, /black metal/i, /thrash/i] },
-  { label: 'Hip-Hop & Rap', patterns: [/hip[-\s]?hop/i, /rap/i, /trap/i] },
-  { label: 'Soul, Funk & Disco', patterns: [/soul/i, /funk/i, /disco/i, /r&b/i, /rnb/i] },
-  { label: 'Jazz & Blues', patterns: [/jazz/i, /blues/i, /swing/i] },
-  { label: 'Klassik & Chor', patterns: [/klassik/i, /chor/i, /orchester/i, /oper/i, /ballett/i] },
-  { label: 'Party & Club', patterns: [/club/i, /party/i, /aftershow/i, /dancefloor/i] },
-  { label: 'Comedy & Show', patterns: [/comedy/i, /kabarett/i, /show/i, /stand[-\s]?up/i] },
-  { label: 'Markt, Bildung & Familie', patterns: [/markt/i, /flohmarkt/i, /dult/i, /bildung/i, /workshop/i, /yoga/i, /family/i, /kids/i, /community/i] },
-];
-
 const FREE_PRICE_PATTERN = /kostenlos|kostenfrei|gratis|umsonst|eintritt frei|free entry|\b0([.,]0+)?\s*€/i;
 
 function isFreeEvent(priceInfo: string | null) {
   return priceInfo !== null && FREE_PRICE_PATTERN.test(priceInfo);
-}
-
-function normalizeGenreGroup(value: string | null) {
-  const source = value?.trim();
-  if (!source) return 'Sonstiges';
-
-  const normalized = source.toLowerCase();
-  const match = GENRE_GROUPS.find((group) =>
-    group.patterns.some((pattern) => pattern.test(normalized))
-  );
-
-  return match ? match.label : 'Sonstiges';
 }
 
 function toggleInSet(current: string[], value: string): string[] {
@@ -391,24 +403,27 @@ export default function EventListScreen() {
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const { followedOrganizers } = useFollowedOrganizers();
+  const { followedArtists } = useFollowedArtists();
+  const { savedSearches, saveSearch, removeSavedSearch } = useSavedSearches();
   const { offsetsMinutes: reminderOffsets, toggleOffset: toggleReminderOffset } = useReminderSettings();
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showFreeOnly, setShowFreeOnly] = useState(false);
   const [showMultiDayOnly, setShowMultiDayOnly] = useState(false);
+  const [showTonightOnly, setShowTonightOnly] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [showReminderModal, setShowReminderModal] = useState(false);
+  const [showSavedSearchModal, setShowSavedSearchModal] = useState(false);
+  const [savedSearchName, setSavedSearchName] = useState('');
 
   useEffect(() => {
     if (!isPushSupported()) return;
     isPushEnabled().then(setPushEnabled);
   }, []);
 
-  // Favoriten und inhaltliche Filter (Kategorie/Genre/Ort) laufend zu
-  // Supabase syncen, solange Push aktiv ist — der Sender (collectors/
-  // notifications) prüft periodisch dagegen, welche Erinnerungen/Matches
-  // fällig sind. Kein Sync, solange Push aus ist, um unnötige Requests zu
-  // vermeiden.
+  // Favoriten und explizit gespeicherte Suchen werden laufend synchronisiert.
+  // Die gerade sichtbaren, flüchtigen Feed-Filter sind absichtlich KEIN
+  // Push-Abo mehr: Beim bloßen Stöbern entstanden sonst unerwartete Treffer.
   useEffect(() => {
     if (!pushEnabled) return;
     syncFavoritesToServer(favorites);
@@ -417,12 +432,22 @@ export default function EventListScreen() {
   useEffect(() => {
     if (!pushEnabled) return;
     syncFiltersToServer({
-      categories: selectedCategories,
-      genres: selectedGenres,
-      locations: selectedLocations,
+      categories: [],
+      genres: [],
+      locations: [],
       organizers: followedOrganizers,
     });
-  }, [pushEnabled, selectedCategories, selectedGenres, selectedLocations, followedOrganizers]);
+  }, [pushEnabled, followedOrganizers]);
+
+  useEffect(() => {
+    if (!pushEnabled) return;
+    syncSavedSearchesToServer(savedSearches);
+  }, [pushEnabled, savedSearches]);
+
+  useEffect(() => {
+    if (!pushEnabled) return;
+    syncArtistFollowsToServer(followedArtists);
+  }, [pushEnabled, followedArtists]);
 
   useEffect(() => {
     if (!pushEnabled) return;
@@ -685,9 +710,29 @@ export default function EventListScreen() {
       const matchesFavorite = !showFavoritesOnly || favorites.includes(e.id);
       const matchesFree = !showFreeOnly || isFreeEvent(e.price_info);
       const matchesMultiDay = !showMultiDayOnly || (e.end_date !== null && e.end_date !== e.start_date);
-      return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate && matchesFavorite && matchesFree && matchesMultiDay;
+      const matchesTonight = !showTonightOnly || isTonightEvent(e);
+      return matchesSearch && matchesCategory && matchesGenre && matchesLocation && matchesDate && matchesFavorite && matchesFree && matchesMultiDay && matchesTonight;
     });
-  }, [enrichedEvents, debouncedSearch, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites, showFreeOnly, showMultiDayOnly]);
+  }, [enrichedEvents, debouncedSearch, selectedCategories, selectedGenres, selectedLocations, dateFilter, selectedDates, showFavoritesOnly, favorites, showFreeOnly, showMultiDayOnly, showTonightOnly]);
+
+  const currentSavedCriteria: SavedSearchCriteria = useMemo(() => ({
+    categories: selectedCategories,
+    genres: selectedGenres,
+    locations: selectedLocations,
+    dateFilter: dateFilter === 'custom' ? 'all' : dateFilter,
+    freeOnly: showFreeOnly,
+    availableOnly: true,
+  }), [selectedCategories, selectedGenres, selectedLocations, dateFilter, showFreeOnly]);
+  const hasUnsupportedSavedSearchFilter =
+    search.trim() !== '' || dateFilter === 'custom' || showFavoritesOnly ||
+    showMultiDayOnly || showTonightOnly || userLocation !== null;
+  const currentSearchCanBeSaved =
+    hasSavedSearchCriteria(currentSavedCriteria) && !hasUnsupportedSavedSearchFilter;
+  const savedSearchPreviewCount = useMemo(() => {
+    if (!currentSearchCanBeSaved) return 0;
+    const today = toLocalDateStr(new Date());
+    return enrichedEvents.filter((event) => matchesSavedSearch(event, currentSavedCriteria, today)).length;
+  }, [currentSearchCanBeSaved, currentSavedCriteria, enrichedEvents]);
 
   // Damit die Karte (MapNative.web.tsx) exakt dieselben Treffer zeigen kann
   // wie die gerade aktive Filterkombination hier, ohne die komplette
@@ -811,6 +856,7 @@ export default function EventListScreen() {
   }, [featuredEvents, eventGroups]);
 
   function openCalendar() {
+    setShowTonightOnly(false);
     const base = selectedDates[0] ? new Date(selectedDates[0]) : new Date();
     setCalendarMonth({ year: base.getFullYear(), month: base.getMonth() });
     setShowPicker(true);
@@ -879,7 +925,9 @@ export default function EventListScreen() {
     dateFilter !== 'all' ||
     showFavoritesOnly ||
     showFreeOnly ||
-    showMultiDayOnly;
+    showMultiDayOnly ||
+    showTonightOnly ||
+    userLocation !== null;
 
   function resetAllFilters() {
     setSearch('');
@@ -891,6 +939,42 @@ export default function EventListScreen() {
     setShowFavoritesOnly(false);
     setShowFreeOnly(false);
     setShowMultiDayOnly(false);
+    setShowTonightOnly(false);
+    setUserLocation(null);
+    setNearbyRadiusKm(null);
+    setLocationStatus('idle');
+  }
+
+  function applySavedSearch(searchToApply: SavedSearch) {
+    const criteria = searchToApply.criteria;
+    setSearch('');
+    setSelectedCategories(criteria.categories);
+    setSelectedGenres(criteria.genres);
+    setSelectedLocations(criteria.locations);
+    setDateFilter(criteria.dateFilter);
+    setSelectedDates([]);
+    setShowFreeOnly(criteria.freeOnly);
+    setShowFavoritesOnly(false);
+    setShowMultiDayOnly(false);
+    setShowTonightOnly(false);
+    setUserLocation(null);
+    setNearbyRadiusKm(null);
+    setLocationStatus('idle');
+    setShowSavedSearchModal(false);
+  }
+
+  async function saveCurrentSearch() {
+    const name = savedSearchName.trim();
+    if (!name || !currentSearchCanBeSaved) return;
+    await saveSearch({
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `search-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name,
+      criteria: currentSavedCriteria,
+      enabled: pushEnabled,
+    });
+    setSavedSearchName('');
   }
 
   const activeFilterTabData =
@@ -1011,6 +1095,7 @@ export default function EventListScreen() {
               onPress={() => {
                 setDateFilter(f.key);
                 setSelectedDates([]);
+                setShowTonightOnly(false);
               }}
             >
               <Text
@@ -1063,6 +1148,30 @@ export default function EventListScreen() {
           <Ionicons name="options-outline" size={16} color={contentFilterCount > 0 ? '#000' : '#999'} />
           <Text style={[styles.filterButtonText, contentFilterCount > 0 && styles.filterChipTextActive]}>
             {t('events.filter')}{contentFilterCount > 0 ? ` (${contentFilterCount})` : ''}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterButton, showTonightOnly && styles.filterChipActive]}
+          onPress={() => {
+            setShowTonightOnly((active) => !active);
+            setDateFilter('all');
+            setSelectedDates([]);
+          }}
+        >
+          <Ionicons name="moon-outline" size={16} color={showTonightOnly ? '#000' : '#999'} />
+          <Text style={[styles.filterButtonText, showTonightOnly && styles.filterChipTextActive]}>
+            {t('events.tonight')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => setShowSavedSearchModal(true)}
+        >
+          <Ionicons name="bookmark-outline" size={16} color="#999" />
+          <Text style={styles.filterButtonText}>
+            {t('events.savedSearches')}{savedSearches.length > 0 ? ` (${savedSearches.length})` : ''}
           </Text>
         </TouchableOpacity>
 
@@ -1604,6 +1713,90 @@ export default function EventListScreen() {
                 }}
               >
                 <Text style={styles.modalCloseButtonText}>{t('events.filterModalDone')}</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={showSavedSearchModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowSavedSearchModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowSavedSearchModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
+            <Text style={[styles.modalTitle, styles.savedSearchTitle]}>{t('events.savedSearches')}</Text>
+            <Text style={styles.modalSubtitle}>{t('events.savedSearchesHint')}</Text>
+            <ScrollView style={styles.savedSearchList}>
+              {savedSearches.length === 0 && (
+                <Text style={styles.savedSearchEmpty}>{t('events.noSavedSearches')}</Text>
+              )}
+              {savedSearches.map((saved) => (
+                <View key={saved.id} style={styles.savedSearchRow}>
+                  <View style={styles.savedSearchNameWrap}>
+                    <Text style={styles.savedSearchName}>{saved.name}</Text>
+                    <Text style={styles.savedSearchStatus}>
+                      {saved.enabled ? t('events.notify') : `${t('events.notify')}: aus`}
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={styles.savedSearchAction} onPress={() => applySavedSearch(saved)}>
+                    <Text style={styles.savedSearchActionText}>{t('events.apply')}</Text>
+                  </TouchableOpacity>
+                  {isPushSupported() && (
+                    <TouchableOpacity
+                      style={[styles.savedSearchIconAction, saved.enabled && styles.savedSearchIconActionActive]}
+                      onPress={() => saveSearch({ ...saved, enabled: !saved.enabled })}
+                      accessibilityLabel={t('events.notify')}
+                    >
+                      <Ionicons name={saved.enabled ? 'notifications' : 'notifications-outline'} size={17} color={saved.enabled ? '#000' : '#999'} />
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={styles.savedSearchIconAction}
+                    onPress={() => removeSavedSearch(saved.id)}
+                    accessibilityLabel={t('events.delete')}
+                  >
+                    <Ionicons name="trash-outline" size={17} color="#ff6b6b" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <View style={styles.savedSearchCreate}>
+                <Text style={styles.savedSearchCreateTitle}>{t('events.saveCurrentSearch')}</Text>
+                <TextInput
+                  style={[styles.search, styles.savedSearchInput]}
+                  placeholder={t('events.savedSearchName')}
+                  placeholderTextColor="#666"
+                  value={savedSearchName}
+                  onChangeText={setSavedSearchName}
+                />
+                {hasUnsupportedSavedSearchFilter ? (
+                  <Text style={styles.savedSearchWarning}>{t('events.savedSearchStructuredOnly')}</Text>
+                ) : !hasSavedSearchCriteria(currentSavedCriteria) ? (
+                  <Text style={styles.savedSearchWarning}>{t('events.savedSearchNeedsFilter')}</Text>
+                ) : (
+                  <Text style={styles.savedSearchPreview}>
+                    {t('events.savedSearchPreview')}: {savedSearchPreviewCount}
+                  </Text>
+                )}
+                <TouchableOpacity
+                  style={[styles.modalCloseButton, (!currentSearchCanBeSaved || !savedSearchName.trim()) && styles.savedSearchButtonDisabled]}
+                  onPress={saveCurrentSearch}
+                  disabled={!currentSearchCanBeSaved || !savedSearchName.trim()}
+                >
+                  <Text style={styles.modalCloseButtonText}>{t('events.saveCurrentSearch')}</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity style={styles.modalCloseButton} onPress={() => setShowSavedSearchModal(false)}>
+                <Text style={styles.modalCloseButtonText}>{t('events.close')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -2199,6 +2392,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 10,
   },
+  savedSearchTitle: { paddingHorizontal: 16, marginBottom: 6 },
+  savedSearchList: { maxHeight: 430 },
+  savedSearchEmpty: { color: '#666', paddingHorizontal: 16, paddingVertical: 16 },
+  savedSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
+  },
+  savedSearchNameWrap: { flex: 1 },
+  savedSearchName: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  savedSearchStatus: { color: '#777', fontSize: 11, marginTop: 3 },
+  savedSearchAction: { paddingHorizontal: 8, paddingVertical: 8 },
+  savedSearchActionText: { color: '#0af', fontSize: 12, fontWeight: '700' },
+  savedSearchIconAction: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#141414',
+  },
+  savedSearchIconActionActive: { backgroundColor: '#0af' },
+  savedSearchCreate: { padding: 16, gap: 10 },
+  savedSearchCreateTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  savedSearchInput: { marginBottom: 0 },
+  savedSearchWarning: { color: '#f2c94c', fontSize: 12, lineHeight: 17 },
+  savedSearchPreview: { color: '#8ad7ff', fontSize: 12 },
+  savedSearchButtonDisabled: { opacity: 0.4 },
   modalFooterHint: {
     color: '#666',
     fontSize: 12,
