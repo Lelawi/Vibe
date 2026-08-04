@@ -608,9 +608,9 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       // versehentlicher Klick nichts unwiderruflich verschwinden lässt.
       .filter((v) => closureStatusByVenue.get(v.id) !== 'confirmed')
       .map((v) => {
-        // Klare Quellenpriorität: Betreiber-Website vor Google Places vor
-        // dem oft ungenauen/veralteten OSM-opening_hours-Tag.
-        const effectiveHours = v.opening_hours_override ?? v.google_opening_hours ?? v.opening_hours_raw;
+        // Klare Quellenpriorität: Google Places vor manueller/Betreiber-
+        // Korrektur vor dem oft ungenauen/veralteten OSM-opening_hours-Tag.
+        const effectiveHours = v.google_opening_hours ?? v.opening_hours_override ?? v.opening_hours_raw;
         // Manuell korrigierter Name (z.B. wenn eine Bar umbenannt wurde, OSM
         // das aber noch nicht nachgezogen hat) hat Vorrang vor dem vom
         // Collector aus dem OSM-Tag übernommenen Namen — gleiches Override-

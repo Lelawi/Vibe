@@ -96,8 +96,8 @@ export default function VenueMapNative({
       venues
         .filter((v) => !confirmedClosedIds.has(v.id))
         .map((v) => {
-          // Betreiber-Website > Google Places > OpenStreetMap.
-          const effectiveHours = v.opening_hours_override ?? v.google_opening_hours ?? v.opening_hours_raw;
+          // Google Places > manuelle/Betreiber-Korrektur > OpenStreetMap.
+          const effectiveHours = v.google_opening_hours ?? v.opening_hours_override ?? v.opening_hours_raw;
           return {
             ...v,
             name: v.name_override ?? v.name,

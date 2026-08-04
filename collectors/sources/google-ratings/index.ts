@@ -1,5 +1,9 @@
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../app/.env') });
 
 // Google-Bewertungen (+ Öffnungszeiten/Website/Telefon als Nebenprodukt) für Venues
 // (bars/restaurants/spaetis) — bewusst über die offizielle Places API (New)

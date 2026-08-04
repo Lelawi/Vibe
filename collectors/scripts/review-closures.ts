@@ -62,7 +62,7 @@ export async function run() {
     console.log(`- [${venue?.type ?? '?'}] ${venue?.name_override ?? venue?.name ?? '(gelöscht?)'}  [${r.venue_id}]`);
     if (venue?.address) console.log(`  Adresse: ${venue.address}`);
     if (venue?.website) console.log(`  Website: ${venue.website}`);
-    const effectiveHours = venue?.opening_hours_override ?? venue?.google_opening_hours ?? venue?.opening_hours_raw;
+    const effectiveHours = venue?.google_opening_hours ?? venue?.opening_hours_override ?? venue?.opening_hours_raw;
     if (effectiveHours) console.log(`  Öffnungszeiten: ${effectiveHours}`);
     console.log(`  gemeldet: ${r.reported_at}`);
     console.log('');

@@ -77,7 +77,7 @@ export async function run(write: (value: string) => void = console.log): Promise
     write(`### venue:${report.id} — ${venue?.name_override ?? venue?.name ?? report.venue_id}`);
     if (reports.length > 1) write(`- ${reports.length} gleichlautende Meldungen: ${reports.map((row) => row.id).join(', ')}`);
     write(`- Meldung: ${line(report.reason)} · ${line(report.note)}`);
-    write(`- Aktuell: Bierpreis ${line(venue?.beer_price_eur)} € · Öffnungszeiten ${line(venue?.opening_hours_override ?? venue?.google_opening_hours ?? venue?.opening_hours_raw)}`);
+    write(`- Aktuell: Bierpreis ${line(venue?.beer_price_eur)} € · Öffnungszeiten ${line(venue?.google_opening_hours ?? venue?.opening_hours_override ?? venue?.opening_hours_raw)}`);
     write(`- Website: ${line(venue?.website)}`);
     write(`- Vorprüfung: ${line(report.analysis_summary)} · Status ${line(report.analysis_status)} · Konfidenz ${line(report.analysis_confidence)}`);
     const received = reports.map((row) => date(row.created_at));
