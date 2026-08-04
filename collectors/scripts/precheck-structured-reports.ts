@@ -97,6 +97,7 @@ async function precheckClosures(supabase: SupabaseClient, apiKey: string | undef
       if (matched) {
         await supabase.from('venues').update({
           google_place_id: candidate.id,
+          ...(details?.displayName ? { name_override: details.displayName } : {}),
           google_business_status: details?.businessStatus ?? null,
           google_rating_checked_at: new Date().toISOString(),
         }).eq('id', venue.id);

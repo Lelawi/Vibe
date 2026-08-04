@@ -5,7 +5,7 @@ import path from 'path';
 
 dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../app/.env') });
 
-// Google-Bewertungen (+ Öffnungszeiten/Website/Telefon als Nebenprodukt) für Venues
+// Google-Bewertungen (+ Name/Öffnungszeiten/Website/Telefon als Nebenprodukt) für Venues
 // (bars/restaurants/spaetis) — bewusst über die offizielle Places API (New)
 // statt Scraping (verstößt gegen Googles Nutzungsbedingungen, siehe
 // Diskussion im Chat 2026-08-01). Das rating-Feld gehört zum teuersten
@@ -16,7 +16,7 @@ dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '.
 // in der Google Cloud Console (nicht nur ein Budget-Alert, das nur
 // benachrichtigt statt zu blocken). Text Search zum Auflösen der place_id
 // läuft im viel günstigeren Tier und ist hier nie der Flaschenhals.
-// Öffnungszeiten/website/phone werden mit demselben Enterprise-Call
+// Name/Öffnungszeiten/website/phone werden mit demselben Enterprise-Call
 // mitgeliefert (gehören bereits zum bezahlten Tier). Website/Telefon werden
 // nur dann übernommen, wenn wir
 // dafür noch keinen Wert haben — Google ist im Schnitt aktueller als OSM
@@ -56,6 +56,7 @@ export interface PlaceCandidate {
 }
 
 export interface PlaceDetails {
+  displayName: string | null;
   rating: number | null;
   count: number | null;
   website: string | null;
@@ -211,7 +212,7 @@ export async function fetchDetails(apiKey: string, placeId: string): Promise<Pla
       // regularOpeningHours/websiteUri/nationalPhoneNumber gehören zum
       // selben Enterprise-Tier wie rating — kein höherer SKU, da ohnehin
       // bereits dieser Tarif für den Request ausgelöst wird.
-      'X-Goog-FieldMask': 'rating,userRatingCount,websiteUri,nationalPhoneNumber,businessStatus,regularOpeningHours.periods',
+      'X-Goog-FieldMask': 'displayName,rating,userRatingCount,websiteUri,nationalPhoneNumber,businessStatus,regularOpeningHours.periods',
     },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
@@ -220,6 +221,7 @@ export async function fetchDetails(apiKey: string, placeId: string): Promise<Pla
     return null;
   }
   const data = (await res.json()) as {
+    displayName?: { text?: string };
     rating?: number;
     userRatingCount?: number;
     websiteUri?: string;
@@ -228,6 +230,7 @@ export async function fetchDetails(apiKey: string, placeId: string): Promise<Pla
     regularOpeningHours?: { periods?: GooglePlacePeriod[] };
   };
   return {
+    displayName: data.displayName?.text?.trim() || null,
     rating: data.rating ?? null,
     count: data.userRatingCount ?? null,
     website: data.websiteUri ?? null,
@@ -384,6 +387,11 @@ export async function run() {
         google_opening_hours_checked_at: new Date().toISOString(),
         google_not_found_streak: 0,
       };
+      // Sobald die Zuordnung über eine validierte bzw. bereits gespeicherte
+      // Place-ID feststeht, ist Googles aktueller Anzeigename die führende
+      // Bezeichnung in der App. Der ursprüngliche OSM-Name bleibt im Feld
+      // `name` erhalten und kann weiterhin zur Herkunftskontrolle dienen.
+      if (details?.displayName) update.name_override = details.displayName;
       // Nur auffüllen, nie überschreiben — siehe Kommentar am Dateianfang.
       if (!venue.website && details?.website) update.website = details.website;
       if (!venue.phone && details?.phone) update.phone = details.phone;
