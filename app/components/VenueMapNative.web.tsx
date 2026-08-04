@@ -42,6 +42,7 @@ type RawVenue = {
   wifi: boolean | null;
   google_rating: number | null;
   google_rating_count: number | null;
+  google_place_id: string | null;
 };
 
 const MUNICH_CENTER = { lat: 48.1371, lng: 11.5754 };
@@ -102,7 +103,7 @@ export default function VenueMapNative({
       // 2263 Restaurants hätte ein einfaches .select() über die Hälfte
       // verschluckt (siehe app/lib/fetchAllVenues.ts).
       const venuesColumns =
-        'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,google_opening_hours,website,image_url,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count';
+        'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,google_opening_hours,google_place_id,website,image_url,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count';
       const [venuesData, reportsRes] = await Promise.all([
         fetchAllVenues<RawVenue>(type, venuesColumns).catch(async (err) => {
           // name_override (0023)/dinner_menu_url (0021)/beer_price_eur
@@ -118,7 +119,7 @@ export default function VenueMapNative({
               type,
               'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count'
             );
-            return fallback.map((v) => ({ ...v, google_opening_hours: null }));
+            return fallback.map((v) => ({ ...v, google_opening_hours: null, google_place_id: null }));
           } catch (legacyErr) {
             console.warn(
               '[VenueMapNative] retrying without name_override/dinner_menu_url/beer_price_eur/wifi/google_rating columns',
@@ -136,6 +137,7 @@ export default function VenueMapNative({
               wifi: null,
               google_rating: null,
               google_rating_count: null,
+              google_place_id: null,
             }));
           }
         }),
@@ -174,6 +176,7 @@ export default function VenueMapNative({
           wifi: v.wifi,
           google_rating: v.google_rating,
           google_rating_count: v.google_rating_count,
+          google_place_id: v.google_place_id,
         };
       });
   }, [cachedMarkers, venues, closedIds]);

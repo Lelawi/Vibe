@@ -31,6 +31,7 @@ export type MapVenueEntry = {
   wifi: boolean | null;
   google_rating: number | null;
   google_rating_count: number | null;
+  google_place_id: string | null;
 };
 
 export type MapEventEntry = {

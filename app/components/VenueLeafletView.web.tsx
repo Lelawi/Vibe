@@ -59,6 +59,7 @@ export type VenueMarker = {
   wifi?: boolean | null;
   google_rating?: number | null;
   google_rating_count?: number | null;
+  google_place_id?: string | null;
 };
 
 // Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff — z.B.
@@ -75,9 +76,10 @@ export type VenueMarker = {
 // Funktion in VenueListScreen.tsx: der Koordinaten+Label-Versuch zeigte in
 // aktuellem Google Maps nur noch die nackte Koordinate ohne Namen an und
 // wurde zurückgenommen.
-function googleMapsUrl(name: string, address?: string | null) {
+function googleMapsUrl(name: string, address?: string | null, placeId?: string | null) {
   const query = address ? `${name}, ${address}` : `${name}, München`;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  const base = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  return placeId ? `${base}&query_place_id=${encodeURIComponent(placeId)}` : base;
 }
 
 function markerColor(open: boolean | null): string {
@@ -303,7 +305,7 @@ const VenueLeafletView = forwardRef<
                       <Text style={styles.popupLink}>{t('venues.dinnerMenu')}</Text>
                     </Pressable>
                   )}
-                  <Pressable onPress={() => openExternalUrl(googleMapsUrl(venue.name, venue.address))}>
+                  <Pressable onPress={() => openExternalUrl(googleMapsUrl(venue.name, venue.address, venue.google_place_id))}>
                     <Text style={styles.popupMapsButton}>{t('venues.googleMapsOpen')}</Text>
                   </Pressable>
                 </View>

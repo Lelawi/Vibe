@@ -51,6 +51,7 @@ type Venue = {
   opening_hours_raw: string | null;
   opening_hours_override: string | null;
   google_opening_hours: string | null;
+  google_place_id: string | null;
   website: string | null;
   phone: string | null;
   image_url: string | null;
@@ -79,7 +80,7 @@ type ClosureStatus = 'pending' | 'confirmed' | 'rejected';
 async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
   const attempts: { columns: string; fill: (v: Record<string, unknown>) => Venue }[] = [
     {
-      columns: `${VENUE_BASE_COLUMNS},google_opening_hours,name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count`,
+      columns: `${VENUE_BASE_COLUMNS},google_opening_hours,google_place_id,name_override,cuisine,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur,wifi,google_rating,google_rating_count`,
       fill: (v) => v as unknown as Venue,
     },
     {
@@ -160,7 +161,10 @@ async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
   for (let i = 0; i < attempts.length; i++) {
     try {
       const data = await fetchAllVenues<Record<string, unknown>>(type, attempts[i].columns);
-      return data.map(attempts[i].fill);
+      return data.map((row) => {
+        const venue = attempts[i].fill(row);
+        return { ...venue, google_place_id: venue.google_place_id ?? null };
+      });
     } catch (err) {
       if (i === attempts.length - 1) throw err;
       console.warn(`[VenueListScreen] retrying with fewer columns (attempt ${i + 2}/${attempts.length})`, err);
@@ -425,9 +429,10 @@ function cuisineLabel(raw: string, language: Language): string {
 // gegenüber dieser Textsuche und wurde zurückgenommen. Für Ketten bleibt die
 // Freitextsuche mit Adresse die verlässlichere Option, auch wenn sie bei
 // unvollständigen Adressdaten gelegentlich mehrere Treffer zeigt.
-function googleMapsUrl(name: string, address?: string | null) {
+function googleMapsUrl(name: string, address?: string | null, placeId?: string | null) {
   const query = address ? `${name}, ${address}` : `${name}, München`;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  const base = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  return placeId ? `${base}&query_place_id=${encodeURIComponent(placeId)}` : base;
 }
 
 export default function VenueListScreen({ type }: { type: VenueType }) {
@@ -713,6 +718,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           wifi: v.wifi,
           google_rating: v.google_rating,
           google_rating_count: v.google_rating_count,
+          google_place_id: v.google_place_id,
         }))
     );
   }, [type, filteredVenues, loading]);
@@ -1088,7 +1094,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                   style={[styles.actionChip, styles.actionChipMaps]}
                   onPress={(e) => {
                     e.stopPropagation();
-                    openExternalUrl(googleMapsUrl(item.effectiveName, item.address));
+                    openExternalUrl(googleMapsUrl(item.effectiveName, item.address, item.google_place_id));
                   }}
                 >
                   <Ionicons name="map-outline" size={13} color="#c084fc" />

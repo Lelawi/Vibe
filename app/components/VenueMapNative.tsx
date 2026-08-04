@@ -21,6 +21,7 @@ type Venue = {
   image_url: string | null;
   google_rating: number | null;
   google_rating_count: number | null;
+  google_place_id: string | null;
 };
 
 // Nur der Name reicht bei generischen OSM-Namen nicht als Suchbegriff — z.B.
@@ -32,9 +33,10 @@ type Venue = {
 // — das öffnet nur einen anonymen Pin ohne Namen/Infos in Google Maps.
 // "München" als Ortszusatz grenzt die Freitextsuche ausreichend ein, ohne
 // den Namen ganz wegzulassen.
-function openInGoogleMaps(name: string, address?: string | null) {
+function openInGoogleMaps(name: string, address?: string | null, placeId?: string | null) {
   const query = address ? `${name}, ${address}` : `${name}, München`;
-  Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`);
+  const base = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  Linking.openURL(placeId ? `${base}&query_place_id=${encodeURIComponent(placeId)}` : base);
 }
 
 // Grün/Rot/Grau statt des App-Blaus (#0af) — das ist bereits "meine
@@ -70,13 +72,13 @@ export default function VenueMapNative({
       const [venuesData, reportsRes] = await Promise.all([
         fetchAllVenues<Venue>(
           type,
-          'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,google_opening_hours,website,image_url,google_rating,google_rating_count'
+          'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,google_opening_hours,google_place_id,website,image_url,google_rating,google_rating_count'
         ).catch(async () => {
           const fallback = await fetchAllVenues<Omit<Venue, 'google_opening_hours'>>(
             type,
             'id,name,name_override,address,latitude,longitude,opening_hours_raw,opening_hours_override,website,image_url,google_rating,google_rating_count'
           );
-          return fallback.map((venue) => ({ ...venue, google_opening_hours: null }));
+          return fallback.map((venue) => ({ ...venue, google_opening_hours: null, google_place_id: null }));
         }),
         // Nur bestätigt geschlossene Einträge von der Karte nehmen — "pending"
         // (gemeldet, aber noch nicht geprüft) bleibt sichtbar, siehe VenueListScreen.
@@ -164,7 +166,7 @@ export default function VenueMapNative({
                     <Text style={styles.calloutLink}>Website öffnen</Text>
                   </Pressable>
                 )}
-                <Pressable onPress={() => openInGoogleMaps(venue.name, venue.address)}>
+                <Pressable onPress={() => openInGoogleMaps(venue.name, venue.address, venue.google_place_id)}>
                   <Text style={styles.calloutLink}>In Google Maps öffnen</Text>
                 </Pressable>
               </View>
