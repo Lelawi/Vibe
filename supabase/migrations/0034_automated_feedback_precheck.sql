@@ -9,6 +9,7 @@ set public = false,
 where id = 'feedback-screenshots';
 
 drop policy if exists "anon can upload feedback screenshots" on storage.objects;
+drop policy if exists "anon can upload private feedback screenshots" on storage.objects;
 create policy "anon can upload private feedback screenshots" on storage.objects
   for insert to anon
   with check (
