@@ -5,11 +5,12 @@ const API_URL =
   'https://public-api.eventim.com/websearch/search/api/exploration/v1/products';
 const TOP = 50;
 const MAX_THROTTLE_RETRIES = 3;
-// Der 180-Tage-Lauf kann mehr als hundert Requests erzeugen. Ohne Abstand
-// wertet Eventims Schutzsystem diese Burst-Sequenz zeitweise als unerwünscht
-// und antwortet aus GitHub Actions mit 403 statt mit dem semantisch passenderen
-// 429. Bewusst sequenziell und knapp unter einem Request pro Sekunde.
-const REQUEST_SPACING_MS = 1100;
+// Der 180-Tage-Lauf kann mehr als hundert Requests erzeugen. Die im Projekt
+// referenzierte Anleitung empfiehlt 2–5 Sekunden Abstand; ein fixer Abstand
+// von nur 1,1 Sekunden war für GitHub Actions offenbar weiterhin zu aggressiv.
+// Bewusst sequenziell und mit leicht variierendem, schonendem Request-Abstand.
+const MIN_REQUEST_SPACING_MS = 2000;
+const MAX_REQUEST_SPACING_MS = 5000;
 const TIME_WINDOWS = [
   { from: '00:00', to: '11:59' },
   { from: '12:00', to: '17:59' },
@@ -83,6 +84,12 @@ type Fetcher = (
 
 const defaultFetcher: Fetcher = (url, init) => fetch(url, init);
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function requestSpacingMs(): number {
+  return Math.floor(
+    MIN_REQUEST_SPACING_MS + Math.random() * (MAX_REQUEST_SPACING_MS - MIN_REQUEST_SPACING_MS + 1)
+  );
+}
 
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -193,7 +200,7 @@ async function fetchRange(
     if (!Array.isArray(body.products) || typeof body.totalResults !== 'number') {
       throw new Error('EVENTIM API lieferte ein unerwartetes Antwortformat');
     }
-    await sleep(REQUEST_SPACING_MS);
+    await sleep(requestSpacingMs());
     return { products: body.products, totalResults: body.totalResults };
   }
 

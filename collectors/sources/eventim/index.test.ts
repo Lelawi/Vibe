@@ -112,7 +112,9 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
   assert.match(requestHeaders[0]['User-Agent'], /Mozilla/);
   assert.equal(requestHeaders[0].Referer, 'https://www.eventim.de/');
   assert.equal(maxActiveRequests, 1);
-  assert.deepEqual(sleeps, [0, 1100, 1100, 1100, 1100, 1100, 1100]);
+  assert.equal(sleeps[0], 0);
+  assert.equal(sleeps.length, 7);
+  assert.ok(sleeps.slice(1).every((ms) => ms >= 2000 && ms <= 5000));
   assert.equal(urls.filter((url) => url.searchParams.has('time_from')).length, 3);
   assert.deepEqual(result.map((item) => item.productId), ['1']);
 
@@ -165,7 +167,8 @@ test('kühlt nach einem Eventim-403 ab und wiederholt die Anfrage begrenzt', asy
 
   assert.deepEqual(result, []);
   assert.equal(attempts, 2);
-  assert.deepEqual(sleeps, [5000, 1100]);
+  assert.equal(sleeps[0], 5000);
+  assert.ok(sleeps[1] >= 2000 && sleeps[1] <= 5000);
 });
 
 test('erhält Ticketvarianten für die gemeinsame Darstellung am Event', () => {
