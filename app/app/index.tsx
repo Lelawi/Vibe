@@ -23,7 +23,7 @@ import { registerStrings, useTranslation } from '../lib/strings';
 import { categoryLabel } from '../lib/eventCategories';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
-import { computeSeriesKey } from '../lib/seriesKey';
+import { computeSeriesKey, seriesDisplayTitle, seriesVariantLabel } from '../lib/seriesKey';
 import { setFilteredEventsForMap } from '../lib/mapFilterCache';
 import { fuzzyMatch } from '../lib/fuzzySearch';
 import { addEventsToCalendar } from '../lib/calendar';
@@ -1423,7 +1423,7 @@ export default function EventListScreen() {
                       </View>
                       <View style={styles.featuredCardBody}>
                         <Text style={styles.featuredCardTitle} numberOfLines={2}>
-                          {item.title}
+                          {seriesDisplayTitle(item.title)}
                         </Text>
                         {item.location_name && (
                           <Text style={styles.featuredCardMeta} numberOfLines={1}>
@@ -1494,7 +1494,7 @@ export default function EventListScreen() {
                     <Text style={styles.soldOutBadge}>{t('events.soldOut')}</Text>
                   )}
                 </View>
-                <Text style={styles.title}>{item.title}</Text>
+                <Text style={styles.title}>{seriesDisplayTitle(item.title)}</Text>
                 <Text style={styles.meta}>
                   {hasMore ? 'Nächster Termin: ' : ''}
                   {formatDate(item.start_date, item.start_time)}
@@ -1934,7 +1934,9 @@ export default function EventListScreen() {
           onPress={() => setSelectedGroup(null)}
         >
           <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>{selectedGroup?.[0]?.title}</Text>
+            <Text style={styles.modalTitle}>
+              {selectedGroup?.[0] ? seriesDisplayTitle(selectedGroup[0].title) : ''}
+            </Text>
             <Text style={styles.modalSubtitle}>
               {selectedGroup?.length} {t('events.dates')}
               {selectedGroup?.[0]?.location_name ? ` · ${selectedGroup[0].location_name}` : ''}
@@ -1950,7 +1952,12 @@ export default function EventListScreen() {
                     router.push(`/event/${item.id}`);
                   }}
                 >
-                  <Text style={styles.modalRowText}>{formatDate(item.start_date, item.start_time)}</Text>
+                  <View style={styles.modalRowContent}>
+                    {seriesVariantLabel(item.title) && (
+                      <Text style={styles.modalRowVariant}>{seriesVariantLabel(item.title)}</Text>
+                    )}
+                    <Text style={styles.modalRowText}>{formatDate(item.start_date, item.start_time)}</Text>
+                  </View>
                   <View style={styles.modalRowMeta}>
                     {item.price_info && <Text style={styles.modalRowPrice}>{item.price_info}</Text>}
                     {item.sold_out === true && <Text style={styles.soldOutBadge}>{t('events.soldOut')}</Text>}
@@ -2597,6 +2604,8 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1a1a1a',
   },
   modalRowActive: { backgroundColor: '#0af1' },
+  modalRowContent: { flex: 1, paddingRight: 12 },
+  modalRowVariant: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 3 },
   modalRowText: { color: '#ccc', fontSize: 15 },
   modalRowTextActive: { color: '#0af', fontWeight: '700' },
   modalRowMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
