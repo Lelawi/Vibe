@@ -4,7 +4,12 @@ import { fileURLToPath } from 'url';
 const API_URL =
   'https://public-api.eventim.com/websearch/search/api/exploration/v1/products';
 const TOP = 50;
-const MAX_429_RETRIES = 3;
+const MAX_THROTTLE_RETRIES = 3;
+// Der 180-Tage-Lauf kann mehr als hundert Requests erzeugen. Ohne Abstand
+// wertet Eventims Schutzsystem diese Burst-Sequenz zeitweise als unerwünscht
+// und antwortet aus GitHub Actions mit 403 statt mit dem semantisch passenderen
+// 429. Bewusst sequenziell und knapp unter einem Request pro Sekunde.
+const REQUEST_SPACING_MS = 1100;
 const TIME_WINDOWS = [
   { from: '00:00', to: '11:59' },
   { from: '12:00', to: '17:59' },
@@ -146,7 +151,7 @@ async function fetchRange(
 ): Promise<EventimResponse> {
   const url = buildUrl(dateFrom, dateTo, timeWindow);
 
-  for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= MAX_THROTTLE_RETRIES; attempt++) {
     const response = await fetcher(url, {
       headers: {
         Accept: 'application/json, text/plain, */*',
@@ -162,12 +167,17 @@ async function fetchRange(
       },
     });
 
-    if (response.status === 429) {
-      if (attempt === MAX_429_RETRIES) {
-        throw new Error(`EVENTIM API antwortete nach ${attempt + 1} Versuchen weiter mit 429`);
+    if (response.status === 403 || response.status === 429) {
+      if (attempt === MAX_THROTTLE_RETRIES) {
+        throw new Error(`EVENTIM API antwortete nach ${attempt + 1} Versuchen weiter mit ${response.status}`);
       }
-      const delay = retryDelayMs(response.headers.get('retry-after'), attempt);
-      console.warn(`[eventim] rate limited; retrying in ${delay} ms`);
+      const headerDelay = retryDelayMs(response.headers.get('retry-after'), attempt);
+      // Bei 403 deutlich länger abkühlen als bei einem regulären 429. Ein
+      // sofortiger Retry verschärft eine temporäre WAF-Drosselung nur.
+      const delay = response.status === 403
+        ? Math.max(headerDelay, 5000 * 3 ** attempt)
+        : headerDelay;
+      console.warn(`[eventim] status ${response.status}; retrying in ${delay} ms`);
       await sleep(delay);
       continue;
     }
@@ -183,6 +193,7 @@ async function fetchRange(
     if (!Array.isArray(body.products) || typeof body.totalResults !== 'number') {
       throw new Error('EVENTIM API lieferte ein unerwartetes Antwortformat');
     }
+    await sleep(REQUEST_SPACING_MS);
     return { products: body.products, totalResults: body.totalResults };
   }
 

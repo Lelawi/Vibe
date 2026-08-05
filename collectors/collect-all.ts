@@ -107,13 +107,9 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // anderen — inkl. muenchen-de — komplett leer), während ein direkter
 // Abruf derselben Seiten von einem normalen (nicht-GH-Actions-)Rechner aus
 // weiterhin anstandslos funktioniert (200, echte Events im HTML). Das
-// bestätigt die Verdachtsdiagnose: es ist ein IP-Reputationsblock gegen
-// GitHub-Actions-Cloud-IPs, kein Code- oder Timing-Problem, das durch mehr
-// Pause allein lösbar wäre. Echte Optionen wären ein Self-Hosted Runner
-// (eigener, nicht geblockter Rechner/NAS führt den Workflow aus) oder ein
-// bezahlter Residential-Proxy-Dienst — beides eine bewusste Entscheidung,
-// die der Projektinhaber treffen muss, nicht etwas, das sich im Code allein
-// beheben lässt.
+// spricht für einen IP-Reputationsblock gegen GitHub-Actions-Cloud-IPs.
+// Diese Quellen bleiben deshalb best effort. Netzwerk-Umgehungen, Proxys
+// oder Tunnel sind ausdrücklich keine zulässige Lösung für dieses Projekt.
 const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'backstage', run: runBackstage },
   { name: 'muenchenticket', run: runMuenchenticket },
@@ -169,7 +165,6 @@ async function runAll() {
     const source = sources[i];
     console.log(`[collect-all] running ${source.name}`);
     try {
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
       await source.run();
     } catch (err) {
       console.error('[collect-all] error running', source.name, err);

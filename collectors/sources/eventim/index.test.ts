@@ -112,7 +112,7 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
   assert.match(requestHeaders[0]['User-Agent'], /Mozilla/);
   assert.equal(requestHeaders[0].Referer, 'https://www.eventim.de/');
   assert.equal(maxActiveRequests, 1);
-  assert.deepEqual(sleeps, [0]);
+  assert.deepEqual(sleeps, [0, 1100, 1100, 1100, 1100, 1100, 1100]);
   assert.equal(urls.filter((url) => url.searchParams.has('time_from')).length, 3);
   assert.deepEqual(result.map((item) => item.productId), ['1']);
 
@@ -138,6 +138,34 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
     longitude: 11.521,
   });
   assert.equal(normalizeEvent({ ...result[0], price: undefined })?.price_info, null);
+});
+
+test('kühlt nach einem Eventim-403 ab und wiederholt die Anfrage begrenzt', async () => {
+  let attempts = 0;
+  const sleeps: number[] = [];
+  const fetcher = async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      return {
+        ok: false,
+        status: 403,
+        headers: { get: () => null },
+        json: async () => ({}),
+      };
+    }
+    return okResponse({ totalResults: 0, products: [] });
+  };
+
+  const result = await collectUpcomingProducts(
+    new Date('2026-08-05T12:00:00Z'),
+    fetcher,
+    async (ms) => { sleeps.push(ms); },
+    1
+  );
+
+  assert.deepEqual(result, []);
+  assert.equal(attempts, 2);
+  assert.deepEqual(sleeps, [5000, 1100]);
 });
 
 test('erhält Ticketvarianten für die gemeinsame Darstellung am Event', () => {
