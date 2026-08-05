@@ -11,6 +11,7 @@
     "muenchen-de": "tsx sources/muenchen_de/index.ts",
     "p1": "tsx sources/p1/index.ts",
     "milla": "tsx sources/milla/index.ts",
+    "test:milla": "tsx --test sources/milla/index.test.ts",
     "flohmarkt-olympiapark": "tsx sources/flohmarkt_olympiapark/index.ts",
     "auer-dult": "tsx sources/auer_dult/index.ts",
     "import-export": "tsx sources/import_export/index.ts",

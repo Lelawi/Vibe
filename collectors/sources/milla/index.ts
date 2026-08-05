@@ -12,12 +12,75 @@ import { buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 // muss trotzdem aus dem Volltext geregext werden, da RSS `pubDate` nur das
 // Veröffentlichungsdatum des Blogposts ist, nicht der Konzerttermin.
 const MILLA_FEED_URL = 'https://milla-club.de/category/event/feed/';
+const MILLA_HOMEPAGE_URL = 'https://milla-club.de/';
 const MILLA_ADDRESS = 'Holzstraße 28, 80469 München';
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+  Referer: 'https://milla-club.de/',
+  'Cache-Control': 'no-cache',
 };
+
+type HomepageEvent = {
+  title: string;
+  link: string;
+  start_date: string;
+  start_time: string | null;
+  image_url: string | null;
+};
+
+const MONTH_NUMBER: Record<string, string> = {
+  january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
+  july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
+};
+
+export function parseMillaHomepage(html: string): HomepageEvent[] {
+  const $ = cheerio.load(html);
+  const events: HomepageEvent[] = [];
+  $('.events .section__header').each((_, header) => {
+    const heading = $(header).text().replace(/\s+/g, ' ').trim();
+    const monthMatch = heading.match(/^([A-Za-z]+)\s+(\d{4})$/);
+    if (!monthMatch) return;
+    const month = MONTH_NUMBER[monthMatch[1].toLowerCase()];
+    if (!month) return;
+    const year = monthMatch[2];
+    $(header).next('.columns').find('.event').each((__, card) => {
+      const event = $(card);
+      const dateText = event.find('.column.is-date').first().text().replace(/\s+/g, ' ').trim();
+      const dayMatch = dateText.match(/\b(\d{1,2})\b/);
+      const titleElement = event.find('.event__title h3').first();
+      const title = (titleElement.attr('title') || titleElement.clone().children().remove().end().text()).trim();
+      const link = event.find('.event__title a').first().attr('href')?.trim() ?? '';
+      if (!dayMatch || !title || !link) return;
+      const timeText = event.find('.columns.is-gapless .column').eq(1).text().replace(/\s+/g, ' ').trim();
+      const timeMatch = timeText.match(/\b(\d{1,2})[.:](\d{2})\b/);
+      events.push({
+        title,
+        link,
+        start_date: `${year}-${month}-${dayMatch[1].padStart(2, '0')}`,
+        start_time: timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null,
+        image_url: event.find('.event__thumbnail img').first().attr('src')?.trim() || null,
+      });
+    });
+  });
+  return events;
+}
+
+async function fetchWithRetry(url: string, label: string): Promise<Awaited<ReturnType<typeof fetch>> | null> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url, { headers: BROWSER_HEADERS });
+      if (res.ok) return res;
+      console.warn(`[milla] ${label} failed`, res.status, `(attempt ${attempt}/2)`);
+      if (res.status !== 403 && res.status !== 429 && res.status < 500) return null;
+    } catch (error) {
+      console.warn(`[milla] ${label} error (attempt ${attempt}/2)`, error);
+    }
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 2500));
+  }
+  return null;
+}
 
 // Der RSS-Feed selbst enthält kein Bild, die einzelne Event-Seite aber ein
 // og:image (per Direktabruf verifiziert) — bei nur ~10 Events pro Lauf ist
@@ -49,61 +112,74 @@ export async function run() {
 
   try {
     console.log('[milla] fetching', MILLA_FEED_URL);
-    const res = await fetch(MILLA_FEED_URL, { headers: BROWSER_HEADERS });
-    if (!res.ok) { console.warn('[milla] fetch failed', res.status); return; }
-    const xml = await res.text();
-    const $ = cheerio.load(xml, { xmlMode: true });
-
     const coords = await getCoordinates(supabase, 'Milla Club', MILLA_ADDRESS, 'München');
+    const feedResponse = await fetchWithRetry(MILLA_FEED_URL, 'feed fetch');
+    if (feedResponse) {
+      const xml = await feedResponse.text();
+      const $ = cheerio.load(xml, { xmlMode: true });
 
-    // Erst synchron aus dem Feed extrahieren (cheerios .each() kann nicht auf
-    // async Bild-Abrufe warten), Bild danach pro Event einzeln nachladen.
-    const rawItems: { title: string; link: string; content: string }[] = [];
-    $('item').each((_, el) => {
-      const item$ = $(el);
-      const title = item$.find('title').first().text().trim();
-      const link = item$.find('link').first().text().trim();
-      const content = item$.find('content\\:encoded').first().text() || item$.find('description').first().text();
-      if (title && link && content) rawItems.push({ title, link, content });
-    });
-
-    for (const { title, link, content } of rawItems) {
-      const dateMatch = content.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-      if (!dateMatch) continue; // Post ohne erkennbares Konzertdatum im Text — ignorieren
-
-      const [, day, month, year] = dateMatch;
-      const start_date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      if (start_date < today) continue;
-
-      const timeMatch = content.match(/Beginn\s*(\d{1,2})[:.](\d{2})/i) ?? content.match(/Einlass\s*(\d{1,2})[:.](\d{2})/i);
-      const start_time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
-
-      // Preisangaben stehen als Freitext wie "VVK 20 € zzgl. Gebühren // AK 25 €"
-      // im Post, meist mit HTML-Tags durchsetzt (<strong>, <br> etc.).
-      const plainText = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-      const priceMatch = plainText.match(/(VVK|AK|Eintritt)[^~]{0,80}/i);
-      const price_info = priceMatch ? priceMatch[0].trim() : null;
-      const image_url = await fetchMillaImage(link);
-
-      collected.push({
-        source_id: buildStableSourceId('milla', link, start_date),
-        title,
-        description: null,
-        category: 'Clubs',
-        subcategory: null,
-        start_date,
-        start_time,
-        location_name: 'Milla Club',
-        address: MILLA_ADDRESS,
-        city: 'München',
-        organizer: 'Milla Club',
-        source_url: link,
-        image_url,
-        price_info,
-        sold_out: null,
-        latitude: coords?.latitude ?? null,
-        longitude: coords?.longitude ?? null,
+      // Erst synchron aus dem Feed extrahieren (cheerios .each() kann nicht auf
+      // async Bild-Abrufe warten), Bild danach pro Event einzeln nachladen.
+      const rawItems: { title: string; link: string; content: string }[] = [];
+      $('item').each((_, el) => {
+        const item$ = $(el);
+        const title = item$.find('title').first().text().trim();
+        const link = item$.find('link').first().text().trim();
+        const content = item$.find('content\\:encoded').first().text() || item$.find('description').first().text();
+        if (title && link && content) rawItems.push({ title, link, content });
       });
+
+      for (const { title, link, content } of rawItems) {
+        const dateMatch = content.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+        if (!dateMatch) continue;
+        const [, day, month, year] = dateMatch;
+        const start_date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        if (start_date < today) continue;
+        const timeMatch = content.match(/Beginn\s*(\d{1,2})[:.](\d{2})/i) ?? content.match(/Einlass\s*(\d{1,2})[:.](\d{2})/i);
+        const plainText = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+        const priceMatch = plainText.match(/(VVK|AK|Eintritt)[^~]{0,80}/i);
+        collected.push({
+          source_id: buildStableSourceId('milla', link, start_date), title, description: null,
+          category: 'Clubs', subcategory: null, start_date,
+          start_time: timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null,
+          location_name: 'Milla Club', address: MILLA_ADDRESS, city: 'München', organizer: 'Milla Club',
+          source_url: link, image_url: await fetchMillaImage(link),
+          price_info: priceMatch ? priceMatch[0].trim() : null, sold_out: null,
+          latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null,
+        });
+      }
+    }
+
+    // Cloudflare blockiert den Kategorie-Feed aus GitHub Actions sporadisch
+    // mit 403. Die öffentliche Startseite enthält dieselben Termine als
+    // strukturierte Karten und ist deshalb Fallback und zugleich Ergänzung:
+    // der WordPress-Feed ist auf wenige neue Posts begrenzt, während die
+    // Startseite das vollständige zukünftige Programm ausliefert.
+    console.log(collected.length === 0
+      ? '[milla] feed unavailable or empty — falling back to homepage'
+      : '[milla] supplementing feed from homepage');
+    const homepageResponse = await fetchWithRetry(MILLA_HOMEPAGE_URL, 'homepage fetch');
+    if (homepageResponse) {
+      const knownSourceIds = new Set(collected.map((event) => event.source_id));
+      for (const event of parseMillaHomepage(await homepageResponse.text())) {
+        if (event.start_date < today) continue;
+        const sourceId = buildStableSourceId('milla', event.link, event.start_date);
+        // Feed-Daten haben zusätzlich Preisinfos aus dem Volltext und sollen
+        // für dieselbe Veranstaltung nicht vom schlankeren Karten-Fallback
+        // überschrieben werden.
+        if (knownSourceIds.has(sourceId)) continue;
+        knownSourceIds.add(sourceId);
+        collected.push({
+          source_id: sourceId,
+          title: event.title, description: null, category: 'Clubs', subcategory: null,
+          start_date: event.start_date, start_time: event.start_time,
+          location_name: 'Milla Club', address: MILLA_ADDRESS, city: 'München', organizer: 'Milla Club',
+          source_url: event.link, image_url: event.image_url, price_info: null, sold_out: null,
+          latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null,
+        });
+      }
+    } else if (collected.length === 0) {
+      return;
     }
   } catch (err) {
     console.warn('[milla] error', err);
