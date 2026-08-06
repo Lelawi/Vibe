@@ -1026,7 +1026,7 @@ export default function EventListScreen() {
             </View>
           </View>
         ))}
-        <BottomTabBar active="events" mapRoute="/map" />
+        <BottomTabBar active="events" />
       </SafeAreaView>
     );
   }
@@ -1111,6 +1111,15 @@ export default function EventListScreen() {
               </TouchableOpacity>
             )}
           </View>
+          <TouchableOpacity
+            style={styles.compactFilterButton}
+            onPress={() => router.push('/map')}
+            accessibilityRole="button"
+            accessibilityLabel={t('tabs.map')}
+          >
+            <Ionicons name="location-outline" size={21} color="#bbb" />
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.compactFilterButton, contentFilterCount > 0 && styles.filterChipActive]}
             onPress={() => setShowFilterModal(true)}
@@ -2014,7 +2023,7 @@ export default function EventListScreen() {
           <Ionicons name="arrow-up" size={20} color="#000" />
         </TouchableOpacity>
       )}
-      <BottomTabBar active="events" mapRoute="/map" />
+      <BottomTabBar active="events" />
     </SafeAreaView>
   );
 }

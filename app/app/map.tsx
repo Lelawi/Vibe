@@ -6,7 +6,7 @@ export default function MapScreen() {
   return (
     <View style={{ flex: 1 }}>
       <MapNative />
-      <BottomTabBar active="events" mapRoute="/map" />
+      <BottomTabBar active="events" />
     </View>
   );
 }

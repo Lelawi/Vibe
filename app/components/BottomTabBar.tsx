@@ -18,9 +18,13 @@ registerStrings({
 // Vergleichs-App (Instagram, Yelp, DICE) navigiert über eine untere Tab-Leiste
 // statt eines Buttons oben rechts, weil das mit dem Daumen erreichbar ist,
 // ohne die Hand am Screen zu verschieben — bei größeren Handys war der obere
-// Pill nur mit beiden Händen bequem erreichbar. "Karte" ist bewusst
-// kontextabhängig: von welchem Tab aus man sie öffnet, bestimmt, welche Karte
-// (Events/Bars/Restaurants) aufgeht, statt eine feste Route zu sein.
+// Pill nur mit beiden Händen bequem erreichbar. "Karte" ist bewusst KEIN
+// eigener Tab hier mehr (siehe Git-Historie) — sie war als 5. Item optisch
+// gleichrangig mit den vier Inhaltskategorien, obwohl sie inhaltlich nur eine
+// alternative Ansicht der jeweils aktiven Kategorie ist. Der Kartenzugriff
+// sitzt jetzt als Icon-Button neben der Suche auf jedem Listen-Screen (siehe
+// index.tsx/VenueListScreen.tsx), kontextabhängig wie zuvor über die
+// jeweilige mapRoute der Kategorie.
 const TABS: { key: BottomTab; labelKey: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap; route: string }[] = [
   { key: 'events', labelKey: 'tabs.events', icon: 'calendar-outline', activeIcon: 'calendar', route: '/' },
   { key: 'bars', labelKey: 'tabs.bars', icon: 'beer-outline', activeIcon: 'beer', route: '/bars' },
@@ -28,7 +32,7 @@ const TABS: { key: BottomTab; labelKey: string; icon: keyof typeof Ionicons.glyp
   { key: 'spaetis', labelKey: 'tabs.spaetis', icon: 'storefront-outline', activeIcon: 'storefront', route: '/spaetis' },
 ];
 
-export default function BottomTabBar({ active, mapRoute }: { active: BottomTab; mapRoute: string }) {
+export default function BottomTabBar({ active }: { active: BottomTab }) {
   const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -58,10 +62,6 @@ export default function BottomTabBar({ active, mapRoute }: { active: BottomTab; 
           </TouchableOpacity>
         );
       })}
-      <TouchableOpacity style={styles.tab} onPressIn={() => router.push(mapRoute)}>
-        <Ionicons name="map-outline" size={22} color="#888" />
-        <Text style={styles.label}>{t('tabs.map')}</Text>
-      </TouchableOpacity>
     </View>
   );
 }

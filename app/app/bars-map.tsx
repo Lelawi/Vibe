@@ -13,7 +13,7 @@ export default function BarsMapScreen() {
         targetLat={params.lat ? parseFloat(params.lat) : null}
         targetLng={params.lng ? parseFloat(params.lng) : null}
       />
-      <BottomTabBar active="bars" mapRoute="/bars-map" />
+      <BottomTabBar active="bars" />
     </View>
   );
 }

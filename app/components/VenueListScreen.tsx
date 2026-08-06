@@ -760,7 +760,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             </View>
           </View>
         ))}
-        <BottomTabBar active={switcherActive} mapRoute={config.mapRoute} />
+        <BottomTabBar active={switcherActive} />
       </SafeAreaView>
     );
   }
@@ -790,19 +790,30 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   const listHeader = (
     <View style={styles.listHeaderWrap}>
       <View style={styles.stickyControls}>
-        <View style={styles.searchWrap}>
-          <TextInput
-            style={[styles.search, styles.searchInput]}
-            placeholder={t(config.searchPlaceholderKey)}
-            placeholderTextColor="#666"
-            value={search}
-            onChangeText={setSearch}
-          />
-          {search.length > 0 && (
-            <TouchableOpacity style={styles.searchClearBtn} onPress={() => setSearch('')}>
-              <Text style={styles.searchClearBtnText}>✕</Text>
-            </TouchableOpacity>
-          )}
+        <View style={styles.searchControlsRow}>
+          <View style={styles.searchWrap}>
+            <TextInput
+              style={[styles.search, styles.searchInput]}
+              placeholder={t(config.searchPlaceholderKey)}
+              placeholderTextColor="#666"
+              value={search}
+              onChangeText={setSearch}
+            />
+            {search.length > 0 && (
+              <TouchableOpacity style={styles.searchClearBtn} onPress={() => setSearch('')}>
+                <Text style={styles.searchClearBtnText}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={styles.compactFilterButton}
+            onPress={() => router.push(config.mapRoute)}
+            accessibilityRole="button"
+            accessibilityLabel={t('tabs.map')}
+          >
+            <Ionicons name="location-outline" size={21} color="#bbb" />
+          </TouchableOpacity>
         </View>
 
         {cuisineOptions.length > 0 && (
@@ -1294,7 +1305,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           <Ionicons name="arrow-up" size={20} color="#000" />
         </TouchableOpacity>
       )}
-      <BottomTabBar active={switcherActive} mapRoute={config.mapRoute} />
+      <BottomTabBar active={switcherActive} />
     </SafeAreaView>
   );
 }
@@ -1349,8 +1360,24 @@ const styles = StyleSheet.create({
     // Mind. 16px, sonst zoomt iOS Safari beim Fokussieren automatisch rein.
     fontSize: 16,
   },
-  searchWrap: { marginHorizontal: 16, marginTop: 16, marginBottom: 14, position: 'relative', justifyContent: 'center' },
+  searchControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 14,
+    gap: 10,
+  },
+  searchWrap: { flex: 1, position: 'relative', justifyContent: 'center' },
   searchInput: { paddingRight: 38 },
+  compactFilterButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#141414',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   searchClearBtn: {
     position: 'absolute',
     right: 6,

@@ -13,7 +13,7 @@ export default function SpaetisMapScreen() {
         targetLat={params.lat ? parseFloat(params.lat) : null}
         targetLng={params.lng ? parseFloat(params.lng) : null}
       />
-      <BottomTabBar active="spaetis" mapRoute="/spaetis-map" />
+      <BottomTabBar active="spaetis" />
     </View>
   );
 }

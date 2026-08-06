@@ -13,7 +13,7 @@ export default function RestaurantsMapScreen() {
         targetLat={params.lat ? parseFloat(params.lat) : null}
         targetLng={params.lng ? parseFloat(params.lng) : null}
       />
-      <BottomTabBar active="restaurants" mapRoute="/restaurants-map" />
+      <BottomTabBar active="restaurants" />
     </View>
   );
 }
