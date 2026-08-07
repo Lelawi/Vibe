@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   Platform,
   Modal,
+  AppState,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -424,6 +425,24 @@ export default function EventListScreen() {
   useEffect(() => {
     if (!isPushSupported()) return;
     isPushEnabled().then(setPushEnabled);
+  }, []);
+
+  // Filter sind bewusst reiner useState statt AsyncStorage — bleiben aber auf
+  // dem Handy trotzdem "erhalten", weil iOS/Android die installierte PWA beim
+  // Schließen meist nur einschläfern statt den Tab wirklich zu beenden, der
+  // React-State also einfach weiterlebt. Setzt Filter deshalb explizit beim
+  // Wiederaufwecken aus dem Hintergrund zurück, statt sich auf einen echten
+  // Neustart zu verlassen, den es auf dem Handy in der Praxis selten gibt
+  // (per Nutzer-Feedback erwartet).
+  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (appState.current.match(/inactive|background/) && nextState === 'active') {
+        resetAllFilters();
+      }
+      appState.current = nextState;
+    });
+    return () => sub.remove();
   }, []);
 
   // Favoriten und explizit gespeicherte Suchen werden laufend synchronisiert.
