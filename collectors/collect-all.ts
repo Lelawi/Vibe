@@ -39,6 +39,8 @@ import { run as runWannda } from './sources/wannda/index.js';
 import { run as runKinoMondSterne } from './sources/kino_mond_sterne/index.js';
 import { run as runTheatron } from './sources/theatron/index.js';
 import { run as runMuenchenStadtportal } from './sources/muenchen_stadtportal/index.js';
+import { run as runMeinestadt } from './sources/meinestadt/index.js';
+import { run as runKindaling } from './sources/kindaling/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -119,6 +121,18 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // Weihnachtsmarkt, Feste) — Konzerte/Rock/HipHop/Klassik etc. lässt es aus,
 // weil eventim/backstage/muenchenticket die schon abdecken. Details siehe
 // Kommentare in sources/muenchen_stadtportal/index.ts.
+// meinestadt (2026-08): veranstaltungen.meinestadt.de, aggregiert selbst aus
+// vielen Quellen (eventim, kindaling.de, eventfrog u.a.) mit sauberem
+// schema.org-Event-JSON-LD. robots.txt sperrt die echte Pagination
+// (?curDatesPage=/?allDatesPage=), deshalb wie beim Stadtportal über
+// mehrere Kategorie-Pfade statt Seitenzahlen abgedeckt — "konzerte" aus
+// demselben Grund ausgelassen. Details siehe sources/meinestadt/index.ts.
+// kindaling (2026-08): kindaling.de, Kinderkurse/Ferienprogramme/Familien-
+// Events — eine Nische, die sonst nirgends abgedeckt ist. robots.txt
+// erlaubt /veranstaltungen/muenchen inkl. ?page=-Pagination explizit.
+// Termine (inkl. wiederkehrender Wochenmärkte via eventSchedule) stecken
+// nur auf den Einzelseiten, daher 1 Request pro Event zusätzlich zu den
+// Listing-Seiten. Details siehe sources/kindaling/index.ts.
 const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'backstage', run: runBackstage },
   { name: 'muenchenticket', run: runMuenchenticket },
@@ -137,6 +151,8 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'kino-mond-sterne', run: runKinoMondSterne },
   { name: 'theatron', run: runTheatron },
   { name: 'muenchen-stadtportal', run: runMuenchenStadtportal, host: 'www.muenchen.de' },
+  { name: 'meinestadt', run: runMeinestadt, host: 'veranstaltungen.meinestadt.de' },
+  { name: 'kindaling', run: runKindaling, host: 'www.kindaling.de' },
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.

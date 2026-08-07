@@ -1152,6 +1152,23 @@ export default function EventListScreen() {
               </View>
             )}
           </TouchableOpacity>
+
+          {contentFilterCount > 0 && (
+            // Eigener kleiner Button statt Teil des Filter-Buttons oben:
+            // löscht die Panel-Filter (Kategorie/Genre/Ort/Favoriten/
+            // Kostenlos/Mehrtägig/Nähe) direkt in der Hauptansicht, ohne
+            // vorher das Filter-Panel öffnen zu müssen (per Nutzer-Feedback).
+            // Lässt Suche/Datum bewusst unangetastet — die haben schon eigene
+            // Quick-Clear-Wege (✕ im Suchfeld, "Alle"-Tab).
+            <TouchableOpacity
+              style={styles.compactFilterButton}
+              onPress={resetContentFilters}
+              accessibilityRole="button"
+              accessibilityLabel={t('events.resetAllFilters')}
+            >
+              <Text style={styles.searchClearBtnText}>✕</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.primaryDateRow}>

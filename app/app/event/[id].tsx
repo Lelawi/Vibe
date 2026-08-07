@@ -25,7 +25,7 @@ import { registerStrings, useTranslation } from '../../lib/strings';
 import { categoryLabel } from '../../lib/eventCategories';
 import { openExternalUrl } from '../../lib/openExternalUrl';
 import type { Language } from '../../lib/language';
-import { ticketBaseTitle, ticketVariantKind, ticketVariantLabel } from '../../lib/ticketVariants';
+import { ticketVariantKind, ticketVariantLabel, parsePriceEur, sourceLabelFromUrl } from '../../lib/ticketVariants';
 
 registerStrings({
   'event.back': { de: '‹ Übersicht', en: '‹ Overview' },
@@ -39,6 +39,7 @@ registerStrings({
   'event.price': { de: 'Preis', en: 'Price' },
   'event.noPriceInfo': { de: 'Keine Preisinfo verfügbar', en: 'No price info available' },
   'event.ticketOptions': { de: 'Ticketoptionen', en: 'Ticket options' },
+  'event.bestPrice': { de: 'Bestpreis', en: 'Best price' },
   'event.soldOut': { de: 'Ausverkauft', en: 'Sold out' },
   'event.where': { de: 'Wo', en: 'Where' },
   'event.genre': { de: 'Genre', en: 'Genre' },
@@ -213,7 +214,17 @@ export default function EventDetailScreen() {
         const [{ data: relationRows }, { data: changeRows }, duplicateResult] = await Promise.all([
           supabase.from('event_artists').select('artist_id').eq('event_id', id),
           supabase.from('event_changes').select('changed_fields,created_at').eq('event_id', id).order('created_at', { ascending: false }).limit(3),
-          supabase.from('events').select('title,source_url').eq('duplicate_of', id),
+          // Volle Felder statt nur title/source_url: dieselbe Abfrage liefert
+          // jetzt sowohl die "bestätigende Quellen"-Zählung unten als auch
+          // die Ticketoptionen-Liste (Preisvergleich) — vorher fragte
+          // Letzteres separat per location_name+Datum+ticketBaseTitle ab, was
+          // z.B. "Carmen" (deutsches-theater) und "Carmen - Tanztheater von
+          // Enrique Gasa Valga" (eventim) NIE zusammengeführt hätte
+          // (ticketBaseTitle kennt nur Premium-/Flex-Suffixe, keine
+          // allgemeinen Untertitel). Die duplicate_of-Beziehung übernimmt die
+          // eigentliche "ist dasselbe Event"-Erkennung bereits zuverlässig
+          // (siehe supabase/migrations/0035_word_similarity_dedup.sql).
+          supabase.from('events').select('id,title,source_url,price_info,sold_out,start_time').eq('duplicate_of', id),
         ]);
         const artistIds = (relationRows ?? []).map((row) => row.artist_id as string);
         if (artistIds.length > 0) {
@@ -221,43 +232,55 @@ export default function EventDetailScreen() {
           setArtists((artistRows ?? []).map((artist) => ({ id: artist.id as string, name: artist.display_name as string })));
         }
         setChanges((changeRows ?? []) as EventChange[]);
+        const duplicateRows = duplicateResult.data ?? [];
         // Premium-/Flextickets sind Kaufoptionen derselben Quelle, keine
         // unabhängige Bestätigung der Eventdaten.
         setConfirmingSourceCount(
-          1 + (duplicateResult.data ?? []).filter((row) => ticketVariantKind(row.title, row.source_url) === null).length
+          1 + duplicateRows.filter((row) => ticketVariantKind(row.title, row.source_url) === null).length
         );
 
-        if (data.location_name && data.start_date) {
-          const { data: ticketRows, error: ticketError } = await supabase
-            .from('events')
-            .select('id,title,source_url,price_info,sold_out,start_time,start_date,end_date')
-            .eq('location_name', data.location_name)
-            .lte('start_date', data.start_date)
-            .or(`start_date.eq.${data.start_date},end_date.gte.${data.start_date}`);
-          if (!ticketError) {
-            const baseTitle = ticketBaseTitle(data.title);
-            const seenUrls = new Set<string>();
-            const options = (ticketRows ?? []).filter((row) => {
-              if (!row.source_url || ticketBaseTitle(row.title) !== baseTitle) return false;
-              if (seenUrls.has(row.source_url)) return false;
-              seenUrls.add(row.source_url);
-              return true;
-            }).map((row) => ({
-              id: row.id as string,
-              title: row.title as string,
-              source_url: row.source_url as string,
-              price_info: row.price_info as string | null,
-              start_time: row.start_time as string | null,
-              sold_out: row.sold_out as boolean | null,
-            }));
-            options.sort((a, b) => {
-              const rank = (option: TicketOption) => ticketVariantKind(option.title, option.source_url) === null ? 0 : 1;
-              return rank(a) - rank(b);
-            });
-            const containsVariant = options.some((option) => ticketVariantKind(option.title, option.source_url) !== null);
-            setTicketOptions(containsVariant && options.length > 1 ? options : []);
-          }
+        const seenUrls = new Set<string>();
+        const options: TicketOption[] = [];
+        for (const row of [
+          { id: data.id, title: data.title, source_url: data.source_url, price_info: data.price_info, start_time: data.start_time, sold_out: data.sold_out },
+          ...duplicateRows,
+        ]) {
+          if (!row.source_url || seenUrls.has(row.source_url)) continue;
+          seenUrls.add(row.source_url);
+          options.push({
+            id: row.id as string,
+            title: row.title as string,
+            source_url: row.source_url as string,
+            price_info: row.price_info as string | null,
+            start_time: row.start_time as string | null,
+            sold_out: row.sold_out as boolean | null,
+          });
         }
+        // Günstigstes Angebot zuerst: primär nach geparstem Preis sortiert
+        // (Angebote ohne erkennbaren Preis ans Ende), erkannte Ticket-
+        // Varianten (Premium/Flex) als Tiebreak weiterhin hinter Standard-
+        // Optionen mit demselben Preis.
+        options.sort((a, b) => {
+          const priceA = parsePriceEur(a.price_info);
+          const priceB = parsePriceEur(b.price_info);
+          if (priceA !== null && priceB !== null && priceA !== priceB) return priceA - priceB;
+          if (priceA !== null && priceB === null) return -1;
+          if (priceA === null && priceB !== null) return 1;
+          const rank = (option: TicketOption) => ticketVariantKind(option.title, option.source_url) === null ? 0 : 1;
+          return rank(a) - rank(b);
+        });
+        const containsVariant = options.some((option) => ticketVariantKind(option.title, option.source_url) !== null);
+        // Auch reine Preisunterschiede zwischen Standard-Angeboten
+        // verschiedener Quellen zählen als vergleichswürdig, nicht nur
+        // erkannte Premium-/Flex-Varianten — z.B. dasselbe Ticket für
+        // 46,50€ bei einer Quelle und 49,70€ bei einer anderen (per
+        // Nutzer-Feedback: sollte automatisch als Bestpreis auffindbar sein,
+        // statt nur den zufällig zuerst gescrapten Preis zu zeigen).
+        const distinctPrices = new Set(
+          options.map((o) => parsePriceEur(o.price_info)).filter((p): p is number => p !== null)
+        );
+        const hasPriceDifference = distinctPrices.size > 1;
+        setTicketOptions((containsVariant || hasPriceDifference) && options.length > 1 ? options : []);
       }
       setLoading(false);
     }
@@ -417,18 +440,38 @@ export default function EventDetailScreen() {
             </View>
           )}
 
-          {ticketOptions.length > 0 && (
+          {ticketOptions.length > 0 && (() => {
+            // Bestpreis-Badge nur, wenn die Optionen sich tatsächlich im
+            // Preis unterscheiden (nicht bei z.B. zwei gleich teuren
+            // Sitzplatzkategorien) — ticketOptions ist bereits nach Preis
+            // aufsteigend sortiert, Index 0 mit bekanntem Preis ist also die
+            // günstigste Option.
+            const prices = ticketOptions.map((o) => parsePriceEur(o.price_info));
+            const distinctPrices = new Set(prices.filter((p): p is number => p !== null));
+            const cheapestIndex = distinctPrices.size > 1 ? prices.findIndex((p) => p !== null) : -1;
+            return (
             <View style={styles.infoBlock}>
               <Text style={styles.infoLabel}>{t('event.ticketOptions')}</Text>
               <View style={styles.ticketOptionList}>
-                {ticketOptions.map((option) => (
+                {ticketOptions.map((option, index) => (
                   <TouchableOpacity
                     key={option.id}
                     style={styles.ticketOptionRow}
                     onPress={() => openExternalUrl(option.source_url)}
                   >
                     <View style={styles.ticketOptionTextWrap}>
-                      <Text style={styles.ticketOptionTitle}>{ticketVariantLabel(option.title, option.source_url)}</Text>
+                      <View style={styles.ticketOptionTitleRow}>
+                        <Text style={styles.ticketOptionTitle}>
+                          {ticketVariantKind(option.title, option.source_url)
+                            ? ticketVariantLabel(option.title, option.source_url)
+                            : sourceLabelFromUrl(option.source_url) ?? ticketVariantLabel(option.title, option.source_url)}
+                        </Text>
+                        {index === cheapestIndex && (
+                          <View style={styles.bestPriceTag}>
+                            <Text style={styles.bestPriceTagText}>{t('event.bestPrice')}</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text style={styles.ticketOptionMeta}>
                         {[option.price_info, option.start_time ? `${option.start_time.slice(0, 5)} Uhr` : null].filter(Boolean).join(' · ')}
                       </Text>
@@ -442,7 +485,8 @@ export default function EventDetailScreen() {
                 ))}
               </View>
             </View>
-          )}
+            );
+          })()}
 
           {event.location_name && (
             <TouchableOpacity
@@ -728,6 +772,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#141414', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11,
   },
   ticketOptionTextWrap: { flex: 1 },
+  ticketOptionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  bestPriceTag: { backgroundColor: '#83d7a0', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },
+  bestPriceTagText: { color: '#0a2e18', fontSize: 10, fontWeight: '800' },
   ticketOptionTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
   ticketOptionMeta: { color: '#83d7a0', fontSize: 12, marginTop: 3 },
   ticketOptionSoldOut: { color: '#ff4d4d', fontSize: 12, fontWeight: '700' },

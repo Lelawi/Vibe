@@ -34,3 +34,31 @@ export function ticketVariantLabel(title: string, sourceUrl?: string | null): st
   }
   return 'Standard-Ticket';
 }
+
+// Extrahiert einen vergleichbaren Preis in Euro aus den unterschiedlichen
+// price_info-Formaten der Collectoren ("46.5 EUR" mit Punkt, "49,70 €" mit
+// Komma, "ab 12 EUR", "Kostenlos"/"kostenlos" ohne Zahl). Genutzt für die
+// Bestpreis-Sortierung über mehrere Quellen hinweg — siehe [id].tsx.
+export function parsePriceEur(priceInfo: string | null | undefined): number | null {
+  if (!priceInfo) return null;
+  if (/kostenlos|free|gratis/i.test(priceInfo)) return 0;
+  const match = priceInfo.match(/(\d+(?:[.,]\d{1,2})?)/);
+  if (!match) return null;
+  const normalized = match[1].replace(',', '.');
+  const value = parseFloat(normalized);
+  return isNaN(value) ? null : value;
+}
+
+// Kurzer, für Menschen lesbarer Quellenname aus der Ticket-URL fürs
+// Preisvergleich-Listing (z.B. "eventim.de" statt der vollen URL), wenn kein
+// erkannter Ticket-Typ (Premium/Flex) vorliegt und daher der generische
+// "Standard-Ticket"-Fallback zu wenig Information bietet, um zwei Angebote
+// unterschiedlicher Anbieter auseinanderzuhalten.
+export function sourceLabelFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}

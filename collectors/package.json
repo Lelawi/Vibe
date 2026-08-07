@@ -42,6 +42,8 @@
     "kino-mond-sterne": "tsx sources/kino_mond_sterne/index.ts",
     "theatron": "tsx sources/theatron/index.ts",
     "muenchen-stadtportal": "tsx sources/muenchen_stadtportal/index.ts",
+    "meinestadt": "tsx sources/meinestadt/index.ts",
+    "kindaling": "tsx sources/kindaling/index.ts",
     "bars": "tsx sources/bars/index.ts",
     "restaurants": "tsx sources/restaurants/index.ts",
     "spaetis": "tsx sources/spaetis/index.ts",
