@@ -28,8 +28,9 @@ const TIME_WINDOWS = [
 // ~130 Requests allein für 90 Tage (Münchens Katalog ist sehr dicht, u.a.
 // täglich wiederkehrende Stadtführungen/Museumstickets) — 180 Tage decken
 // praktisch alle vorab planbaren/ausverkaufbaren Konzerte ab, ohne den
-// 2x-täglichen collect-all-Lauf mit hunderten Requests zu belasten oder
-// unnötig das Risiko einer 429-Drosselung zu erhöhen.
+// (seit 2026-08-07 nur noch 1x täglichen) collect-all-Lauf mit hunderten
+// Requests zu belasten oder unnötig das Risiko einer 429-Drosselung zu
+// erhöhen.
 const HORIZON_DAYS = 180;
 
 interface EventimCategory {

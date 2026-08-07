@@ -6,8 +6,10 @@ on:
     # scheduled exakt zur vollen Stunde sind laut GitHub-Doku am ehesten von
     # Verzögerung/Ausfall bei High-Load betroffen (2026-08-02 beobachtet:
     # kein Lauf zur geplanten Zeit).
+    # Bewusst nur noch 1x täglich statt vorher 2x (2026-08-07): eventim und
+    # milla blockierten zunehmend mit 403 — weniger Läufe pro Tag bedeuten
+    # weniger Requests gegen deren WAF/Rate-Limits.
     - cron: '7 6 * * *'
-    - cron: '7 18 * * *'
   workflow_dispatch:
 
 jobs:

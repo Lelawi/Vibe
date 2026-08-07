@@ -79,7 +79,9 @@ npm run backstage         # or run a single source directly, e.g. for debugging
 
 `collect-all.ts` is the single source of truth for which collectors run
 automatically (imported and listed in its `sources` array) — the GitHub
-workflow (`.github/workflows/collect-all.yml`, scheduled twice daily via cron)
+workflow (`.github/workflows/collect-all.yml`, scheduled once daily via cron —
+reduced from twice daily 2026-08-07 after eventim/milla started returning
+403s more often, to cut request volume against their rate limits)
 just calls `npm run collect-all` followed by `npm run dedup`. When adding a
 new source to the automatic run, add it to `collect-all.ts`'s `sources` array,
 not as a separate workflow step. Several source files exist under
