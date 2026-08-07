@@ -142,7 +142,36 @@ test('recursively splits busy date ranges, falls back to time windows, filters, 
   assert.equal(normalizeEvent({ ...result[0], price: undefined })?.price_info, null);
 });
 
-test('kühlt nach einem Eventim-403 ab und wiederholt die Anfrage begrenzt', async () => {
+test('bricht bei einem Eventim-403 sofort ab, ohne Retry', async () => {
+  let attempts = 0;
+  const sleeps: number[] = [];
+  const fetcher = async () => {
+    attempts += 1;
+    return {
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      json: async () => ({}),
+    };
+  };
+
+  await assert.rejects(
+    collectUpcomingProducts(
+      new Date('2026-08-05T12:00:00Z'),
+      fetcher,
+      async (ms) => { sleeps.push(ms); },
+      1
+    ),
+    /403/
+  );
+
+  // Kein Retry bei 403 (harter WAF-Block laut pyventim/openevent-Recherche,
+  // Retries verschlimmern ihn eher) — genau ein Versuch, kein Sleep.
+  assert.equal(attempts, 1);
+  assert.deepEqual(sleeps, []);
+});
+
+test('kühlt nach einem Eventim-429 ab und wiederholt die Anfrage begrenzt', async () => {
   let attempts = 0;
   const sleeps: number[] = [];
   const fetcher = async () => {
@@ -150,7 +179,7 @@ test('kühlt nach einem Eventim-403 ab und wiederholt die Anfrage begrenzt', asy
     if (attempts === 1) {
       return {
         ok: false,
-        status: 403,
+        status: 429,
         headers: { get: () => null },
         json: async () => ({}),
       };
@@ -167,8 +196,7 @@ test('kühlt nach einem Eventim-403 ab und wiederholt die Anfrage begrenzt', asy
 
   assert.deepEqual(result, []);
   assert.equal(attempts, 2);
-  assert.equal(sleeps[0], 5000);
-  assert.ok(sleeps[1] >= 2000 && sleeps[1] <= 5000);
+  assert.equal(sleeps[0], 1000);
 });
 
 test('erhält Ticketvarianten für die gemeinsame Darstellung am Event', () => {

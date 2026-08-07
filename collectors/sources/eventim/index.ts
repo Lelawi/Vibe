@@ -164,30 +164,39 @@ async function fetchRange(
       headers: {
         Accept: 'application/json, text/plain, */*',
         'Accept-Language': 'de-DE,de;q=0.9,en;q=0.7',
-        // Die Public-API lehnt anonyme Runtime-Standard-User-Agents teilweise
-        // mit 403 ab. Ein normaler Browser-UA plus Eventim-Referer entspricht
-        // dem Request, den die öffentliche Website selbst an diesen Endpoint
-        // sendet; es wird kein Proxy oder Bot-Schutz umgangen.
+        // Browser-UA + Referer reichten allein nicht mehr aus (2026-08:
+        // durchgängig 403 trotz Retries). Der aktiv gepflegte pyventim-Client
+        // (https://codeberg.org/openevent/pyventim), der dieselbe Public API
+        // erfolgreich anspricht, verzichtet ganz auf einen vorgetäuschten
+        // User-Agent, setzt aber Connection/Sec-Fetch-Site/Origin, die wir
+        // bisher nicht sendeten — übernommen, UA/Referer aber sicherheitshalber
+        // zusätzlich belassen statt sie zu entfernen.
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
           '(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
         Referer: 'https://www.eventim.de/',
+        Origin: 'https://www.eventim.de',
+        Connection: 'keep-alive',
+        'Sec-Fetch-Site': 'cross-site',
       },
     });
 
-    if (response.status === 403 || response.status === 429) {
+    if (response.status === 429) {
       if (attempt === MAX_THROTTLE_RETRIES) {
-        throw new Error(`EVENTIM API antwortete nach ${attempt + 1} Versuchen weiter mit ${response.status}`);
+        throw new Error(`EVENTIM API antwortete nach ${attempt + 1} Versuchen weiter mit 429`);
       }
-      const headerDelay = retryDelayMs(response.headers.get('retry-after'), attempt);
-      // Bei 403 deutlich länger abkühlen als bei einem regulären 429. Ein
-      // sofortiger Retry verschärft eine temporäre WAF-Drosselung nur.
-      const delay = response.status === 403
-        ? Math.max(headerDelay, 5000 * 3 ** attempt)
-        : headerDelay;
-      console.warn(`[eventim] status ${response.status}; retrying in ${delay} ms`);
+      const delay = retryDelayMs(response.headers.get('retry-after'), attempt);
+      console.warn(`[eventim] status 429; retrying in ${delay} ms`);
       await sleep(delay);
       continue;
+    }
+
+    if (response.status === 403) {
+      // Anders als 429 (Rate-Limit) ist 403 laut pyventim/openevent-Recherche
+      // ein harter WAF-Block, den Retries nicht auflösen — die bisherige
+      // Backoff-Kaskade (bis 45s) verschwendete nur Zeit und Requests gegen
+      // eine bereits aktive Sperre. Sofort abbrechen statt wiederholen.
+      throw new Error('EVENTIM API antwortete mit 403 (WAF-Block, kein Retry)');
     }
 
     if (!response.ok) {
