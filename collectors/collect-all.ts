@@ -38,6 +38,7 @@ import { run as runEventim } from './sources/eventim/index.js';
 import { run as runWannda } from './sources/wannda/index.js';
 import { run as runKinoMondSterne } from './sources/kino_mond_sterne/index.js';
 import { run as runTheatron } from './sources/theatron/index.js';
+import { run as runMuenchenStadtportal } from './sources/muenchen_stadtportal/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -110,6 +111,14 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // spricht für einen IP-Reputationsblock gegen GitHub-Actions-Cloud-IPs.
 // Diese Quellen bleiben deshalb best effort. Netzwerk-Umgehungen, Proxys
 // oder Tunnel sind ausdrücklich keine zulässige Lösung für dieses Projekt.
+// muenchen-stadtportal (2026-08): offizielles Stadtportal muenchen.de, NICHT
+// dasselbe wie die vielen in-muenchen.de-basierten Quellen unten (privates
+// Magazin). Eigene stadtweite Veranstaltungsdatenbank mit echtem schema.org-
+// Microdata im Server-HTML. Deckt bewusst nur Nicht-Musik-Rubriken ab
+// (Theater, Comedy/Kabarett, Ausstellungen, Familie/Kinder, Märkte,
+// Weihnachtsmarkt, Feste) — Konzerte/Rock/HipHop/Klassik etc. lässt es aus,
+// weil eventim/backstage/muenchenticket die schon abdecken. Details siehe
+// Kommentare in sources/muenchen_stadtportal/index.ts.
 const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'backstage', run: runBackstage },
   { name: 'muenchenticket', run: runMuenchenticket },
@@ -127,6 +136,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'wannda', run: runWannda },
   { name: 'kino-mond-sterne', run: runKinoMondSterne },
   { name: 'theatron', run: runTheatron },
+  { name: 'muenchen-stadtportal', run: runMuenchenStadtportal, host: 'www.muenchen.de' },
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.
