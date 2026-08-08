@@ -647,6 +647,32 @@ function extractDinnerMenuUrl($: cheerio.CheerioAPI, baseUrl: string): string | 
   return menuUrl;
 }
 
+// Getränkekarte separat von der Speise-/Abendkarte — viele Websites trennen
+// beides auf zwei eigene Unterseiten (per Direktabruf verifiziert, 2026-08:
+// mehrere Restaurants mit verlinkter Speisekarte, deren Seitentext komplett
+// ohne jede Bier-Erwähnung war — die eigentliche Getränkekarte lag auf einer
+// eigenen, bis dahin nie gesuchten Unterseite). Für den Bierpreis
+// ("extractBeerPrice"/"...FromPdf") ist genau diese Karte die
+// zuverlässigste Quelle, deutlich eher als eine reine Speisekarte.
+const DRINKS_KEYWORDS = /getränkekarte|getraenkekarte|barkarte|weinkarte|cocktailkarte|bierkarte|drinks?[\s-]?(menu|card|list)/i;
+
+function extractDrinksMenuUrl($: cheerio.CheerioAPI, baseUrl: string): string | null {
+  let menuUrl: string | null = null;
+  $('a[href]').each((_, el) => {
+    if (menuUrl) return;
+    const href = $(el).attr('href') ?? '';
+    const text = $(el).text();
+    if (DRINKS_KEYWORDS.test(href) || DRINKS_KEYWORDS.test(text)) {
+      try {
+        menuUrl = new URL(href, baseUrl).toString();
+      } catch {
+        menuUrl = null;
+      }
+    }
+  });
+  return menuUrl;
+}
+
 // Preis für 0,5l Helles (Münchner Standardmaß, siehe Nutzer-Anfrage) — reine
 // Bar-Kennzahl, aber unschädlich auch für Restaurants mitzuprüfen (liefert
 // dort einfach meist nichts). Erfasst JEDE angegebene Gebindegröße (0,3l,
@@ -871,7 +897,7 @@ export async function extractBeerPriceFromKnownMenuUrl(url: string): Promise<num
 // echte Karte identifiziert wurden, statt nur nach Karten-typischen
 // Schlagwörtern zu raten (per Nutzer-Wunsch: "fange mit den Venues an, von
 // denen du eh bereits eine Karte hinterlegt hast").
-async function fetchWebsiteEnrichment(
+export async function fetchWebsiteEnrichment(
   website: string,
   cachedMenuUrls: { lunch: string | null; dinner: string | null } = { lunch: null, dinner: null }
 ): Promise<{
@@ -902,12 +928,15 @@ async function fetchWebsiteEnrichment(
     const hours = extractOpeningHoursOverride($) ?? extractFreeTextOpeningHours($);
     const lunch = extractLunchSignal($, website);
     const dinnerMenuUrl = extractDinnerMenuUrl($, website);
+    const drinksMenuUrl = extractDrinksMenuUrl($, website);
     let beerPriceEur = extractBeerPrice($);
-    // Kein Preis im HTML-Text der Startseite gefunden — zuerst die bereits
-    // bekannten Kartenlinks direkt prüfen (zuverlässiger als Raten), erst
-    // danach die von der Startseite neu erratenen PDF-Kandidaten.
+    // Kein Preis im HTML-Text der Startseite gefunden — zuerst eine eigens
+    // gefundene Getränkekarte (zuverlässigste Quelle für einen Bierpreis,
+    // siehe extractDrinksMenuUrl-Kommentar), dann die bereits bekannten
+    // Speise-/Abendkartenlinks direkt prüfen (zuverlässiger als Raten),
+    // erst danach die von der Startseite neu erratenen PDF-Kandidaten.
     if (beerPriceEur === null) {
-      for (const knownUrl of [dinnerMenuUrl, cachedMenuUrls.dinner, lunch.menuUrl, cachedMenuUrls.lunch]) {
+      for (const knownUrl of [drinksMenuUrl, dinnerMenuUrl, cachedMenuUrls.dinner, lunch.menuUrl, cachedMenuUrls.lunch]) {
         if (!knownUrl) continue;
         beerPriceEur = await extractBeerPriceFromKnownMenuUrl(knownUrl);
         if (beerPriceEur !== null) break;
