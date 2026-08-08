@@ -1,3 +1,8 @@
+-- (2026-08-08 auf "0035a" umbenannt: zwei unabhängige Migrationen wurden am
+-- selben Tag versehentlich beide als "0035" angelegt, siehe 0035b. Beide
+-- waren zu diesem Zeitpunkt bereits produktiv angewendet, daher nur
+-- Umbenennung zur Klarstellung, keine neue Anwendung nötig.)
+--
 -- Google-Öffnungszeiten getrennt von Website- und OSM-Daten speichern,
 -- damit die App eine nachvollziehbare Quellenpriorität anwenden kann:
 -- Betreiber-Website > Google Places > OpenStreetMap.

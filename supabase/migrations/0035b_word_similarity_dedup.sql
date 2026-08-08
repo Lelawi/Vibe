@@ -1,3 +1,14 @@
+-- (2026-08-08 auf "0035b" umbenannt: zwei unabhängige Migrationen wurden am
+-- selben Tag versehentlich beide als "0035" angelegt, siehe 0035a. Beide
+-- waren zu diesem Zeitpunkt bereits produktiv angewendet, daher nur
+-- Umbenennung zur Klarstellung, keine neue Anwendung nötig.)
+--
+-- ACHTUNG: die word_similarity-Erweiterung unten wurde durch 0036 wieder
+-- zurückgenommen (Fehlverknüpfung verschiedener free&easy-Bands) und die
+-- Dedup-Funktion seither mehrfach weiterentwickelt (0038-0040) — dieses File
+-- bleibt nur als historischer Zwischenstand stehen, nicht mehr die aktuell
+-- gültige Funktionsdefinition.
+--
 -- Eventim (und mittlerweile auch meinestadt) hängt bei vielen Events einen
 -- beschreibenden Untertitel an den Basistitel an, z.B.
 --   "Carmen" (deutsches-theater)

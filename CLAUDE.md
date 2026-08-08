@@ -187,10 +187,12 @@ native push setup exists.
   since a subscription's `last_checked_at` that match its saved
   categories/locations/organizers — "follow an organizer" like
   Bandsintown/DICE, toggled from the organizer row on the event detail page,
-  stored client-side in `app/lib/followedOrganizers.ts`). Genre matching is stored client-side
-  (`push_filters.genres`) but not yet matched server-side — genre grouping
-  (`normalizeGenreGroup`) is a client-only heuristic in `app/app/index.tsx`
-  that hasn't been ported. Location matching uses
+  stored client-side in `app/lib/followedOrganizers.ts`). Genre matching
+  (`push_filters.genres`) is matched server-side too — the grouping heuristic
+  (`normalizeGenreGroup`) lives in `app/lib/genreGroup.ts` and is deliberately
+  1:1-copied to `collectors/core/genreGroup.ts` (collectors can't import from
+  `app/`, see Architecture principle above), same pattern as
+  `canonicalizeVenue.ts` below. Location matching uses
   `collectors/core/canonicalizeVenue.ts`, a deliberate 1:1 copy of
   `app/lib/venue.ts`'s `canonicalizeVenue` — collectors can't import from
   `app/` (see Architecture principle above), so keep both in sync by hand if

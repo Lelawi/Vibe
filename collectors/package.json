@@ -49,8 +49,6 @@
     "spaetis": "tsx sources/spaetis/index.ts",
     "google-ratings": "tsx sources/google-ratings/index.ts",
     "review-closures": "tsx scripts/review-closures.ts",
-    "check-feedback": "tsx scripts/weekly-review.ts",
-    "check-app-feedback": "tsx scripts/weekly-review.ts",
     "review-weekly": "tsx scripts/weekly-review.ts",
     "routine-feedback-inbox": "tsx scripts/routine-feedback-inbox.ts",
     "duplicate-audit": "tsx scripts/duplicate-audit.ts",
