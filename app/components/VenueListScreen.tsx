@@ -26,6 +26,7 @@ import { fetchAllVenues } from '../lib/fetchAllVenues';
 import { useVenueFavorites } from '../lib/venueFavorites';
 import { setFilteredVenuesForMap } from '../lib/mapFilterCache';
 import { openExternalUrl } from '../lib/openExternalUrl';
+import { useEventViewMode } from '../lib/eventViewMode';
 import BottomTabBar, { type BottomTab } from './BottomTabBar';
 import VenueFeedbackButton from './VenueFeedbackButton';
 import { registerStrings, useTranslation } from '../lib/strings';
@@ -262,8 +263,6 @@ registerStrings({
   'venues.favorites': { de: 'Favoriten', en: 'Favorites' },
   'venues.nearby': { de: 'Nähe', en: 'Nearby' },
   'venues.loading': { de: 'Lädt…', en: 'Loading…' },
-  'venues.viewCards': { de: 'Bild-Karten', en: 'Photo cards' },
-  'venues.viewCompact': { de: 'Kompakt', en: 'Compact' },
   'venues.refresh': { de: 'Aktualisieren', en: 'Refresh' },
   'venues.radiusAll': { de: 'Alle', en: 'All' },
   'venues.resultsFoundOne': { de: 'gefunden', en: 'found' },
@@ -463,12 +462,14 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   const [closureStatusByVenue, setClosureStatusByVenue] = useState<Map<string, ClosureStatus>>(
     () => venueScreenCache.get(type)?.closureStatusByVenue ?? new Map()
   );
-  // "compact" (kleine Vorschau links, viel auf einen Blick) ist der Default,
-  // exakt wie die normale Event-Liste in index.tsx — "cards" (großes Bild
-  // oben) bleibt für alle erreichbar, die die Bild-Vorschau lieber größer
-  // haben wollen, ist bei Events aber nur der Sonderfall der "Empfohlen für
-  // dich"-Karussellzeile, nicht der Standard.
-  const [viewMode, setViewMode] = useState<'compact' | 'cards'>('compact');
+  // Geteilte, persistierte Einstellung statt eines eigenen lokalen State
+  // (wie zuvor) — bis 2026-08-08 hatte dieser Screen einen eigenen,
+  // unabhängigen, nicht gespeicherten Umschalter, der komplett losgelöst
+  // von der "Ansicht der Eventliste"-Einstellung im Einstellungen-Screen
+  // war (dort steuerte sie nur den Events-Tab). Per Nutzer-Feedback: ein
+  // Schalter an einer zentralen Stelle für alle 4 Reiter statt eines
+  // scheinbar wirkungslosen zweiten Schalters hier.
+  const { viewMode, setViewMode } = useEventViewMode();
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [cuisineFilter, setCuisineFilter] = useState<string | null>(null);
   const [lunchOnly, setLunchOnly] = useState(false);
@@ -911,13 +912,10 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity
-              style={styles.filterButton}
-              onPress={() => setViewMode((m) => (m === 'compact' ? 'cards' : 'compact'))}
-            >
-              <Ionicons name={viewMode === 'compact' ? 'image-outline' : 'list-outline'} size={16} color="#999" />
-              <Text style={styles.filterButtonText}>{viewMode === 'compact' ? t('venues.viewCards') : t('venues.viewCompact')}</Text>
-            </TouchableOpacity>
+            {/* Kein eigener Bildkarten/Kompakt-Umschalter mehr hier — steuert
+                jetzt zentral die "Ansicht der Eventliste"-Einstellung im
+                Einstellungen-Screen für alle 4 Reiter gemeinsam (siehe
+                viewMode oben). */}
 
             {/* Ersetzt echtes Pull-to-refresh, das auf react-native-web nicht
                 funktioniert (RefreshControl ist dort ein reiner No-op-Stub). */}
