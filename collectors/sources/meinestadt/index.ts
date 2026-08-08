@@ -111,7 +111,23 @@ export async function run() {
         if (!startDate || startDate < today) continue;
         const { date: endDate } = splitDateTime(ev.endDate);
 
-        const coords = await getCoordinates(supabase, ev.locationName ?? 'München', null, 'München');
+        // meinestadt aggregiert teils fremde Quellen (z.B. kindaling.de) und
+        // liefert für manche dieser durchgereichten Karten location.name ==
+        // dem Eventnamen statt des echten Veranstaltungsorts (per
+        // Direktabruf beobachtet, 2026-08: "Märchen im Westpark" sowohl als
+        // Titel als auch als location.name). Bricht sonst sowohl die
+        // Anzeige als auch den Location-Ähnlichkeitsabgleich beim Dedup
+        // (supabase/migrations/0036) — bei diesem Verdachtsmuster auf einen
+        // Fallback ausweichen statt der offensichtlich falschen Angabe zu
+        // vertrauen. location_name ist außerdem NOT NULL in der events-
+        // Tabelle, daher derselbe Fallback auch bei ganz fehlendem Namen.
+        const rawLocationName = ev.locationName?.trim();
+        const locationName =
+          rawLocationName && rawLocationName.toLowerCase() !== ev.name.trim().toLowerCase()
+            ? rawLocationName
+            : ev.organizer ?? 'München';
+
+        const coords = await getCoordinates(supabase, locationName, null, 'München');
         collected.push({
           source_id: buildStableSourceId(`meinestadt-${slug}`, ev.url, startDate),
           title: ev.name,
@@ -121,7 +137,7 @@ export async function run() {
           start_date: startDate,
           start_time: startTime,
           end_date: endDate && endDate !== startDate ? endDate : null,
-          location_name: ev.locationName,
+          location_name: locationName,
           address: ev.address,
           city: 'München',
           organizer: ev.organizer,

@@ -1,0 +1,39 @@
+name: Precheck Structured Reports
+
+on:
+  schedule:
+    # Läuft nach google-ratings.yml (06:17 UTC), damit an diesem Tag frisch
+    # per submit_venue_closure_report() eingereihte Fälle (siehe
+    # collectors/sources/google-ratings/index.ts) direkt mitgeprüft werden
+    # können. Minute bewusst nicht :00/:15/:17 exakt gleich anderer Workflows
+    # — siehe google-ratings.yml-Kommentar zu überlasteten Zeitpunkten.
+    - cron: '5 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: collectors
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      # Automatische Vorprüfung strukturierter Meldungen (venue_closure_reports,
+      # venue_reports) — braucht service_role, läuft deshalb hier statt in einer
+      # der Cloud-Routinen (deren Env-Vars laut UI-Warnung für alle sichtbar
+      # sind, die die Umgebung nutzen; service_role dort wäre zu weitreichend).
+      # Setzt analysis_status auf auto_resolved (mit direkt umgesetzter
+      # Entscheidung) oder manual_review (Evidenz gesammelt, aber keine sichere
+      # automatische Entscheidung) — Menschliche Entscheidung über
+      # weekly-review.ts bzw. die anon-Cloud-Routinen, die seit
+      # supabase/migrations/0037_scoped_anon_manual_review_access.sql nur noch
+      # bereits vorgeprüfte manual_review-Fälle lesen/entscheiden dürfen.
+      - run: npm run precheck-structured

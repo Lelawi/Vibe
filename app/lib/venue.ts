@@ -27,6 +27,17 @@ export function canonicalizeVenue(name?: string | null) {
       const re = new RegExp('\\b' + w + '\\b', 'gi');
       x = x.replace(re, ' ');
     });
+    // "saal" steht in genericTokens oben nur als eigenständiges Wort mit
+    // Wortgrenze (\bsaal\b) — deutsche Komposita wie "Theatersaal" oder
+    // "Konzertsaal" haben davor aber keine Wortgrenze und rutschen durch
+    // (per Nutzer-Screenshot beobachtet, 2026-08-08: "Deutsches Theater" und
+    // "Deutsches Theater - Theatersaal" galten dadurch als unterschiedliche
+    // Orte und rissen zusammengehörige Terminserien auseinander). Deshalb
+    // zusätzlich jedes ganze Wort, das auf "saal" endet, komplett entfernt
+    // (nicht nur das Suffix selbst — "Theatersaal" enthält "Theater" bereits
+    // an anderer Stelle im Venue-Namen, ein reiner Suffix-Schnitt hätte ein
+    // doppeltes "Theater Theater" hinterlassen).
+    x = x.replace(/\b\S*saal\b/gi, ' ');
     x = x.replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
     return x;
   }

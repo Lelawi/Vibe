@@ -25,7 +25,18 @@ function normalizeTitle(title: string): string {
     // z.B. „Less Than Jake – Supports: …“. Für Gruppierung/Deduplizierung ist
     // das weiterhin dasselbe Event; ein beliebiger Untertitel ohne dieses
     // eindeutige Markerwort wird dagegen nicht abgeschnitten.
-    .replace(/\s*[-–—|]\s*(?:supports?|support acts?|special guests?|guests?)\s*:?.*$/i, ' '));
+    .replace(/\s*[-–—|]\s*(?:supports?|support acts?|special guests?|guests?)\s*:?.*$/i, ' ')
+    // Analog zu dedup_title_prefix() in supabase/migrations/0036: eventim
+    // hängt bei vielen Events einen beschreibenden Untertitel an ("Carmen"
+    // vs. "Carmen - Tanztheater von Enrique Gasa Valga") — ohne diesen
+    // Schnitt landen dieselben Termine in zwei verschiedenen Serien-Karten,
+    // weil die Termine derselben Aufführung je nach Quelle mal mit, mal ohne
+    // Untertitel gemeldet werden (per Nutzer-Screenshot beobachtet,
+    // 2026-08-08: "Carmen" am 09.08. erschien als eigene Karte statt als
+    // Teil der "3 Termine"-Gruppe von "Carmen - Tanztheater..."). Nur der
+    // ERSTE Bindestrich zählt (nicht global), damit ein Titel mit mehreren
+    // Bindestrichen nicht bis auf ein einzelnes Wort zusammenschrumpft.
+    .replace(/\s+[-–—]\s+.*$/, ' '));
 }
 
 // Gruppiert wiederkehrende Events (gleicher Titel + gleicher Ort) zu einer
