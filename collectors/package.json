@@ -44,6 +44,7 @@
     "muenchen-stadtportal": "tsx sources/muenchen_stadtportal/index.ts",
     "meinestadt": "tsx sources/meinestadt/index.ts",
     "kindaling": "tsx sources/kindaling/index.ts",
+    "eventbrite": "tsx sources/eventbrite/index.ts",
     "bars": "tsx sources/bars/index.ts",
     "restaurants": "tsx sources/restaurants/index.ts",
     "spaetis": "tsx sources/spaetis/index.ts",

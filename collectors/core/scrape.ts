@@ -33,9 +33,25 @@ function addressToString(a: any): string | null {
 function offersToPriceInfo(offers: any): { priceInfo: string | null; soldOut: boolean | null } {
   if (!offers) return { priceInfo: null, soldOut: null };
   const list = Array.isArray(offers) ? offers : [offers];
-  const numericPrices = list
-    .map((o) => (o?.price !== undefined && o?.price !== null && o?.price !== '' ? Number(o.price) : null))
+  // Die meisten Quellen liefern einzelne Offer-Objekte mit "price", manche
+  // (z.B. eventbrite.de-Detailseiten) fassen mehrere Ticketstufen stattdessen
+  // zu einem einzigen "AggregateOffer" mit "lowPrice"/"highPrice" zusammen
+  // (schema.org-konform, aber ein anderes Feld) — ohne diesen Fallback blieb
+  // priceInfo dort trotz vorhandener Preisdaten leer (per Direktabruf
+  // verifiziert, 2026-08). Number(...) statt eines reinen typeof-Checks, da
+  // beide Varianten die Zahl teils als String liefern ("12.0").
+  const rawPrices = list
+    .flatMap((o) => {
+      if (o?.price !== undefined && o?.price !== null && o?.price !== '') return [Number(o.price)];
+      const low = o?.lowPrice !== undefined && o?.lowPrice !== null && o?.lowPrice !== '' ? Number(o.lowPrice) : null;
+      const high = o?.highPrice !== undefined && o?.highPrice !== null && o?.highPrice !== '' ? Number(o.highPrice) : null;
+      return [low, high].filter((p): p is number => p !== null);
+    })
     .filter((p): p is number => p !== null && !isNaN(p));
+  // Ein AggregateOffer mit lowPrice === highPrice ist ein einzelner Festpreis,
+  // keine echte Spanne — sonst würde er unten fälschlich als "ab X EUR"
+  // statt als "X EUR" angezeigt.
+  const numericPrices = [...new Set(rawPrices)];
 
   // "0 EUR" statt "Kostenlos" sah neben anderen Quellen inkonsistent aus
   // (per Nutzer-Feedback, 2026-08-08) — andere Collector (z.B.
@@ -70,10 +86,21 @@ function nodeToEvent(node: any): ParsedEvent | null {
   if (location) {
     locationName = typeof location === 'string' ? location : location.name ?? null;
     address = addressToString(location.address);
+    // geo.latitude/longitude sind laut schema.org "Number", manche Quellen
+    // liefern sie aber als Zahl-in-Anführungszeichen (z.B. eventbrite.de:
+    // "latitude":"48.1437759" statt 48.1437759) — ein reiner typeof
+    // === 'number'-Check verwarf diese Koordinaten bisher stillschweigend,
+    // obwohl echte, brauchbare Werte vorlagen (per Direktabruf verifiziert,
+    // 2026-08). Number(...) akzeptiert beide Schreibweisen; isNaN fängt
+    // echten Unsinn (leere Strings, Text) weiterhin ab.
     const geo = location.geo;
-    if (geo && typeof geo.latitude === 'number' && typeof geo.longitude === 'number') {
-      latitude = geo.latitude;
-      longitude = geo.longitude;
+    if (geo) {
+      const lat = Number(geo.latitude);
+      const lng = Number(geo.longitude);
+      if (!isNaN(lat) && !isNaN(lng) && geo.latitude !== null && geo.longitude !== null) {
+        latitude = lat;
+        longitude = lng;
+      }
     }
   }
   const { priceInfo, soldOut } = offersToPriceInfo(node.offers);
