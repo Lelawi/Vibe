@@ -457,6 +457,26 @@ export default function EventListScreen() {
     return () => sub.remove();
   }, []);
 
+  // react-native-webs AppState basiert ausschließlich auf visibilitychange
+  // (siehe node_modules/react-native-web/dist/exports/AppState) — das feuert
+  // auf iOS Safari nicht in jedem Fall zuverlässig, wenn eine als "Zum Home-
+  // Bildschirm hinzufügen" installierte PWA nach dem Wegwischen im App-
+  // Switcher aus dem eingefrorenen Zustand zurückkehrt (per Nutzer-Feedback:
+  // Filter von "vor längerem" blieben trotz Wegwischen+Neustart erhalten).
+  // Das Standard-Browser-Event genau für diesen Fall ("Seite wurde aus dem
+  // Freeze-/BFCache-Zustand wiederhergestellt, kein echter Neuladen") ist
+  // pageshow mit event.persisted === true — zusätzlich zur AppState-Lösung
+  // oben, nicht als Ersatz, da unklar ist, welcher Mechanismus auf welcher
+  // iOS-Version zuverlässig feuert.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) resetAllFilters();
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
   // Favoriten und explizit gespeicherte Suchen werden laufend synchronisiert.
   // Die gerade sichtbaren, flüchtigen Feed-Filter sind absichtlich KEIN
   // Push-Abo mehr: Beim bloßen Stöbern entstanden sonst unerwartete Treffer.
