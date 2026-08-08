@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { fetchDetails, looksLikeSameVenue, resolvePlaceCandidate, type RatingVenue } from '../sources/google-ratings/index.js';
+import { fetchDetails, looksLikeSameVenue, resolvePlaceCandidateWithFallback, type RatingVenue } from '../sources/google-ratings/index.js';
 import { probePublicUrl, type UrlProbe } from '../core/urlProbe.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -83,7 +83,7 @@ async function precheckClosures(supabase: SupabaseClient, apiKey: string | undef
     try {
       const candidate = venue.google_place_id
         ? { id: venue.google_place_id, name: venue.name, address: venue.address }
-        : await resolvePlaceCandidate(apiKey, venue);
+        : (await resolvePlaceCandidateWithFallback(apiKey, venue)).candidate;
       const matched = candidate && (venue.google_place_id || looksLikeSameVenue(venue, candidate));
       const details = matched ? await fetchDetails(apiKey, candidate.id) : null;
       const websiteProbe = venue.website ? await probePublicUrl(venue.website) : null;

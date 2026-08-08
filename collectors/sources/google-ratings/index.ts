@@ -171,10 +171,8 @@ export function looksLikeSameVenue(venue: RatingVenue, candidate: PlaceCandidate
   return true;
 }
 
-export async function resolvePlaceCandidate(apiKey: string, venue: RatingVenue): Promise<PlaceCandidate | null> {
-  const body: Record<string, unknown> = {
-    textQuery: venue.address ? `${venue.name}, ${venue.address}` : `${venue.name}, München`,
-  };
+async function searchText(apiKey: string, textQuery: string, venue: RatingVenue): Promise<PlaceCandidate | null> {
+  const body: Record<string, unknown> = { textQuery };
   // Location-Bias statt reiner Namenssuche: siehe looksLikeSameVenue oben.
   if (venue.latitude != null && venue.longitude != null) {
     body.locationBias = {
@@ -196,13 +194,38 @@ export async function resolvePlaceCandidate(apiKey: string, venue: RatingVenue):
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
-    console.warn(`[google-ratings] text search failed for "${venue.name}"`, res.status, await res.text().catch(() => ''));
+    console.warn(`[google-ratings] text search failed for "${textQuery}"`, res.status, await res.text().catch(() => ''));
     return null;
   }
   const data = (await res.json()) as { places?: { id: string; displayName?: { text: string }; formattedAddress?: string }[] };
   const place = data.places?.[0];
   if (!place) return null;
   return { id: place.id, name: place.displayName?.text ?? '', address: place.formattedAddress ?? null };
+}
+
+export async function resolvePlaceCandidate(apiKey: string, venue: RatingVenue): Promise<PlaceCandidate | null> {
+  const textQuery = venue.address ? `${venue.name}, ${venue.address}` : `${venue.name}, München`;
+  return searchText(apiKey, textQuery, venue);
+}
+
+// Fallback für den Fall, dass Name+OSM-Adresse keinen (oder nur einen von
+// looksLikeSameVenue abgelehnten) Treffer liefert: eine zweite, bewusst
+// gröbere Suche nur mit Name + "München" ohne die oft ungenaue/veraltete
+// OSM-Adresse — die schadet der Google-Textsuche manchmal mehr, als sie
+// hilft (Google-Kartendaten sind i.d.R. aktueller/besser verlinkt als die
+// exakte OSM-Adresszeile). Ein identischer zweiter Versuch am nächsten Tag
+// bringt nichts (deterministische Suche) — deshalb hier sofort im selben
+// Lauf statt über mehrere Tage verteilt.
+export async function resolvePlaceCandidateWithFallback(
+  apiKey: string,
+  venue: RatingVenue
+): Promise<{ candidate: PlaceCandidate | null; usedFallback: boolean }> {
+  const primary = await resolvePlaceCandidate(apiKey, venue);
+  if (primary && looksLikeSameVenue(venue, primary)) return { candidate: primary, usedFallback: false };
+  if (!venue.address) return { candidate: null, usedFallback: false };
+
+  const fallback = await searchText(apiKey, `${venue.name}, München`, venue);
+  return { candidate: fallback, usedFallback: true };
 }
 
 export async function fetchDetails(apiKey: string, placeId: string): Promise<PlaceDetails | null> {
@@ -358,7 +381,12 @@ export async function run() {
         // geprüft, bevor irgendetwas übernommen wird — ein bereits zwischen-
         // gespeicherter place_id (aus einem früheren Lauf) wurde schon einmal
         // validiert und wird nicht jeden Tag erneut geprüft.
-        const candidate = await resolvePlaceCandidate(apiKey, venue);
+        // Fallback-Variante (Name+München ohne OSM-Adresse) wird sofort im
+        // selben Lauf probiert, falls Variante 1 nichts Passendes liefert —
+        // ein identischer zweiter Versuch am nächsten Tag würde ohnehin
+        // dasselbe Ergebnis liefern (deterministische Suche), bringt also
+        // keine neue Evidenz.
+        const { candidate, usedFallback } = await resolvePlaceCandidateWithFallback(apiKey, venue);
         if (!candidate || !looksLikeSameVenue(venue, candidate)) {
           if (candidate) rejectedMatch++;
           notFound++;
@@ -371,6 +399,19 @@ export async function run() {
               google_not_found_streak: 0,
             })
             .eq('id', venue.id);
+          // Auch nach Fallback-Suche kein plausibler Google-Places-Treffer:
+          // in die bestehende manuelle Review-Queue einreihen (dieselbe
+          // Tabelle wie bei Nutzer-Meldungen über geschlossene Venues) statt
+          // stillschweigend zu verwerfen. Idempotent per RPC (on conflict
+          // venue_id) — reiht sich nicht doppelt ein, wenn der Fall schon
+          // "pending" oder bereits entschieden ist. Kein automatisches
+          // Löschen/Ausblenden hier: ein Google-Places-Nichttreffer allein
+          // ist kein Existenzbeleg (siehe precheck-structured-reports.ts) —
+          // die eigentliche Entscheidung braucht zusätzlich eine echte
+          // Websuche, die dieses Skript nicht leisten kann.
+          const { error: queueError } = await supabase.rpc('submit_venue_closure_report', { p_venue_id: venue.id });
+          if (queueError) console.warn(`[google-ratings] could not queue "${venue.name}" for review`, queueError.message);
+          else console.log(`[google-ratings] "${venue.name}" auch mit Fallback${usedFallback ? '' : ' (keine Adresse für Fallback vorhanden)'} nicht gefunden — zur Review-Queue hinzugefügt`);
           continue;
         }
         placeId = candidate.id;
