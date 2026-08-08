@@ -26,6 +26,20 @@ const CURATED_NEW_VENUES = [
     website: null,
     opening_hours_raw: null,
   },
+  {
+    // Per Nutzer-Fund (2026-08-08, Google-Maps-Link) noch nicht in OSM
+    // erfasst. Der Google-Maps-Eintrag selbst zeigt "Dream Corner" als
+    // Namen, mehrere unabhängige Quellen (eigene Website-Domain
+    // coffeedream-mnchen.de, Lieferando, mehrere Online-Speisekarten)
+    // nennen dieselbe Adresse aber konsistent "Coffee Dream" — hier
+    // übernommen, falls tatsächlich zu "Dream Corner" umbenannt wurde bitte
+    // korrigieren.
+    osm_id: -2026080802,
+    name: 'Coffee Dream',
+    address: 'Bergmannstraße 23, 80339 München',
+    website: 'https://www.coffeedream-mnchen.de',
+    opening_hours_raw: null,
+  },
 ];
 
 // Selbe Grundlage wie sources/bars (OSM/Overpass, siehe core/venues.ts) —
