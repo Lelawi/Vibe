@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import type { SavedSearch } from './savedSearches';
@@ -204,6 +205,65 @@ export async function syncSavedSearchesToServer(searches: SavedSearch[]): Promis
     { onConflict: 'id' }
   );
   if (error) console.error('Gespeicherte Suchen konnten nicht synchronisiert werden:', error);
+}
+
+// Geteilter An/Aus-Zustand nach demselben Muster wie favorites.ts/
+// followedOrganizers.ts (Modul-Cache + Listener-Set) — vorher reiner
+// useState in app/index.tsx, dadurch nicht von anderen Screens (z.B.
+// settings.tsx) lesbar/umschaltbar. Sync-Effekte (Favoriten/Filter/etc. an
+// Supabase melden) bleiben bewusst in index.tsx stehen, wo die zu
+// synchronisierenden Daten (favorites, followedOrganizers, ...) ohnehin
+// schon über ihre eigenen Hooks vorliegen — dieser Hook liefert nur den
+// gemeinsamen pushEnabled-Zustand, den beide Screens konsistent sehen.
+let pushEnabledCache: boolean | null = null;
+const pushEnabledListeners = new Set<(enabled: boolean) => void>();
+
+function setPushEnabledShared(enabled: boolean) {
+  pushEnabledCache = enabled;
+  pushEnabledListeners.forEach((l) => l(enabled));
+}
+
+export function usePushEnabled() {
+  const [pushEnabled, setPushEnabled] = useState(pushEnabledCache ?? false);
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    if (isPushSupported()) {
+      isPushEnabled().then((enabled) => {
+        pushEnabledCache = enabled;
+        if (mounted) setPushEnabled(enabled);
+      });
+    }
+    const listener = (enabled: boolean) => setPushEnabled(enabled);
+    pushEnabledListeners.add(listener);
+    return () => {
+      mounted = false;
+      pushEnabledListeners.delete(listener);
+    };
+  }, []);
+
+  async function togglePush() {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (pushEnabled) {
+        await disablePushNotifications();
+        setPushEnabledShared(false);
+      } else {
+        const result = await enablePushNotifications();
+        if (result.ok) {
+          setPushEnabledShared(true);
+        } else if (typeof window !== 'undefined') {
+          window.alert(result.error);
+        }
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  return { pushEnabled, pushBusy, togglePush };
 }
 
 export async function syncArtistFollowsToServer(artists: FollowedArtist[]): Promise<void> {

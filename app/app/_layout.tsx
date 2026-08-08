@@ -79,6 +79,9 @@ export default function Layout() {
             Header hätte hier sonst ein zweites, redundantes "Vibe" direkt
             über dem eigenen Banner gezeigt. */}
         <Stack.Screen name="index" options={{ title: 'Vibe', headerShown: false }} />
+        {/* Eigener "‹"-Zurück-Button im Screen selbst, gleiches Muster wie
+            bei event/[id]/bars — kein natives Header nötig. */}
+        <Stack.Screen name="settings" options={{ title: 'Einstellungen', headerShown: false }} />
         {/* Eigener "‹ Übersicht"-Button im Screen selbst übernimmt die
             Rücknavigation (funktioniert auch bei direkt geöffneten Share-
             Links ohne Navigations-Historie) — der native Header-Pfeil würde

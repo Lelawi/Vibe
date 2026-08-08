@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, TextInput, Modal, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { registerStrings, useTranslation } from '../lib/strings';
@@ -34,7 +34,15 @@ registerStrings({
 
 type FeedbackMode = 'general' | 'event' | 'location';
 
-export default function FeedbackButton() {
+interface FeedbackButtonProps {
+  // Standard: kleiner Chat-Icon-Button (bisheriges Aussehen, z.B. im
+  // Event-Header). settings.tsx übergibt stattdessen eine normale
+  // Einstellungen-Zeile — das Modal/die Sendelogik bleibt identisch,
+  // nur der auslösende Button sieht am jeweiligen Ort passend aus.
+  renderTrigger?: (onPress: () => void) => ReactNode;
+}
+
+export default function FeedbackButton({ renderTrigger }: FeedbackButtonProps = {}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
@@ -86,9 +94,13 @@ export default function FeedbackButton() {
 
   return (
     <>
-      <TouchableOpacity style={styles.button} onPress={() => setOpen(true)}>
-        <Ionicons name="chatbubble-ellipses-outline" size={16} color="#fff" />
-      </TouchableOpacity>
+      {renderTrigger ? (
+        renderTrigger(() => setOpen(true))
+      ) : (
+        <TouchableOpacity style={styles.button} onPress={() => setOpen(true)}>
+          <Ionicons name="chatbubble-ellipses-outline" size={16} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={styles.overlay}>

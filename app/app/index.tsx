@@ -18,8 +18,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import BottomTabBar from '../components/BottomTabBar';
-import LanguageToggle from '../components/LanguageToggle';
-import FeedbackButton from '../components/FeedbackButton';
 import { registerStrings, useTranslation } from '../lib/strings';
 import { categoryLabel } from '../lib/eventCategories';
 import { supabase } from '../lib/supabase';
@@ -34,6 +32,8 @@ import { useFollowedArtists } from '../lib/followedArtists';
 import { consumeOnboardingSeed } from '../lib/onboarding';
 import { useReminderSettings, REMINDER_OFFSET_OPTIONS } from '../lib/reminderSettings';
 import { normalizeGenreGroup } from '../lib/genreGroup';
+import { useShowFeaturedCarousel } from '../lib/imagePreferences';
+import { onSettingsAction } from '../lib/settingsActions';
 import {
   hasSavedSearchCriteria,
   matchesSavedSearch,
@@ -43,9 +43,7 @@ import {
 } from '../lib/savedSearches';
 import {
   isPushSupported,
-  isPushEnabled,
-  enablePushNotifications,
-  disablePushNotifications,
+  usePushEnabled,
   syncFavoritesToServer,
   syncFiltersToServer,
   syncSavedSearchesToServer,
@@ -302,6 +300,7 @@ registerStrings({
   'events.filter': { de: 'Filter', en: 'Filter' },
   'events.period': { de: 'Zeitraum', en: 'Date range' },
   'events.more': { de: 'Mehr', en: 'More' },
+  'events.settings': { de: 'Einstellungen', en: 'Settings' },
   'events.quickFilters': { de: 'Schnellfilter', en: 'Quick filters' },
   'events.distance': { de: 'Umkreis', en: 'Distance' },
   'events.tonight': { de: 'Heute Abend', en: 'Tonight' },
@@ -400,7 +399,6 @@ export default function EventListScreen() {
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showPeriodModal, setShowPeriodModal] = useState(false);
-  const [showMoreModal, setShowMoreModal] = useState(false);
   const [filterTab, setFilterTab] = useState<'category' | 'genre' | 'location'>('category');
   const [locationSearch, setLocationSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<Event[] | null>(null);
@@ -416,15 +414,27 @@ export default function EventListScreen() {
   const [showFreeOnly, setShowFreeOnly] = useState(false);
   const [showMultiDayOnly, setShowMultiDayOnly] = useState(false);
   const [showTonightOnly, setShowTonightOnly] = useState(false);
-  const [pushEnabled, setPushEnabled] = useState(false);
-  const [pushBusy, setPushBusy] = useState(false);
+  const { pushEnabled, pushBusy, togglePush } = usePushEnabled();
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [showSavedSearchModal, setShowSavedSearchModal] = useState(false);
   const [savedSearchName, setSavedSearchName] = useState('');
+  const { showFeaturedCarousel } = useShowFeaturedCarousel();
 
+  // Aktionen von app/settings.tsx ausgelöst — siehe lib/settingsActions.ts.
+  // index.tsx bleibt beim Navigieren zu /settings im Hintergrund gemountet
+  // (Expo-Router-Stack-Standardverhalten), der Listener bekommt die Aktion
+  // deshalb auch dann mit, wenn settings.tsx gerade sichtbar ist. loadEvents
+  // ist keine useCallback-Funktion (wird jedes Render neu erstellt) — ein
+  // Ref hält deshalb immer die aktuelle Fassung, statt sie beim einmaligen
+  // Registrieren des Listeners auf den Erstrender-Stand einzufrieren.
+  const loadEventsRef = useRef(loadEvents);
+  loadEventsRef.current = loadEvents;
   useEffect(() => {
-    if (!isPushSupported()) return;
-    isPushEnabled().then(setPushEnabled);
+    return onSettingsAction((action) => {
+      if (action === 'refresh') loadEventsRef.current(true);
+      else if (action === 'open-reminder') setShowReminderModal(true);
+      else if (action === 'open-saved-searches') setShowSavedSearchModal(true);
+    });
   }, []);
 
   // Filter sind bewusst reiner useState statt AsyncStorage — bleiben aber auf
@@ -477,26 +487,6 @@ export default function EventListScreen() {
     if (!pushEnabled) return;
     syncReminderSettingsToServer(reminderOffsets);
   }, [pushEnabled, reminderOffsets]);
-
-  async function togglePush() {
-    if (pushBusy) return;
-    setPushBusy(true);
-    try {
-      if (pushEnabled) {
-        await disablePushNotifications();
-        setPushEnabled(false);
-      } else {
-        const result = await enablePushNotifications();
-        if (result.ok) {
-          setPushEnabled(true);
-        } else if (typeof window !== 'undefined') {
-          window.alert(result.error);
-        }
-      }
-    } finally {
-      setPushBusy(false);
-    }
-  }
 
   function toggleNearby() {
     if (userLocation) {
@@ -874,10 +864,10 @@ export default function EventListScreen() {
     // Karussell nur ab 2 Highlights zeigen — bei nur einem Treffer bringt
     // eine eigene Extra-Zeile für dasselbe Event, das eh gleich darunter
     // nochmal in der Liste steht, keinen Mehrwert.
-    if (featuredEvents.length > 1) rows.push({ kind: 'featured', events: featuredEvents });
+    if (showFeaturedCarousel && featuredEvents.length > 1) rows.push({ kind: 'featured', events: featuredEvents });
     eventGroups.forEach((group) => rows.push({ kind: 'group', group }));
     return rows;
-  }, [featuredEvents, eventGroups]);
+  }, [featuredEvents, eventGroups, showFeaturedCarousel]);
 
   function openCalendar() {
     setShowTonightOnly(false);
@@ -1082,16 +1072,19 @@ export default function EventListScreen() {
             <Text style={styles.subheader}>{t('events.subtitle')}</Text>
           </View>
           <View style={styles.headerActions}>
-            <FeedbackButton />
+            {/* Sprache/Feedback/Aktualisieren/Push/Erinnerung/Gespeicherte
+                Suchen waren vorher drei separate, unterschiedlich große
+                Controls direkt im Header — jetzt gebündelt in einem echten
+                Einstellungen-Screen (per Nutzer-Feedback: "so langsam eine
+                Art Menü"). */}
             <TouchableOpacity
               style={styles.headerIconButton}
-              onPress={() => setShowMoreModal(true)}
+              onPress={() => router.push('/settings')}
               accessibilityRole="button"
-              accessibilityLabel={t('events.more')}
+              accessibilityLabel={t('events.settings')}
             >
-              <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
+              <Ionicons name="settings-outline" size={20} color="#fff" />
             </TouchableOpacity>
-            <LanguageToggle />
           </View>
         </View>
       </LinearGradient>
@@ -1612,81 +1605,6 @@ export default function EventListScreen() {
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={19} color="#777" />
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      <Modal
-        visible={showMoreModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowMoreModal(false)}
-      >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowMoreModal(false)}>
-          <TouchableOpacity activeOpacity={1} style={styles.compactModalCard} onPress={() => {}}>
-            <Text style={[styles.modalTitle, styles.compactModalTitle]}>{t('events.more')}</Text>
-            <TouchableOpacity
-              style={styles.modalRow}
-              onPress={() => {
-                setShowMoreModal(false);
-                setShowSavedSearchModal(true);
-              }}
-            >
-              <View style={styles.modalRowLabel}>
-                <Ionicons name="bookmark-outline" size={19} color="#aaa" />
-                <Text style={styles.modalRowText}>{t('events.savedSearches')}</Text>
-              </View>
-              {savedSearches.length > 0 && <Text style={styles.utilityCount}>{savedSearches.length}</Text>}
-            </TouchableOpacity>
-            {isPushSupported() && (
-              <TouchableOpacity
-                style={[styles.modalRow, pushEnabled && styles.modalRowActive]}
-                onPress={() => {
-                  setShowMoreModal(false);
-                  togglePush();
-                }}
-                disabled={pushBusy}
-              >
-                <View style={styles.modalRowLabel}>
-                  {pushBusy ? (
-                    <ActivityIndicator size="small" color="#999" />
-                  ) : (
-                    <Ionicons name={pushEnabled ? 'notifications' : 'notifications-off-outline'} size={19} color={pushEnabled ? '#0af' : '#aaa'} />
-                  )}
-                  <Text style={[styles.modalRowText, pushEnabled && styles.modalRowTextActive]}>
-                    {pushEnabled ? t('events.notificationsOn') : t('events.notifications')}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
-            {isPushSupported() && pushEnabled && (
-              <TouchableOpacity
-                style={styles.modalRow}
-                onPress={() => {
-                  setShowMoreModal(false);
-                  setShowReminderModal(true);
-                }}
-              >
-                <View style={styles.modalRowLabel}>
-                  <Ionicons name="time-outline" size={19} color="#aaa" />
-                  <Text style={styles.modalRowText}>{t('events.reminder')}</Text>
-                </View>
-                {reminderOffsets.length > 0 && <Text style={styles.utilityCount}>{reminderOffsets.length}</Text>}
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.modalRow}
-              onPress={() => {
-                setShowMoreModal(false);
-                loadEvents(true);
-              }}
-              disabled={refreshing}
-            >
-              <View style={styles.modalRowLabel}>
-                {refreshing ? <ActivityIndicator size="small" color="#999" /> : <Ionicons name="refresh-outline" size={19} color="#aaa" />}
-                <Text style={styles.modalRowText}>{t('events.refresh')}</Text>
-              </View>
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
