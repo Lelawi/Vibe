@@ -25,7 +25,7 @@ import { registerStrings, useTranslation } from '../../lib/strings';
 import { categoryLabel } from '../../lib/eventCategories';
 import { openExternalUrl } from '../../lib/openExternalUrl';
 import type { Language } from '../../lib/language';
-import { ticketVariantKind, ticketVariantLabel, parsePriceEur, sourceLabelFromUrl } from '../../lib/ticketVariants';
+import { ticketVariantKind, ticketVariantLabel, parsePriceEur, sourceLabelFromUrl, formatPriceDisplay } from '../../lib/ticketVariants';
 
 registerStrings({
   'event.back': { de: '‹ Übersicht', en: '‹ Overview' },
@@ -429,7 +429,7 @@ export default function EventDetailScreen() {
             <View style={styles.infoBlock}>
               <Text style={styles.infoLabel}>{t('event.price')}</Text>
               <View style={styles.priceRow}>
-                <Text style={styles.infoValue}>{event.price_info ?? t('event.noPriceInfo')}</Text>
+                <Text style={styles.infoValue}>{formatPriceDisplay(event.price_info) ?? t('event.noPriceInfo')}</Text>
                 {event.sold_out === true && (
                   <View style={styles.soldOutTag}>
                     <Ionicons name="close-circle" size={13} color="#ff4d4d" />
@@ -473,7 +473,7 @@ export default function EventDetailScreen() {
                         )}
                       </View>
                       <Text style={styles.ticketOptionMeta}>
-                        {[option.price_info, option.start_time ? `${option.start_time.slice(0, 5)} Uhr` : null].filter(Boolean).join(' · ')}
+                        {[formatPriceDisplay(option.price_info), option.start_time ? `${option.start_time.slice(0, 5)} Uhr` : null].filter(Boolean).join(' · ')}
                       </Text>
                     </View>
                     {option.sold_out === true ? (
@@ -644,7 +644,7 @@ export default function EventDetailScreen() {
           <TouchableOpacity style={styles.primaryActionButton} onPress={primaryAction.onPress}>
             <Text style={styles.primaryActionButtonText}>
               {t(primaryAction.key === 'ticket' ? 'event.ticketPage' : 'event.openInGoogleMaps')}
-              {primaryAction.key === 'ticket' && event.price_info ? ` · ${event.price_info}` : ''}
+              {primaryAction.key === 'ticket' && event.price_info ? ` · ${formatPriceDisplay(event.price_info)}` : ''}
             </Text>
           </TouchableOpacity>
         </View>

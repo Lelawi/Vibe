@@ -64,6 +64,23 @@ export const KNOWN_VENUES: Record<string, string> = {
   'schloss blutenburg, jella': 'Schloss Blutenburg',
   'schloss blutenburg, unterer schlosshof': 'Schloss Blutenburg',
   'schloss blutenburg': 'Schloss Blutenburg',
+  // Per collectors/scripts/duplicate-audit.ts (2026-08-08) gefunden — jeweils
+  // mehrfach als "gleicher Termin, unter der Trigram-Schwelle liegende
+  // Venue-Namen" bestätigt, nicht nur ein Einzelfall:
+  'tonhalle münchen': 'TonHalle München',
+  'tonhalle - eventfabrik': 'TonHalle München',
+  'fat cat': 'FAT CAT München',
+  'fat cat, kleiner konzertsaal': 'FAT CAT München',
+  'live evil im fat cat': 'FAT CAT München',
+  // Per Nutzer-Screenshot (2x bestätigt: "Vitus Ehrenthaler & Matti Mauro"/
+  // "Doppelsolo", "Improv Jam"/"Improv Comedy Jam") — Lucky Punch bespielt
+  // denselben Raum wie FAT CAT unter eigenem Comedy-Reihen-Namen.
+  'lucky punch comedy club': 'FAT CAT München',
+  'schlachthof münchen': 'Schlachthof München',
+  'wirtshaus im schlachthof': 'Schlachthof München',
+  'wirtshaus im schlachthof, ox': 'Schlachthof München',
+  'wirtshaus im schlachthof, saal': 'Schlachthof München',
+  'hofkapelle der residenz': 'Residenz München',
 };
 
 export function getCanonicalVenue(name?: string | null): string | null {

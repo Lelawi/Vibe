@@ -53,6 +53,7 @@
     "check-app-feedback": "tsx scripts/weekly-review.ts",
     "review-weekly": "tsx scripts/weekly-review.ts",
     "routine-feedback-inbox": "tsx scripts/routine-feedback-inbox.ts",
+    "duplicate-audit": "tsx scripts/duplicate-audit.ts",
     "precheck-structured": "tsx scripts/precheck-structured-reports.ts",
     "cleanup-feedback-screenshots": "tsx scripts/cleanup-feedback-screenshots.ts",
     "test:eventim": "tsx --test sources/eventim/index.test.ts",

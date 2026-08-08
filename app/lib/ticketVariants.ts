@@ -49,6 +49,23 @@ export function parsePriceEur(priceInfo: string | null | undefined): number | nu
   return isNaN(value) ? null : value;
 }
 
+// Vereinheitlicht die Preis-Darstellung unabhängig vom Quellformat ("23.9
+// EUR" mit Punkt, "ab 23,90 €" mit Komma+Symbol, "0 EUR") — Collector
+// schreiben price_info bewusst nicht alle im selben Format (unterschiedliche
+// Quell-Frameworks), das sollte aber in der App konsistent aussehen (per
+// Nutzer-Feedback, 2026-08-08). "Kostenlos" und ein "ab "-Präfix (mehrere
+// Preisstufen) bleiben erhalten, der reine Zahlenteil wird immer als
+// deutsches "X,XX €" dargestellt.
+export function formatPriceDisplay(priceInfo: string | null | undefined): string | null {
+  if (!priceInfo) return null;
+  if (/kostenlos|free|gratis/i.test(priceInfo)) return 'Kostenlos';
+  const value = parsePriceEur(priceInfo);
+  if (value === null) return priceInfo;
+  const formatted = value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const isRange = /^\s*ab\b/i.test(priceInfo);
+  return `${isRange ? 'ab ' : ''}${formatted} €`;
+}
+
 // Kurzer, für Menschen lesbarer Quellenname aus der Ticket-URL fürs
 // Preisvergleich-Listing (z.B. "eventim.de" statt der vollen URL), wenn kein
 // erkannter Ticket-Typ (Premium/Flex) vorliegt und daher der generische

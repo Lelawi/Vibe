@@ -107,6 +107,13 @@ export async function run() {
       for (const ev of events) {
         if (!ev.name || !ev.startDate || !ev.url) continue;
         if (!ev.address || !ev.address.includes('München')) continue;
+        // kindaling.de wird bereits vom eigenen kindaling-Collector direkt
+        // abgedeckt (mit korrekten Location-Daten direkt aus der Quelle,
+        // siehe sources/kindaling/index.ts) — durchgereichte Karten
+        // überspringen statt sie über meinestadts teils fehlerhafte
+        // Aggregation zu duplizieren (siehe Location-Guard unten für den
+        // Fall, dass trotzdem eine durchrutscht).
+        if (ev.url.includes('kindaling.de')) continue;
         const { date: startDate, time: startTime } = splitDateTime(ev.startDate);
         if (!startDate || startDate < today) continue;
         const { date: endDate } = splitDateTime(ev.endDate);

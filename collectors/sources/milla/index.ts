@@ -137,7 +137,13 @@ export async function run() {
         if (start_date < today) continue;
         const timeMatch = content.match(/Beginn\s*(\d{1,2})[:.](\d{2})/i) ?? content.match(/Einlass\s*(\d{1,2})[:.](\d{2})/i);
         const plainText = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-        const priceMatch = plainText.match(/(VVK|AK|Eintritt)[^~]{0,80}/i);
+        // \b-Wortgrenzen sind hier Pflicht: ohne sie matchte "AK" auch als
+        // Teilstring in normalen (oft englischen) Beschreibungswörtern wie
+        // "make"/"break"/"shake" — price_info bestand dann aus einem
+        // zufälligen Fließtext-Fragment statt eines echten Preises (per
+        // Nutzer-Screenshot, 2026-08-08: "Múr" zeigte einen Satzfetzen aus
+        // "...make vastly different things...").
+        const priceMatch = plainText.match(/\b(VVK|AK|Eintritt)\b[^~]{0,80}/i);
         collected.push({
           source_id: buildStableSourceId('milla', link, start_date), title, description: null,
           category: 'Clubs', subcategory: null, start_date,

@@ -33,13 +33,22 @@ function addressToString(a: any): string | null {
 function offersToPriceInfo(offers: any): { priceInfo: string | null; soldOut: boolean | null } {
   if (!offers) return { priceInfo: null, soldOut: null };
   const list = Array.isArray(offers) ? offers : [offers];
-  const prices = list
-    .map((o) => (o?.price !== undefined && o?.price !== null && o?.price !== '' ? `${o.price} ${o.priceCurrency ?? 'EUR'}` : null))
-    .filter((p): p is string => Boolean(p));
+  const numericPrices = list
+    .map((o) => (o?.price !== undefined && o?.price !== null && o?.price !== '' ? Number(o.price) : null))
+    .filter((p): p is number => p !== null && !isNaN(p));
 
+  // "0 EUR" statt "Kostenlos" sah neben anderen Quellen inkonsistent aus
+  // (per Nutzer-Feedback, 2026-08-08) — andere Collector (z.B.
+  // muenchen_stadtportal) schreiben für kostenlose Events explizit
+  // "Kostenlos", nicht "0 EUR"/"0.0 EUR".
   let priceInfo: string | null = null;
-  if (prices.length === 1) priceInfo = prices[0];
-  else if (prices.length > 1) priceInfo = `ab ${prices.sort()[0]}`;
+  if (numericPrices.length > 0 && numericPrices.every((p) => p === 0)) {
+    priceInfo = 'Kostenlos';
+  } else if (numericPrices.length === 1) {
+    priceInfo = `${numericPrices[0]} EUR`;
+  } else if (numericPrices.length > 1) {
+    priceInfo = `ab ${Math.min(...numericPrices)} EUR`;
+  }
 
   const availability: string | undefined = list[0]?.availability;
   let soldOut: boolean | null = null;

@@ -34,6 +34,7 @@ import { useReminderSettings, REMINDER_OFFSET_OPTIONS } from '../lib/reminderSet
 import { normalizeGenreGroup } from '../lib/genreGroup';
 import { useShowFeaturedCarousel } from '../lib/imagePreferences';
 import { useEventViewMode } from '../lib/eventViewMode';
+import { formatPriceDisplay } from '../lib/ticketVariants';
 import { onSettingsAction } from '../lib/settingsActions';
 import {
   hasSavedSearchCriteria,
@@ -1580,7 +1581,7 @@ export default function EventListScreen() {
                   <Text style={styles.title}>{seriesDisplayTitle(item.title)}</Text>
                   {metaText}
                   {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
-                  {item.price_info ? <Text style={styles.priceMeta}>{item.price_info}</Text> : null}
+                  {item.price_info ? <Text style={styles.priceMeta}>{formatPriceDisplay(item.price_info)}</Text> : null}
                 </View>
               </TouchableOpacity>
             );
@@ -1621,7 +1622,7 @@ export default function EventListScreen() {
                 <Text style={styles.title}>{seriesDisplayTitle(item.title)}</Text>
                 {metaText}
                 {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
-                {item.price_info ? <Text style={styles.priceMeta}>{item.price_info}</Text> : null}
+                {item.price_info ? <Text style={styles.priceMeta}>{formatPriceDisplay(item.price_info)}</Text> : null}
               </View>
             </TouchableOpacity>
           );
@@ -2000,7 +2001,7 @@ export default function EventListScreen() {
                     <Text style={styles.modalRowText}>{formatDate(item.start_date, item.start_time)}</Text>
                   </View>
                   <View style={styles.modalRowMeta}>
-                    {item.price_info && <Text style={styles.modalRowPrice}>{item.price_info}</Text>}
+                    {item.price_info && <Text style={styles.modalRowPrice}>{formatPriceDisplay(item.price_info)}</Text>}
                     {item.sold_out === true && <Text style={styles.soldOutBadge}>{t('events.soldOut')}</Text>}
                   </View>
                 </TouchableOpacity>
