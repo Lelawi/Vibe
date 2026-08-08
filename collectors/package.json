@@ -53,6 +53,7 @@
     "review-weekly": "tsx scripts/weekly-review.ts",
     "routine-feedback-inbox": "tsx scripts/routine-feedback-inbox.ts",
     "duplicate-audit": "tsx scripts/duplicate-audit.ts",
+    "backfill-beer-prices": "tsx scripts/backfill-beer-prices.ts",
     "precheck-structured": "tsx scripts/precheck-structured-reports.ts",
     "cleanup-feedback-screenshots": "tsx scripts/cleanup-feedback-screenshots.ts",
     "test:eventim": "tsx --test sources/eventim/index.test.ts",

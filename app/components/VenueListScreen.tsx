@@ -262,6 +262,7 @@ registerStrings({
   'venues.lunch': { de: 'Mittagslunch', en: 'Lunch menu' },
   'venues.favorites': { de: 'Favoriten', en: 'Favorites' },
   'venues.nearby': { de: 'Nähe', en: 'Nearby' },
+  'venues.sortByRating': { de: 'Bewertung', en: 'Rating' },
   'venues.loading': { de: 'Lädt…', en: 'Loading…' },
   'venues.refresh': { de: 'Aktualisieren', en: 'Refresh' },
   'venues.radiusAll': { de: 'Alle', en: 'All' },
@@ -477,6 +478,11 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   // Zusatzauswahl aufklappt (Umkreis-Slider, null = "Alle").
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  // Wird erst jetzt sinnvoll, da immer mehr Venues über den google-ratings-
+  // Collector eine echte Google-Bewertung bekommen (per Nutzer-Wunsch,
+  // 2026-08-08) — kein persistierter Zustand wie viewMode, da eine reine
+  // Momentan-Sortierung ohne Rückwirkung auf andere Screens/Reiter.
+  const [sortByRating, setSortByRating] = useState(false);
   // Manche gespeicherten image_url-Werte sind zwischenzeitlich tot (Website
   // hat das Bild umbenannt/entfernt, seit die Collector-Heuristik es
   // gefunden hat) — ohne Fallback zeigte das nur ein leeres schwarzes
@@ -693,6 +699,15 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     return venuesMatchingOtherFilters
       .filter((v) => !onlyOpen || v.open === true)
       .sort((a, b) => {
+        // Explizit gewählte Bewertungs-Sortierung schlägt alles andere —
+        // wer sie aktiviert, will erkennbar zuerst die bestbewerteten Orte
+        // sehen, auch bei gleichzeitig aktiver Nähe-Suche. Venues ohne
+        // Bewertung (null) rutschen ans Ende statt fälschlich vor
+        // schlecht bewerteten zu stehen.
+        if (sortByRating) {
+          const ratingDiff = (b.google_rating ?? -1) - (a.google_rating ?? -1);
+          if (ratingDiff !== 0) return ratingDiff;
+        }
         // Bei aktiver Nähe-Suche zählt nur die Entfernung — der eigentliche
         // Zweck ist "was ist gleich um die Ecke", ein offener Ort 3km weiter
         // weg soll einen geschlossenen direkt nebenan nicht überstimmen.
@@ -701,7 +716,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         if (priorityDiff !== 0) return priorityDiff;
         return a.effectiveName.localeCompare(b.effectiveName, 'de');
       });
-  }, [venuesMatchingOtherFilters, onlyOpen]);
+  }, [venuesMatchingOtherFilters, onlyOpen, sortByRating]);
 
   // Damit die Karte (VenueMapNative.web.tsx) exakt dieselben Treffer zeigen
   // kann wie die gerade aktive Filterkombination hier, ohne die komplette
@@ -916,6 +931,14 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 jetzt zentral die "Ansicht der Eventliste"-Einstellung im
                 Einstellungen-Screen für alle 4 Reiter gemeinsam (siehe
                 viewMode oben). */}
+
+            <TouchableOpacity
+              style={[styles.filterButton, sortByRating && styles.filterChipActive]}
+              onPress={() => setSortByRating((v) => !v)}
+            >
+              <Ionicons name={sortByRating ? 'star' : 'star-outline'} size={16} color={sortByRating ? '#000' : '#999'} />
+              <Text style={[styles.filterButtonText, sortByRating && styles.filterChipTextActive]}>{t('venues.sortByRating')}</Text>
+            </TouchableOpacity>
 
             {/* Ersetzt echtes Pull-to-refresh, das auf react-native-web nicht
                 funktioniert (RefreshControl ist dort ein reiner No-op-Stub). */}

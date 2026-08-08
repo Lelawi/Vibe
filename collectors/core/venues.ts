@@ -752,7 +752,7 @@ function findNormalizedBeerPrice(text: string, pattern: RegExp): number | null {
   return null;
 }
 
-function extractBeerPrice($: cheerio.CheerioAPI): number | null {
+export function extractBeerPrice($: cheerio.CheerioAPI): number | null {
   let price: number | null = null;
   $('tr, li, p, div').each((_, el) => {
     if (price !== null) return;
@@ -823,7 +823,7 @@ async function parsePdfQuietly(buffer: Buffer) {
   }
 }
 
-async function extractBeerPriceFromPdf(url: string): Promise<number | null> {
+export async function extractBeerPriceFromPdf(url: string): Promise<number | null> {
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)' },
@@ -845,8 +845,35 @@ async function extractBeerPriceFromPdf(url: string): Promise<number | null> {
 // (falls vorhanden) genauere Öffnungszeiten, einen Mittagslunch-Hinweis und
 // einen Bierpreis mit — schlägt alles fehl, bleiben die Felder einfach
 // null/false, kein Venue fällt deswegen aus dem Lauf raus.
+// Versucht einen Bierpreis direkt aus einer bereits bekannten Karten-URL zu
+// lesen (PDF anhand der Dateiendung erkannt, sonst als HTML-Seite
+// behandelt) — unabhängig davon, ob es eine Mittags- oder Abend-/
+// Getränkekarte ist, beide können einen Getränketeil mit Bierpreisen
+// enthalten.
+export async function extractBeerPriceFromKnownMenuUrl(url: string): Promise<number | null> {
+  if (/\.pdf(\?|$)/i.test(url)) return extractBeerPriceFromPdf(url);
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'VibeApp-Collector/1.0 (nicht-kommerziell, github.com/Lelawi/Vibe)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    return extractBeerPrice(cheerio.load(html));
+  } catch {
+    return null;
+  }
+}
+
+// cachedMenuUrls: bereits aus einem früheren Lauf bekannte Mittags-/Abend-
+// kartenlinks (siehe collectVenues weiter unten) — werden VOR den generisch
+// von der Startseite erratenen PDF-Kandidaten geprüft, weil sie bereits als
+// echte Karte identifiziert wurden, statt nur nach Karten-typischen
+// Schlagwörtern zu raten (per Nutzer-Wunsch: "fange mit den Venues an, von
+// denen du eh bereits eine Karte hinterlegt hast").
 async function fetchWebsiteEnrichment(
-  website: string
+  website: string,
+  cachedMenuUrls: { lunch: string | null; dinner: string | null } = { lunch: null, dinner: null }
 ): Promise<{
   image: string | null;
   hours: string | null;
@@ -876,10 +903,20 @@ async function fetchWebsiteEnrichment(
     const lunch = extractLunchSignal($, website);
     const dinnerMenuUrl = extractDinnerMenuUrl($, website);
     let beerPriceEur = extractBeerPrice($);
-    // Kein Preis im HTML-Text gefunden — bei Bars (anders als Restaurants
-    // für den Mittagslunch) fast immer der Fall, da Getränkekarten praktisch
-    // nie als HTML-Text veröffentlicht werden. Verlinkte PDFs als Fallback
-    // durchsuchen, statt hier schon aufzugeben.
+    // Kein Preis im HTML-Text der Startseite gefunden — zuerst die bereits
+    // bekannten Kartenlinks direkt prüfen (zuverlässiger als Raten), erst
+    // danach die von der Startseite neu erratenen PDF-Kandidaten.
+    if (beerPriceEur === null) {
+      for (const knownUrl of [dinnerMenuUrl, cachedMenuUrls.dinner, lunch.menuUrl, cachedMenuUrls.lunch]) {
+        if (!knownUrl) continue;
+        beerPriceEur = await extractBeerPriceFromKnownMenuUrl(knownUrl);
+        if (beerPriceEur !== null) break;
+      }
+    }
+    // Immer noch nichts — bei Bars (anders als Restaurants für den
+    // Mittagslunch) fast immer der Fall, da Getränkekarten praktisch nie
+    // als HTML-Text veröffentlicht werden. Verlinkte PDFs auf der
+    // Startseite als letzten Fallback durchsuchen, statt hier aufzugeben.
     if (beerPriceEur === null) {
       for (const pdfLink of findMenuPdfLinks($, website)) {
         beerPriceEur = await extractBeerPriceFromPdf(pdfLink);
@@ -1041,7 +1078,14 @@ out body;
     async function worker() {
       while (cursor < toFetch.length) {
         const venue = toFetch[cursor++];
-        enrichmentByOsmId.set(venue.osm_id, await fetchWebsiteEnrichment(venue.website!));
+        const cached = existingByOsmId.get(venue.osm_id);
+        enrichmentByOsmId.set(
+          venue.osm_id,
+          await fetchWebsiteEnrichment(venue.website!, {
+            lunch: cached?.lunchMenuUrl ?? null,
+            dinner: cached?.dinnerMenuUrl ?? null,
+          })
+        );
       }
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
