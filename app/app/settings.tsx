@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { registerStrings, useTranslation } from '../lib/strings';
 import { usePushEnabled } from '../lib/pushNotifications';
 import { useShowFeaturedCarousel } from '../lib/imagePreferences';
+import { useEventViewMode } from '../lib/eventViewMode';
 import { useReminderSettings } from '../lib/reminderSettings';
 import { useSavedSearches } from '../lib/savedSearches';
 import { useFollowedOrganizers } from '../lib/followedOrganizers';
@@ -19,6 +20,9 @@ registerStrings({
   'settings.languageDe': { de: 'Deutsch', en: 'German' },
   'settings.languageEn': { de: 'Englisch', en: 'English' },
   'settings.featuredCarousel': { de: 'Bildkacheln „Empfohlen für dich"', en: 'Image tiles "Recommended for you"' },
+  'settings.eventView': { de: 'Ansicht der Eventliste', en: 'Event list view' },
+  'settings.eventViewCompact': { de: 'Kompakt', en: 'Compact' },
+  'settings.eventViewCards': { de: 'Bildkarten', en: 'Image cards' },
   'settings.notifications': { de: 'Benachrichtigungen', en: 'Notifications' },
   'settings.push': { de: 'Push-Benachrichtigungen', en: 'Push notifications' },
   'settings.reminder': { de: 'Erinnerungszeitpunkt', en: 'Reminder timing' },
@@ -85,11 +89,38 @@ function SettingsRow({
   );
 }
 
+function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { key: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <View style={styles.segmented}>
+      {options.map((opt) => (
+        <TouchableOpacity
+          key={opt.key}
+          style={[styles.segment, value === opt.key && styles.segmentActive]}
+          onPress={() => onChange(opt.key)}
+        >
+          <Text style={[styles.segmentText, value === opt.key && styles.segmentTextActive]} numberOfLines={1}>
+            {opt.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { t, language, toggleLanguage } = useTranslation();
   const { pushEnabled, pushBusy, togglePush } = usePushEnabled();
   const { showFeaturedCarousel, setShowFeaturedCarousel } = useShowFeaturedCarousel();
+  const { viewMode, setViewMode } = useEventViewMode();
   const { offsetsMinutes: reminderOffsets } = useReminderSettings();
   const { savedSearches } = useSavedSearches();
   const { followedOrganizers, toggleFollow } = useFollowedOrganizers();
@@ -129,6 +160,20 @@ export default function SettingsScreen() {
                 onValueChange={setShowFeaturedCarousel}
                 trackColor={{ false: '#333', true: '#0af' }}
                 thumbColor="#fff"
+              />
+            }
+          />
+          <SettingsRow
+            icon="images-outline"
+            label={t('settings.eventView')}
+            right={
+              <SegmentedControl
+                value={viewMode}
+                onChange={setViewMode}
+                options={[
+                  { key: 'compact', label: t('settings.eventViewCompact') },
+                  { key: 'cards', label: t('settings.eventViewCards') },
+                ]}
               />
             }
           />
@@ -250,4 +295,9 @@ const styles = StyleSheet.create({
   organizerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   organizerName: { flex: 1, color: '#ddd', fontSize: 13.5 },
   organizerUnfollow: { color: '#ff6b6b', fontSize: 12.5, fontWeight: '700' },
+  segmented: { flexDirection: 'row', backgroundColor: '#000', borderRadius: 9, padding: 2, gap: 2 },
+  segment: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 7 },
+  segmentActive: { backgroundColor: '#0af' },
+  segmentText: { color: '#999', fontSize: 12, fontWeight: '700' },
+  segmentTextActive: { color: '#000' },
 });

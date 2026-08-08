@@ -33,6 +33,7 @@ import { consumeOnboardingSeed } from '../lib/onboarding';
 import { useReminderSettings, REMINDER_OFFSET_OPTIONS } from '../lib/reminderSettings';
 import { normalizeGenreGroup } from '../lib/genreGroup';
 import { useShowFeaturedCarousel } from '../lib/imagePreferences';
+import { useEventViewMode } from '../lib/eventViewMode';
 import { onSettingsAction } from '../lib/settingsActions';
 import {
   hasSavedSearchCriteria,
@@ -419,6 +420,7 @@ export default function EventListScreen() {
   const [showSavedSearchModal, setShowSavedSearchModal] = useState(false);
   const [savedSearchName, setSavedSearchName] = useState('');
   const { showFeaturedCarousel } = useShowFeaturedCarousel();
+  const { viewMode } = useEventViewMode();
 
   // Aktionen von app/settings.tsx ausgelöst — siehe lib/settingsActions.ts.
   // index.tsx bleibt beim Navigieren zu /settings im Hintergrund gemountet
@@ -1478,13 +1480,75 @@ export default function EventListScreen() {
           const group = row.group;
           const item = group[0];
           const hasMore = group.length > 1;
+          const soldOut = hasMore ? group.every((g) => g.sold_out === true) : item.sold_out === true;
+          const badgeRow = (
+            <View style={styles.badgeRow}>
+              {item.category && <Text style={styles.badge}>{categoryLabel(item.category, language)}</Text>}
+              {hasMore && (
+                <View style={styles.seriesBadgeRow}>
+                  <Ionicons name="repeat-outline" size={11} color="#999" />
+                  <Text style={styles.seriesBadge}>{group.length} {t('events.dates')}</Text>
+                </View>
+              )}
+              {/* Bei einer Serie nur "Ausverkauft" zeigen, wenn wirklich
+                  ALLE Termine ausverkauft sind — sonst wäre die Karte
+                  irreführend, obwohl group[0] (der nächste Termin) nur
+                  einer von vielen ist und andere Termine noch buchbar
+                  sein können. Preis/Status pro Termin steht stattdessen
+                  in der aufgeklappten Terminliste. */}
+              {soldOut && <Text style={styles.soldOutBadge}>{t('events.soldOut')}</Text>}
+            </View>
+          );
+          const metaText = (
+            <Text style={styles.meta}>
+              {hasMore ? 'Nächster Termin: ' : ''}
+              {formatDate(item.start_date, item.start_time)}
+              {formatEndDateSuffix(item.start_date, item.end_date)}
+              {item.location_name ? ` · ${item.location_name}` : ''}
+              {userLocation && item.latitude != null && item.longitude != null
+                ? ` · ${formatDistance(distanceKm(userLocation.lat, userLocation.lng, item.latitude, item.longitude))}`
+                : ''}
+            </Text>
+          );
+          const onPress = () => (hasMore ? setSelectedGroup(group) : router.push(`/event/${item.id}`));
+
+          // Bildkarten-Modus nur, wenn tatsächlich ein Foto da ist — sonst
+          // fällt die Karte automatisch auf die kompakte Zeile zurück,
+          // gleiches Prinzip wie bei Bars/Restaurants/Spätis in
+          // VenueListScreen.tsx ("ohne Bild kein Mehrwert, sieht auf dem
+          // Handy nach verschenktem Platz aus").
+          if (viewMode === 'cards' && item.image_url) {
+            return (
+              <TouchableOpacity style={styles.cardsCard} onPress={onPress}>
+                <View style={styles.cardsImageWrap}>
+                  <Image source={{ uri: item.image_url }} style={styles.cardsImage} />
+                  <TouchableOpacity
+                    style={styles.cardsFavoriteBtn}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite(item.id);
+                    }}
+                  >
+                    <Ionicons
+                      name={isFavorite(item.id) ? 'heart' : 'heart-outline'}
+                      size={18}
+                      color={isFavorite(item.id) ? '#ff4d6d' : '#fff'}
+                    />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.cardsBody}>
+                  {badgeRow}
+                  <Text style={styles.title}>{seriesDisplayTitle(item.title)}</Text>
+                  {metaText}
+                  {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
+                  {item.price_info ? <Text style={styles.priceMeta}>{item.price_info}</Text> : null}
+                </View>
+              </TouchableOpacity>
+            );
+          }
+
           return (
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() =>
-                hasMore ? setSelectedGroup(group) : router.push(`/event/${item.id}`)
-              }
-            >
+            <TouchableOpacity style={styles.card} onPress={onPress}>
               <TouchableOpacity
                 style={styles.favoriteBtn}
                 onPress={(e) => {
@@ -1514,34 +1578,9 @@ export default function EventListScreen() {
                 </LinearGradient>
               )}
               <View style={styles.cardBody}>
-                <View style={styles.badgeRow}>
-                  {item.category && <Text style={styles.badge}>{categoryLabel(item.category, language)}</Text>}
-                  {hasMore && (
-                    <View style={styles.seriesBadgeRow}>
-                      <Ionicons name="repeat-outline" size={11} color="#999" />
-                      <Text style={styles.seriesBadge}>{group.length} {t('events.dates')}</Text>
-                    </View>
-                  )}
-                  {/* Bei einer Serie nur "Ausverkauft" zeigen, wenn wirklich
-                      ALLE Termine ausverkauft sind — sonst wäre die Karte
-                      irreführend, obwohl group[0] (der nächste Termin) nur
-                      einer von vielen ist und andere Termine noch buchbar
-                      sein können. Preis/Status pro Termin steht stattdessen
-                      in der aufgeklappten Terminliste. */}
-                  {(hasMore ? group.every((g) => g.sold_out === true) : item.sold_out === true) && (
-                    <Text style={styles.soldOutBadge}>{t('events.soldOut')}</Text>
-                  )}
-                </View>
+                {badgeRow}
                 <Text style={styles.title}>{seriesDisplayTitle(item.title)}</Text>
-                <Text style={styles.meta}>
-                  {hasMore ? 'Nächster Termin: ' : ''}
-                  {formatDate(item.start_date, item.start_time)}
-                  {formatEndDateSuffix(item.start_date, item.end_date)}
-                  {item.location_name ? ` · ${item.location_name}` : ''}
-                  {userLocation && item.latitude != null && item.longitude != null
-                    ? ` · ${formatDistance(distanceKm(userLocation.lat, userLocation.lng, item.latitude, item.longitude))}`
-                    : ''}
-                </Text>
+                {metaText}
                 {item.subcategory ? <Text style={styles.subMeta}>{item.subcategory}</Text> : null}
                 {item.price_info ? <Text style={styles.priceMeta}>{item.price_info}</Text> : null}
               </View>
@@ -2345,6 +2384,29 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 3,
   },
+  // Bildkarten-Modus (Einstellungen > Darstellung > Ansicht der Eventliste)
+  // — gleiches Muster wie der "cards"-Modus in VenueListScreen.tsx, nur mit
+  // Event-typischen Badges (Kategorie/Serie/Ausverkauft) statt
+  // Öffnungsstatus.
+  cardsCard: {
+    backgroundColor: '#141414',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 14,
+    overflow: 'hidden',
+  },
+  cardsImageWrap: { position: 'relative' },
+  cardsImage: { width: '100%', aspectRatio: 4 / 3, backgroundColor: '#1a1a1a' },
+  cardsFavoriteBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 14,
+    padding: 6,
+  },
+  cardsBody: { padding: 14 },
   favoriteBtn: {
     position: 'absolute',
     top: 8,
