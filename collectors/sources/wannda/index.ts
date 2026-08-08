@@ -18,7 +18,12 @@ import { buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 // Felder selbst NICHT das tatsächliche Eventdatum sind, sondern nur wann der
 // Post zuletzt bearbeitet wurde). Deshalb: erst die Liste aller Posts holen,
 // dann pro Post die Detailseite für das echte Datum/Uhrzeit nachladen.
-const WANNDA_API = 'https://wannda.de/wp-json/wp/v2/posts?per_page=100&_fields=id,slug,link,title';
+// _embed=wp:featuredmedia liefert das WordPress-Beitragsbild direkt mit,
+// ohne zusätzlichen Request pro Event — kostet nur etwas mehr Payload für
+// die ohnehin schon abgerufene Liste (~15-100 Posts). Kein _fields-Filter
+// mehr, da der zusammen mit _embed unzuverlässig zusammenspielt (embedded
+// Daten hängen an _links, die _fields sonst mit herausfiltert).
+const WANNDA_API = 'https://wannda.de/wp-json/wp/v2/posts?per_page=100&_embed=wp:featuredmedia';
 const WANNDA_ADDRESS = 'Völckerstraße 5, 80939 München';
 const WANNDA_LOCATION = 'Wannda Circus Freimann';
 const USER_AGENT =
@@ -54,7 +59,17 @@ function parseDescDate(text: string): { date: string; endDate: string | null; ti
   return { date, endDate, time };
 }
 
-type WpPost = { id: number; slug: string; link: string; title: { rendered: string } };
+type WpPost = {
+  id: number;
+  slug: string;
+  link: string;
+  title: { rendered: string };
+  _embedded?: { 'wp:featuredmedia'?: { source_url?: string }[] };
+};
+
+function featuredImage(post: WpPost): string | null {
+  return post._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null;
+}
 
 export async function run() {
   console.log('[wannda] starting');
@@ -119,7 +134,7 @@ export async function run() {
         city: 'München',
         organizer: 'Wannda',
         source_url: post.link,
-        image_url: null,
+        image_url: featuredImage(post),
         price_info: null,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
