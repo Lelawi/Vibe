@@ -78,6 +78,7 @@ type Event = {
 // hängen, wo dauerhaft Bildschirmfläche verloren ginge.
 type ListRow =
   | { kind: 'banner' }
+  | { kind: 'dateRow' }
   | { kind: 'filterInfo' }
   | { kind: 'featured'; events: Event[] }
   | { kind: 'group'; group: Event[] };
@@ -882,7 +883,7 @@ export default function EventListScreen() {
   // hooks than during the previous render") zum Absturz der ganzen Seite
   // (schwarzer Bildschirm) führte, sobald loading von true auf false wechselte.
   const listData: ListRow[] = useMemo(() => {
-    const rows: ListRow[] = [{ kind: 'banner' }, { kind: 'filterInfo' }];
+    const rows: ListRow[] = [{ kind: 'banner' }, { kind: 'dateRow' }, { kind: 'filterInfo' }];
     // Karussell nur ab 2 Highlights zeigen — bei nur einem Treffer bringt
     // eine eigene Extra-Zeile für dasselbe Event, das eh gleich darunter
     // nochmal in der Liste steht, keinen Mehrwert.
@@ -1122,70 +1123,86 @@ export default function EventListScreen() {
     </View>
   );
 
-  const listHeader = (
+  // Suche + Karte/Filter-Icons sitzen bewusst NICHT mehr hier oben, sondern
+  // als topSlot direkt über der BottomTabBar (siehe ganz unten im Return) —
+  // im Daumenbereich beim Einhandbetrieb, gleiches Prinzip, aus dem die
+  // Tab-Leiste selbst schon mal von oben nach unten wanderte (per Nutzer-
+  // Feedback, siehe Kommentar in BottomTabBar.tsx). Nur die Schnellfilter-
+  // Chips (Alle/Heute/Morgen/Woche) bleiben oben angeheftet — die sind eher
+  // "hinschauen & einmal tippen" als eine wiederholte Tipp-Interaktion wie
+  // die Suche.
+  const bottomSearchBar = (
+    <View style={styles.bottomSearchRow}>
+      <View style={styles.searchWrap}>
+        <TextInput
+          style={[styles.search, styles.searchInput]}
+          placeholder={t('events.searchPlaceholder')}
+          placeholderTextColor="#666"
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity
+            style={styles.searchClearBtn}
+            onPress={() => setSearch('')}
+            accessibilityRole="button"
+            accessibilityLabel={t('events.resetAll')}
+          >
+            <Text style={styles.searchClearBtnText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <TouchableOpacity
+        style={styles.compactFilterButton}
+        onPress={() => router.push('/map')}
+        accessibilityRole="button"
+        accessibilityLabel={t('tabs.map')}
+      >
+        <Ionicons name="location-outline" size={21} color="#bbb" />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.compactFilterButton, contentFilterCount > 0 && styles.filterChipActive]}
+        onPress={() => setShowFilterModal(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`${t('events.filter')}${contentFilterCount > 0 ? `, ${contentFilterCount}` : ''}`}
+      >
+        <Ionicons name="options-outline" size={21} color={contentFilterCount > 0 ? '#000' : '#bbb'} />
+        {contentFilterCount > 0 && (
+          <View style={styles.filterCountBadge}>
+            <Text style={styles.filterCountBadgeText}>{contentFilterCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {contentFilterCount > 0 && (
+        // Eigener kleiner Button statt Teil des Filter-Buttons oben:
+        // löscht die Panel-Filter (Kategorie/Genre/Ort/Favoriten/
+        // Kostenlos/Mehrtägig/Nähe) direkt in der Hauptansicht, ohne
+        // vorher das Filter-Panel öffnen zu müssen (per Nutzer-Feedback).
+        // Lässt Suche/Datum bewusst unangetastet — die haben schon eigene
+        // Quick-Clear-Wege (✕ im Suchfeld, "Alle"-Tab).
+        <TouchableOpacity
+          style={styles.compactFilterButton}
+          onPress={resetContentFilters}
+          accessibilityRole="button"
+          accessibilityLabel={t('events.resetAllFilters')}
+        >
+          <Text style={styles.searchClearBtnText}>✕</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // Eigene, gepinnte Datenzeile (kind: 'dateRow') statt ListHeaderComponent —
+  // Letzteres rendert bei FlatList immer VOR data[0], die Datumszeile stand
+  // dadurch entgegen der visuellen Absicht über dem "Vibe"-Banner statt
+  // darunter (per Nutzer-Feedback). Als normaler, gepinnter Listeneintrag
+  // direkt nach dem Banner (siehe listData/stickyHeaderIndices) scrollt der
+  // Banner zuerst weg, die Datumszeile bleibt danach oben angeheftet.
+  const dateRowSection = (
     <View style={styles.listHeaderWrap}>
       <View style={styles.stickyControls}>
-        <View style={styles.searchControlsRow}>
-          <View style={styles.searchWrap}>
-            <TextInput
-              style={[styles.search, styles.searchInput]}
-              placeholder={t('events.searchPlaceholder')}
-              placeholderTextColor="#666"
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search.length > 0 && (
-              <TouchableOpacity
-                style={styles.searchClearBtn}
-                onPress={() => setSearch('')}
-                accessibilityRole="button"
-                accessibilityLabel={t('events.resetAll')}
-              >
-                <Text style={styles.searchClearBtnText}>✕</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <TouchableOpacity
-            style={styles.compactFilterButton}
-            onPress={() => router.push('/map')}
-            accessibilityRole="button"
-            accessibilityLabel={t('tabs.map')}
-          >
-            <Ionicons name="location-outline" size={21} color="#bbb" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.compactFilterButton, contentFilterCount > 0 && styles.filterChipActive]}
-            onPress={() => setShowFilterModal(true)}
-            accessibilityRole="button"
-            accessibilityLabel={`${t('events.filter')}${contentFilterCount > 0 ? `, ${contentFilterCount}` : ''}`}
-          >
-            <Ionicons name="options-outline" size={21} color={contentFilterCount > 0 ? '#000' : '#bbb'} />
-            {contentFilterCount > 0 && (
-              <View style={styles.filterCountBadge}>
-                <Text style={styles.filterCountBadgeText}>{contentFilterCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {contentFilterCount > 0 && (
-            // Eigener kleiner Button statt Teil des Filter-Buttons oben:
-            // löscht die Panel-Filter (Kategorie/Genre/Ort/Favoriten/
-            // Kostenlos/Mehrtägig/Nähe) direkt in der Hauptansicht, ohne
-            // vorher das Filter-Panel öffnen zu müssen (per Nutzer-Feedback).
-            // Lässt Suche/Datum bewusst unangetastet — die haben schon eigene
-            // Quick-Clear-Wege (✕ im Suchfeld, "Alle"-Tab).
-            <TouchableOpacity
-              style={styles.compactFilterButton}
-              onPress={resetContentFilters}
-              accessibilityRole="button"
-              accessibilityLabel={t('events.resetAllFilters')}
-            >
-              <Text style={styles.searchClearBtnText}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
         <View style={styles.primaryDateRow}>
           {PRIMARY_DATE_FILTERS.map((f) => (
             <TouchableOpacity
@@ -1420,15 +1437,14 @@ export default function EventListScreen() {
         contentContainerStyle={styles.list}
         onScroll={(e) => setShowBackToTop(e.nativeEvent.contentOffset.y > 600)}
         scrollEventThrottle={150}
-        ListHeaderComponent={listHeader}
         // RN/RNW's eigener Sticky-Mechanismus statt manuellem CSS
         // position:"sticky" auf einem verschachtelten View — letzteres griff
         // innerhalb von FlatLists Web-DOM-Struktur nicht zuverlässig (Buttons
-        // blieben beim Herunterscrollen unerreichbar). Pinnt NUR noch
-        // Suche und Datum (siehe listHeader) — Banner und Titel
-        // scrollen als normale erste Zeile weg (row.kind === 'banner'),
-        // damit der gepinnte Bereich auf dem Handy nicht zu viel Platz frisst.
-        stickyHeaderIndices={[0]}
+        // blieben beim Herunterscrollen unerreichbar). Pinnt NUR die
+        // Datumszeile (data[1], row.kind === 'dateRow') — Banner/Titel
+        // (data[0]) scrollen als normale erste Zeile weg, damit der
+        // gepinnte Bereich auf dem Handy nicht zu viel Platz frisst.
+        stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -1451,6 +1467,9 @@ export default function EventListScreen() {
         renderItem={({ item: row }) => {
           if (row.kind === 'banner') {
             return bannerSection;
+          }
+          if (row.kind === 'dateRow') {
+            return dateRowSection;
           }
           if (row.kind === 'filterInfo') {
             return filterInfoSection;
@@ -2036,7 +2055,7 @@ export default function EventListScreen() {
           <Ionicons name="arrow-up" size={20} color="#000" />
         </TouchableOpacity>
       )}
-      <BottomTabBar active="events" />
+      <BottomTabBar active="events" topSlot={bottomSearchBar} />
     </SafeAreaView>
   );
 }
@@ -2124,12 +2143,12 @@ const styles = StyleSheet.create({
     // und das Layout muss danach manuell zurückgezoomt werden.
     fontSize: 16,
   },
-  searchControlsRow: {
+  bottomSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 14,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
     gap: 10,
   },
   searchWrap: {
@@ -2332,11 +2351,15 @@ const styles = StyleSheet.create({
   filterTabTextActive: { color: '#000' },
   // paddingBottom deckt die fixe BottomTabBar ab, sonst wäre die letzte Karte
   // dahinter verdeckt.
-  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 90 },
+  // 90 -> 160: die Suchzeile sitzt jetzt zusätzlich über der Tab-Leiste
+  // (siehe bottomSearchBar/topSlot), braucht also mehr Frei-Padding unten,
+  // damit die letzte Karte bzw. der Nach-oben-Button nicht darunter
+  // verschwindet.
+  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 160 },
   backToTopBtn: {
     position: 'absolute',
     right: 16,
-    bottom: 90,
+    bottom: 160,
     width: 42,
     height: 42,
     borderRadius: 21,

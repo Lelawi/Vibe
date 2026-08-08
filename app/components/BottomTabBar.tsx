@@ -32,13 +32,26 @@ const TABS: { key: BottomTab; labelKey: string; icon: keyof typeof Ionicons.glyp
   { key: 'spaetis', labelKey: 'tabs.spaetis', icon: 'storefront-outline', activeIcon: 'storefront', route: '/spaetis' },
 ];
 
-export default function BottomTabBar({ active }: { active: BottomTab }) {
+interface BottomTabBarProps {
+  active: BottomTab;
+  // Optionaler Inhalt direkt über den Tabs, innerhalb derselben fixen,
+  // position:absolute-Fläche (z.B. die Suchleiste im Events-Screen, siehe
+  // index.tsx). Bewusst ein Slot dieser Komponente statt eines zweiten,
+  // eigenständig positionierten Elements in index.tsx — sonst müsste dessen
+  // "bottom"-Offset die Safe-Area-/Tab-Höhen-Berechnung hier duplizieren und
+  // bei jeder Änderung synchron gehalten werden.
+  topSlot?: React.ReactNode;
+}
+
+export default function BottomTabBar({ active, topSlot }: BottomTabBarProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {topSlot}
+      <View style={styles.tabsRow}>
       {TABS.map((tab) => {
         const isActive = tab.key === active;
         return (
@@ -62,6 +75,7 @@ export default function BottomTabBar({ active }: { active: BottomTab }) {
           </TouchableOpacity>
         );
       })}
+      </View>
     </View>
   );
 }
@@ -72,12 +86,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    flexDirection: 'row',
     backgroundColor: 'rgba(10,10,10,0.96)',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.08)',
-    paddingTop: 8,
   },
+  tabsRow: { flexDirection: 'row', paddingTop: 8 },
   tab: { flex: 1, alignItems: 'center', gap: 2 },
   label: { fontSize: 11, fontWeight: '600', color: '#888' },
   labelActive: { color: '#0af' },
