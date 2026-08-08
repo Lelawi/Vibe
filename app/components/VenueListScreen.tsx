@@ -27,7 +27,6 @@ import { useVenueFavorites } from '../lib/venueFavorites';
 import { setFilteredVenuesForMap } from '../lib/mapFilterCache';
 import { openExternalUrl } from '../lib/openExternalUrl';
 import BottomTabBar, { type BottomTab } from './BottomTabBar';
-import LanguageToggle from './LanguageToggle';
 import VenueFeedbackButton from './VenueFeedbackButton';
 import { registerStrings, useTranslation } from '../lib/strings';
 import type { Language } from '../lib/language';
@@ -226,6 +225,13 @@ function openState(open: boolean | null): 'open' | 'unknown' | 'closed' {
 // restaurants.sql) — ein gemeinsamer Screen statt zweier Kopien, nur Titel/
 // Icon/Routen/Texte unterscheiden sich je type.
 registerStrings({
+  // Gleicher Banner-Titel wie auf dem Events-Tab ("Vibe") statt eines je
+  // Reiter unterschiedlichen Titels — einheitliches Markendesign auf allen
+  // 4 Reitern (per Nutzer-Feedback: "bei den anderen fehlt das Vibe
+  // Banner"). Der bisherige Titel (Bars/Restaurants/Spätis) steckt weiterhin
+  // in der Unterzeile (Öffnungsstatus) und in der Bottom-Tab-Leiste.
+  'venues.brand': { de: 'Vibe', en: 'Vibe' },
+  'venues.settings': { de: 'Einstellungen', en: 'Settings' },
   'venues.bar.title': { de: 'Bars', en: 'Bars' },
   'venues.restaurant.title': { de: 'Restaurants', en: 'Restaurants' },
   'venues.spaeti.title': { de: 'Spätis', en: 'Kiosks' },
@@ -777,12 +783,21 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     >
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.header}>{t(config.titleKey)}</Text>
+          <Text style={styles.header}>{t('venues.brand')}</Text>
           <Text style={styles.subheader}>
-            {openCount} {t('venues.openOfTotal')} {venuesMatchingOtherFilters.length} {t('venues.openNow')}
+            {t(config.titleKey)} · {openCount} {t('venues.openOfTotal')} {venuesMatchingOtherFilters.length} {t('venues.openNow')}
           </Text>
         </View>
-        <LanguageToggle />
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerIconButton}
+            onPress={() => router.push('/settings')}
+            accessibilityRole="button"
+            accessibilityLabel={t('venues.settings')}
+          >
+            <Ionicons name="settings-outline" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
     </LinearGradient>
   );
@@ -1351,6 +1366,21 @@ const styles = StyleSheet.create({
   },
   header: { fontSize: 30, fontWeight: '800', color: '#fff' },
   subheader: { fontSize: 14, color: '#cbb8f0' },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
   search: {
     backgroundColor: '#141414',
     borderRadius: 14,
