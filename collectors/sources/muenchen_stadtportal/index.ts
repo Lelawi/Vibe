@@ -121,6 +121,34 @@ function parseListingPage($: cheerio.CheerioAPI): RawItem[] {
   return items;
 }
 
+// Die muenchen.de-Listing-Karten selbst haben KEIN <img> im Markup (per
+// Direktabruf verifiziert, 2026-08) — anders als die anderen Felder gibt es
+// hier nichts zum Scrapen. Viele Ticket-Links zeigen aber direkt auf
+// muenchenticket.de (siehe ticketUrl), das pro Event-Seite ein reales
+// og:image liefert (per Nutzer-Beispiel verifiziert: "Putsch - Anleitung zur
+// Zerstörung einer Demokratie"). Ein zusätzlicher, günstiger Seitenabruf pro
+// Event mit einer muenchenticket.de-URL — andere Ticket-Hosts (eventim,
+// reservix, ...) bleiben bewusst ohne Bild statt für jeden denkbaren Anbieter
+// eine eigene og:image-Heuristik zu bauen.
+const ogImageCache = new Map<string, string | null>();
+
+async function fetchMuenchenTicketOgImage(ticketUrl: string): Promise<string | null> {
+  if (ogImageCache.has(ticketUrl)) return ogImageCache.get(ticketUrl)!;
+  let image: string | null = null;
+  try {
+    const res = await fetch(ticketUrl, { headers: BROWSER_HEADERS });
+    if (res.ok) {
+      const html = await res.text();
+      const match = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+      image = match?.[1] ?? null;
+    }
+  } catch {
+    // Bild bleibt null, kein harter Fehler für den restlichen Collector-Lauf.
+  }
+  ogImageCache.set(ticketUrl, image);
+  return image;
+}
+
 async function fetchCategoryPage(categoryId: string, from: string, to: string, page: number): Promise<cheerio.CheerioAPI | null> {
   const query = new URLSearchParams({
     search: '1',
@@ -170,6 +198,12 @@ export async function run() {
           if (item.startDate < isoDate(today)) continue;
           const idSource = item.ticketUrl ?? item.title;
           const coords = await getCoordinates(supabase, item.locationName ?? 'München', null, 'München');
+          let imageUrl: string | null = null;
+          const ticketHost = item.ticketUrl ? (() => { try { return new URL(item.ticketUrl!).hostname; } catch { return null; } })() : null;
+          if (item.ticketUrl && ticketHost?.endsWith('muenchenticket.de')) {
+            imageUrl = await fetchMuenchenTicketOgImage(item.ticketUrl);
+            await wait(requestSpacingMs());
+          }
           collected.push({
             source_id: buildStableSourceId(`muenchen-stadtportal-${categoryId}`, idSource, item.startDate),
             title: item.title,
@@ -184,7 +218,7 @@ export async function run() {
             city: 'München',
             organizer: null,
             source_url: item.ticketUrl ?? BASE_URL,
-            image_url: null,
+            image_url: imageUrl,
             price_info: null,
             sold_out: null,
             latitude: coords?.latitude ?? null,
