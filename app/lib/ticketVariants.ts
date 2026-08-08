@@ -20,6 +20,14 @@ export function ticketBaseTitle(title: string): string {
     .replace(PREMIUM_SUFFIX, '')
     .replace(FLEX_SUFFIX, '')
     .toLowerCase()
+    // Manche Quellen schreiben "ß" konsequent als "ss" (z.B. reines ASCII-
+    // Feed statt echtem ß) — ohne diese Normalisierung erschienen "Weiße
+    // Turnschuhe" und "Weisse Turnschuhe" (dieselbe Aufführung, andere
+    // Quelle) fälschlich als zwei getrennte Karten statt als eine
+    // Terminserie (per Nutzer-Screenshot, 2026-08-08). "ß" ist unicode-
+    // technisch ein Buchstabe (\p{L}) und würde sonst unverändert durch den
+    // folgenden Satzzeichen-Filter durchrutschen.
+    .replace(/ß/g, 'ss')
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
