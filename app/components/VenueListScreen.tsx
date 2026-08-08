@@ -196,7 +196,16 @@ type EnrichedVenue = Venue & {
 // normale Listenzeilen scrollen bzw. angezeigt werden, nicht über FlatLists
 // eigenes ListEmptyComponent — das feuert nie, solange data mindestens die
 // Banner-Zeile enthält.
-type ListRow = { kind: 'banner' } | { kind: 'empty' } | { kind: 'venue'; venue: EnrichedVenue };
+// 'stickyRow' (Schnellfilter-Buttons) und 'filterInfo' (Küche-Chips/
+// Ergebniszähler/Umkreis-Chips) getrennt wie bei index.tsx: nur 'stickyRow'
+// bleibt beim Scrollen angeheftet, 'filterInfo' scrollt normal mit — siehe
+// stickyHeaderIndices weiter unten.
+type ListRow =
+  | { kind: 'banner' }
+  | { kind: 'stickyRow' }
+  | { kind: 'filterInfo' }
+  | { kind: 'empty' }
+  | { kind: 'venue'; venue: EnrichedVenue };
 
 // Modul-level statt useState-Default: bleibt über einen Tab-Wechsel hinweg
 // erhalten, obwohl der Screen (Stack.Screen pro Tab, kein Tabs-Navigator)
@@ -745,7 +754,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   }
 
   const listData: ListRow[] = useMemo(() => {
-    const rows: ListRow[] = [{ kind: 'banner' }];
+    const rows: ListRow[] = [{ kind: 'banner' }, { kind: 'stickyRow' }, { kind: 'filterInfo' }];
     if (filteredVenues.length === 0) rows.push({ kind: 'empty' });
     else filteredVenues.forEach((venue) => rows.push({ kind: 'venue', venue }));
     return rows;
@@ -802,62 +811,51 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
     </LinearGradient>
   );
 
-  const listHeader = (
+  // Suche + Karte-Icon sitzen bewusst NICHT mehr hier oben, sondern als
+  // topSlot direkt über der BottomTabBar (siehe ganz unten im Return) —
+  // im Daumenbereich beim Einhandbetrieb, exakt dasselbe Prinzip wie beim
+  // Events-Tab (index.tsx), damit sich alle 4 Reiter gleich anfühlen (per
+  // Nutzer-Feedback: "Design sollte über das komplette Programm einheitlich
+  // sein").
+  const bottomSearchBar = (
+    <View style={styles.bottomSearchRow}>
+      <View style={styles.searchWrap}>
+        <TextInput
+          style={[styles.search, styles.searchInput]}
+          placeholder={t(config.searchPlaceholderKey)}
+          placeholderTextColor="#666"
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity style={styles.searchClearBtn} onPress={() => setSearch('')}>
+            <Text style={styles.searchClearBtnText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <TouchableOpacity
+        style={styles.compactFilterButton}
+        onPress={() => router.push(config.mapRoute)}
+        accessibilityRole="button"
+        accessibilityLabel={t('tabs.map')}
+      >
+        <Ionicons name="location-outline" size={21} color="#bbb" />
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Eigene, gepinnte Zeile (kind: 'stickyRow') statt ListHeaderComponent —
+  // Letzteres rendert bei FlatList immer VOR data[0], der Banner stand
+  // dadurch entgegen der visuellen Absicht UNTER den Filterzeilen statt
+  // darüber (per Nutzer-Feedback, gleicher Bug wie zuvor schon bei
+  // index.tsx gefixt). Nur die am häufigsten genutzten Schnellfilter bleiben
+  // angeheftet — Küche-Chips/Ergebniszähler/Umkreis-Chips scrollen normal
+  // mit (siehe filterInfoSection unten), analog zu index.tsx's dateRow vs.
+  // filterInfo-Aufteilung.
+  const stickyRowSection = (
     <View style={styles.listHeaderWrap}>
       <View style={styles.stickyControls}>
-        <View style={styles.searchControlsRow}>
-          <View style={styles.searchWrap}>
-            <TextInput
-              style={[styles.search, styles.searchInput]}
-              placeholder={t(config.searchPlaceholderKey)}
-              placeholderTextColor="#666"
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search.length > 0 && (
-              <TouchableOpacity style={styles.searchClearBtn} onPress={() => setSearch('')}>
-                <Text style={styles.searchClearBtnText}>✕</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <TouchableOpacity
-            style={styles.compactFilterButton}
-            onPress={() => router.push(config.mapRoute)}
-            accessibilityRole="button"
-            accessibilityLabel={t('tabs.map')}
-          >
-            <Ionicons name="location-outline" size={21} color="#bbb" />
-          </TouchableOpacity>
-        </View>
-
-        {cuisineOptions.length > 0 && (
-          <View style={styles.controlRow}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.cuisineScrollContent}
-              style={styles.cuisineScroll}
-            >
-              {[t('venues.cuisineAll'), ...cuisineOptions].map((cuisine) => {
-                const isAllChip = cuisine === t('venues.cuisineAll');
-                const active = isAllChip ? !cuisineFilter : cuisineFilter === cuisine;
-                return (
-                  <TouchableOpacity
-                    key={cuisine}
-                    style={[styles.filterChip, active && styles.filterChipActive]}
-                    onPress={() => setCuisineFilter(isAllChip || cuisineFilter === cuisine ? null : cuisine)}
-                  >
-                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                      {isAllChip ? cuisine : cuisineLabel(cuisine, language)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
         <View style={styles.actionButtonRowWrap}>
           <ScrollView
             horizontal
@@ -940,50 +938,86 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             style={styles.actionButtonRowFade}
           />
         </View>
+      </View>
+    </View>
+  );
 
-        <View style={styles.resultCountRow}>
-          <Text style={styles.resultCount}>
-            {filteredVenues.length} {filteredVenues.length === 1 ? t(config.titleKey).slice(0, -1) : t(config.titleKey)} {t('venues.resultsFoundOne')}
-          </Text>
-          {hasAnyActiveFilter && (
-            <TouchableOpacity onPress={resetAllFilters}>
-              <Text style={styles.resultCountResetLink}>{t('venues.resetAllFilters')}</Text>
-            </TouchableOpacity>
-          )}
+  // Küche-Chips/Ergebniszähler/Umkreis-Chips scrollen bewusst NICHT mehr mit
+  // an — sie standen vorher alle im selben angehefteten Block wie Suche und
+  // Schnellfilter, wodurch auf dem Handy bei mehreren aktiven Filtern
+  // (Umkreis + Küche) mehrere Zeilen dauerhaft den Bildschirm blockierten,
+  // bevor überhaupt ein Ort sichtbar war (gleiches Muster wie bei index.tsx).
+  const filterInfoSection = (
+    <View style={styles.filterInfoWrap}>
+      {cuisineOptions.length > 0 && (
+        <View style={styles.controlRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.cuisineScrollContent}
+            style={styles.cuisineScroll}
+          >
+            {[t('venues.cuisineAll'), ...cuisineOptions].map((cuisine) => {
+              const isAllChip = cuisine === t('venues.cuisineAll');
+              const active = isAllChip ? !cuisineFilter : cuisineFilter === cuisine;
+              return (
+                <TouchableOpacity
+                  key={cuisine}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  onPress={() => setCuisineFilter(isAllChip || cuisineFilter === cuisine ? null : cuisine)}
+                >
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                    {isAllChip ? cuisine : cuisineLabel(cuisine, language)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
+      )}
 
-        {locationStatus === 'denied' && (
-          <Text style={styles.locationHint}>
-            {t('venues.locationDenied')}
-          </Text>
-        )}
-
-        {userLocation && (
-          <View style={styles.controlRow}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.cuisineScrollContent}
-              style={styles.cuisineScroll}
-            >
-              {RADIUS_PRESETS_KM.map((km) => {
-                const active = km === null ? nearbyRadiusKm === null : nearbyRadiusKm === km;
-                return (
-                  <TouchableOpacity
-                    key={km ?? 'all'}
-                    style={[styles.filterChip, active && styles.filterChipActive]}
-                    onPress={() => setNearbyRadiusKm(km)}
-                  >
-                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                      {km === null ? t('venues.radiusAll') : `${km} km`}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+      <View style={styles.resultCountRow}>
+        <Text style={styles.resultCount}>
+          {filteredVenues.length} {filteredVenues.length === 1 ? t(config.titleKey).slice(0, -1) : t(config.titleKey)} {t('venues.resultsFoundOne')}
+        </Text>
+        {hasAnyActiveFilter && (
+          <TouchableOpacity onPress={resetAllFilters}>
+            <Text style={styles.resultCountResetLink}>{t('venues.resetAllFilters')}</Text>
+          </TouchableOpacity>
         )}
       </View>
+
+      {locationStatus === 'denied' && (
+        <Text style={styles.locationHint}>
+          {t('venues.locationDenied')}
+        </Text>
+      )}
+
+      {userLocation && (
+        <View style={styles.controlRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.cuisineScrollContent}
+            style={styles.cuisineScroll}
+          >
+            {RADIUS_PRESETS_KM.map((km) => {
+              const active = km === null ? nearbyRadiusKm === null : nearbyRadiusKm === km;
+              return (
+                <TouchableOpacity
+                  key={km ?? 'all'}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  onPress={() => setNearbyRadiusKm(km)}
+                >
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                    {km === null ? t('venues.radiusAll') : `${km} km`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 
@@ -994,13 +1028,17 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         data={listData}
         keyExtractor={(row) => (row.kind === 'venue' ? row.venue.id : row.kind)}
         contentContainerStyle={styles.listContent}
-        ListHeaderComponent={listHeader}
-        stickyHeaderIndices={[0]}
+        // Pinnt NUR die Schnellfilter-Zeile (data[1], row.kind === 'stickyRow')
+        // — Banner (data[0]) scrollt als normale erste Zeile weg, exakt wie
+        // beim Events-Tab (index.tsx).
+        stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => setShowBackToTop(e.nativeEvent.contentOffset.y > 600)}
         scrollEventThrottle={150}
         renderItem={({ item: row }) => {
           if (row.kind === 'banner') return bannerSection;
+          if (row.kind === 'stickyRow') return stickyRowSection;
+          if (row.kind === 'filterInfo') return filterInfoSection;
 
           if (row.kind === 'empty') {
             return (
@@ -1320,7 +1358,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           <Ionicons name="arrow-up" size={20} color="#000" />
         </TouchableOpacity>
       )}
-      <BottomTabBar active={switcherActive} />
+      <BottomTabBar active={switcherActive} topSlot={bottomSearchBar} />
     </SafeAreaView>
   );
 }
@@ -1345,6 +1383,15 @@ const styles = StyleSheet.create({
   // Lücken zwischen den Header-Zeilen hindurchschimmern.
   listHeaderWrap: { backgroundColor: '#000' },
   stickyControls: { paddingTop: 12 },
+  filterInfoWrap: { backgroundColor: '#000' },
+  bottomSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    gap: 10,
+  },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 32, gap: 6 },
   emptyTitle: { color: '#ccc', fontSize: 16, fontWeight: '700', marginTop: 12 },
   emptyHint: { color: '#666', fontSize: 13, textAlign: 'center' },
@@ -1389,14 +1436,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     // Mind. 16px, sonst zoomt iOS Safari beim Fokussieren automatisch rein.
     fontSize: 16,
-  },
-  searchControlsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 14,
-    gap: 10,
   },
   searchWrap: { flex: 1, position: 'relative', justifyContent: 'center' },
   searchInput: { paddingRight: 38 },
@@ -1455,11 +1494,11 @@ const styles = StyleSheet.create({
   locationHint: { color: '#888', fontSize: 12, paddingHorizontal: 16, marginBottom: 8 },
   // paddingBottom deckt die fixe BottomTabBar ab, sonst wäre die letzte Karte
   // dahinter verdeckt.
-  listContent: { paddingHorizontal: 16, paddingBottom: 90 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 160 },
   backToTopBtn: {
     position: 'absolute',
     right: 16,
-    bottom: 90,
+    bottom: 160,
     width: 42,
     height: 42,
     borderRadius: 21,
