@@ -16,6 +16,16 @@ const CURATED_NEW_VENUES = [
     website: 'https://cafespatz.net',
     opening_hours_raw: 'We-Su 10:00-17:00',
   },
+  {
+    // Per Nutzer-Fund (2026-08-08, Google-Maps-Link) noch nicht in OSM
+    // erfasst — keine eigene Website auffindbar (nur Uber Eats/Instagram),
+    // daher website: null statt eines Aggregator-Links.
+    osm_id: -2026080801,
+    name: 'UME Umami Bowls & Vietnamese Coffee',
+    address: 'Steinheilstraße 21, 80333 München',
+    website: null,
+    opening_hours_raw: null,
+  },
 ];
 
 // Selbe Grundlage wie sources/bars (OSM/Overpass, siehe core/venues.ts) —
