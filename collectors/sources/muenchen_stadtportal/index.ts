@@ -196,7 +196,16 @@ export async function run() {
 
         for (const item of items) {
           if (item.startDate < isoDate(today)) continue;
-          const idSource = item.ticketUrl ?? item.title;
+          // Bewusst NICHT ticketUrl als Identität: dieselbe Aufführung wird
+          // auf muenchen.de teils mit mehreren verschiedenen Ticket-Links
+          // gezeigt (z.B. je Preiskategorie, oder mit einem pro Abruf
+          // wechselnden Tracking-Parameter in der URL) — mit ticketUrl als
+          // Hash-Grundlage erzeugte das bei jedem Collector-Lauf eine NEUE
+          // source_id für dieselbe reale Veranstaltung, statt sie zu
+          // aktualisieren (per Nutzer-Screenshot, 2026-08-09: "Dionysos" kam
+          // an nur 3 Tagen auf 25 einzelne Zeilen). Titel+Ort ist die
+          // stabile, tatsächliche Identität einer Aufführung.
+          const idSource = `${item.title}::${item.locationName ?? ''}`;
           const coords = await getCoordinates(supabase, item.locationName ?? 'München', null, 'München');
           let imageUrl: string | null = null;
           const ticketHost = item.ticketUrl ? (() => { try { return new URL(item.ticketUrl!).hostname; } catch { return null; } })() : null;
@@ -217,7 +226,15 @@ export async function run() {
             address: null,
             city: 'München',
             organizer: null,
-            source_url: item.ticketUrl ?? BASE_URL,
+            // Kein Fallback auf BASE_URL mehr: das ist nur die generische
+            // Kategorie-Listing-Seite, kein Bezug zu diesem konkreten Event
+            // (per Nutzer-Meldung, 2026-08-09: "Jetzt geht's rund –
+            // Kreisläufe statt Abfälle" landete dadurch auf einer
+            // unrelated Konzert-Übersichtsseite). Events ohne eigenen
+            // Ticket-Link (z.B. freier Eintritt) bekommen stattdessen gar
+            // keinen source_url — die App blendet den Link dann aus, statt
+            // auf etwas Irreführendes zu verweisen.
+            source_url: item.ticketUrl ?? null,
             image_url: imageUrl,
             price_info: null,
             sold_out: null,
