@@ -15,6 +15,14 @@ async function main() {
   }
 
   console.log('Duplikat-Erkennung abgeschlossen.');
+
+  // Kein Duplikat-Merge, sondern reines Bild-Teilen zwischen echten,
+  // unterschiedlichen Terminen derselben Produktion (siehe Migration 0041)
+  // — z.B. eventim liefert für viele Theater-Einzeltermine kein Bild,
+  // während eine andere Quelle für dieselbe Produktion eins hat.
+  const { error: imageShareError } = await supabase.rpc('share_images_across_same_production');
+  if (imageShareError) console.error('Fehler beim Bild-Teilen:', imageShareError);
+  else console.log('Bild-Teilen (gleiche Produktion) abgeschlossen.');
 }
 
 main();
