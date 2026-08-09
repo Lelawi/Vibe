@@ -71,6 +71,24 @@ function featuredImage(post: WpPost): string | null {
   return post._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null;
 }
 
+// _embed=wp:featuredmedia liefert für viele Posts kein Bild, obwohl
+// post.featured_media eine gültige ID referenziert — der eigene
+// /wp-json/wp/v2/media/<id>-Endpunkt antwortet mit 401 (per Direktabruf
+// verifiziert, 2026-08-09), wannda.de hat den Medien-Endpunkt also serverseitig
+// eingeschränkt, unabhängig von der REST-API-Nutzung durch dieses Projekt.
+// Das Bild steckt aber weiterhin direkt im HTML der ohnehin schon
+// abgerufenen Detailseite (Standard-WordPress-Klasse "wp-post-image" am
+// Beitragsbild) — zuverlässiger Fallback ohne zusätzlichen Request.
+function detailPageImage($: cheerio.CheerioAPI, baseUrl: string): string | null {
+  const src = $('img.wp-post-image').first().attr('src');
+  if (!src) return null;
+  try {
+    return new URL(src, baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function run() {
   console.log('[wannda] starting');
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -134,7 +152,7 @@ export async function run() {
         city: 'München',
         organizer: 'Wannda',
         source_url: post.link,
-        image_url: featuredImage(post),
+        image_url: featuredImage(post) ?? detailPageImage($, post.link),
         price_info: null,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
