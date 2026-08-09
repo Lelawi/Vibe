@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
@@ -14,12 +13,25 @@ import { buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 const MILLA_FEED_URL = 'https://milla-club.de/category/event/feed/';
 const MILLA_HOMEPAGE_URL = 'https://milla-club.de/';
 const MILLA_ADDRESS = 'Holzstraße 28, 80469 München';
+// Origin/Connection/Sec-Fetch-Site ergänzt (per Nutzer-Meldung, 2026-08-09:
+// beide Endpunkte scheiterten konsequent mit 403, nicht mehr nur
+// "sporadisch"). Lokal/vom Firmennetz aus per Direktabruf nicht
+// reproduzierbar (beide, node-fetch und natives fetch, liefern dort 200) —
+// spricht für denselben IP-Reputationsblock gegen GitHub-Actions-Cloud-IPs
+// wie bei den in-muenchen.de-Quellen (siehe collect-all.ts-Kommentar), nicht
+// für ein grundsätzliches Header-/Fetch-Client-Problem. Trotzdem dieselben
+// zusätzlichen Header ergänzt, die bei eventim (siehe sources/eventim/
+// index.ts) nachweislich einen ähnlichen WAF-Block behoben haben — auf
+// eigenes Risiko ohne hier reproduzierbaren Vorher/Nachher-Vergleich.
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
   Referer: 'https://milla-club.de/',
   'Cache-Control': 'no-cache',
+  Origin: 'https://milla-club.de',
+  Connection: 'keep-alive',
+  'Sec-Fetch-Site': 'same-origin',
 };
 
 type HomepageEvent = {
