@@ -5,13 +5,28 @@ kein separater OpenAI-API-Schlüssel und kein KI-Lauf in GitHub Actions nötig.
 Supabase bleibt die persistente Quelle für Meldungen, Analysezustand, Evidenz
 und Entscheidungen.
 
+> **Update 2026-08-08/09:** Migration `0037_scoped_anon_manual_review_access.sql`
+> hat der Routine (die seither nur noch den öffentlichen anon-Key nutzt)
+> versehentlich die Sicht auf `pending`/`failed`-Zeilen entzogen — sie darf
+> seither ausschließlich `analysis_status = 'manual_review'` lesen. Das brach
+> Schritt 3 unten (die Routine konnte pending-Feedback gar nicht mehr sehen,
+> um es überhaupt zu kategorisieren) und blieb bis 2026-08-09 unbemerkt, weil
+> die Routine dadurch täglich fälschlich "nichts zu prüfen" meldete, statt
+> einen Fehler zu zeigen (von der Routine selbst entdeckt und gemeldet).
+> Behoben durch `.github/workflows/promote-feedback.yml` (service_role,
+> läuft vor der täglichen Routine): `npm run routine-feedback-inbox` setzt
+> `analysis_status` für offene Zeilen jetzt vorab auf `manual_review` —
+> kategorisiert dabei selbst nichts inhaltlich (kein LLM-Aufruf, keine
+> bezahlte API), das bleibt weiterhin Aufgabe der Routine in Schritt 3/4.
+
 ## Zielablauf
 
 1. Die App speichert Freitext in `app_feedback`.
 2. Ein optionaler Screenshot wird im privaten Bucket
    `feedback-screenshots` unter `<feedback-id>/screenshot.jpg` gespeichert.
 3. Die tägliche Routine **Vibe - Review app feedback** liest alle Einträge
-   mit `analysis_status` `pending` oder `failed`.
+   mit `analysis_status = 'manual_review'` (von `promote-feedback.yml`
+   vorab aus `pending`/`failed` befördert, siehe Update-Hinweis oben).
 4. Sie betrachtet einen privaten Screenshot tatsächlich als Bild,
    kategorisiert den Hinweis und prüft genannte Quellen oder den Code.
 5. Strukturierte Location-Meldungen werden zuerst mit

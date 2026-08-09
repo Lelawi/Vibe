@@ -1,0 +1,35 @@
+name: Promote Feedback to Manual Review
+
+on:
+  schedule:
+    # Vor der taeglichen "Vibe - Review app feedback"-Cloud-Routine (0 8 * * *,
+    # siehe RemoteTrigger-Konfiguration) -- die Routine (nur anon-Key) sieht
+    # seit Migration 0037 ausschliesslich analysis_status='manual_review'.
+    # Ohne diesen vorgeschalteten Schritt blieb neues Feedback unsichtbar auf
+    # 'pending' stehen (per Routine-eigenem Befund entdeckt, 2026-08-09,
+    # siehe collectors/scripts/routine-feedback-inbox.ts-Kommentar). Minute
+    # bewusst nicht :00 -- siehe precheck-reports.yml/google-ratings.yml.
+    - cron: '40 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: collectors
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      # Setzt analysis_status auf manual_review fuer neues app_feedback/
+      # event_reports/missing_items, damit die anon-Cloud-Routine sie
+      # ueberhaupt sehen und kategorisieren kann -- kategorisiert selbst
+      # nichts inhaltlich (siehe Skript-Kommentar), das bleibt bewusst
+      # Aufgabe der Routine (kein LLM-Aufruf hier, keine bezahlte API).
+      - run: npm run routine-feedback-inbox

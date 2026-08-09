@@ -6,6 +6,38 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../../app/.env') });
 
+// Bis 2026-08-08 las die taegliche Cloud-Routine "Vibe - Review app
+// feedback" pending/failed-Zeilen selbst direkt per service_role und
+// kategorisierte sie in einem Schritt (siehe docs/automated-feedback-
+// review.md, Punkt 3-4: "Ein optionaler Screenshot..."/"kategorisiert den
+// Hinweis"). Migration 0037 hat der Routine (jetzt nur noch anon-Key)
+// versehentlich genau diese Sicht entzogen -- sie darf seither NUR NOCH
+// Zeilen mit analysis_status='manual_review' sehen, aber nichts befoerdert
+// pending/failed-Zeilen mehr dorthin (anders als bei venue_closure_reports/
+// venue_reports, wo genau das precheck-structured-reports.ts uebernimmt).
+// Ergebnis: seit 0037 eingehendes Feedback blieb unsichtbar auf 'pending'
+// stehen, die Routine meldete taeglich "0 zu pruefen" (per Routine-eigenem
+// Befund entdeckt, 2026-08-09).
+//
+// Reine, bewusst nicht inhaltliche Weiterleitung statt eines Versuchs,
+// Freitext hier ohne LLM zu kategorisieren (anders als der deterministische
+// Google-Places-Abgleich bei Schliessungsmeldungen gibt es fuer "ist das
+// ein Bugreport oder Lob" keine programmatische Pruefung) -- setzt nur
+// analysis_status auf 'manual_review', damit die Cloud-Routine wieder wie
+// urspruenglich vorgesehen selbst kategorisieren/entscheiden kann.
+async function promoteToManualReview(
+  supabase: ReturnType<typeof createClient>,
+  table: string,
+  ids: string[]
+) {
+  if (ids.length === 0) return;
+  const { error } = await supabase
+    .from(table)
+    .update({ analysis_status: 'manual_review', analyzed_at: new Date().toISOString() })
+    .in('id', ids);
+  if (error) throw error;
+}
+
 export async function run() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -38,6 +70,14 @@ export async function run() {
   for (const result of [feedbackResult, eventReportsResult, missingResult]) {
     if (result.error) throw result.error;
   }
+
+  // Erst befoerdern, dann den Payload fuer die Routine zusammenstellen --
+  // die Routine selbst filtert ohnehin nur noch nach manual_review, ohne
+  // diesen Schritt waeren die Zeilen fuer sie unsichtbar geblieben (siehe
+  // Kommentar an promoteToManualReview oben).
+  await promoteToManualReview(supabase, 'app_feedback', (feedbackResult.data ?? []).map((r) => r.id));
+  await promoteToManualReview(supabase, 'event_reports', (eventReportsResult.data ?? []).map((r) => r.id));
+  await promoteToManualReview(supabase, 'missing_items', (missingResult.data ?? []).map((r) => r.id));
 
   const eventIds = [...new Set((eventReportsResult.data ?? []).map((row) => row.event_id))];
   const { data: events, error: eventsError } = eventIds.length
