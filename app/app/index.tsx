@@ -15,6 +15,7 @@ import {
   AppState,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import BottomTabBar from '../components/BottomTabBar';
@@ -130,6 +131,22 @@ function formatEndDateSuffix(startDate: string, endDate: string | null): string 
   if (!endDate || endDate === startDate) return '';
   const [, month, day] = endDate.split('-');
   return ` – bis ${day}.${month}.`;
+}
+
+// Ein Mehrtages-Event (z.B. "Fr 07.08. – bis 09.08.") bleibt dank der
+// end_date-Klausel in der Hauptabfrage auch nach seinem eigentlichen
+// Starttag sichtbar (siehe CLAUDE.md/Architekturhinweis), solange es noch
+// läuft. Als group[0] einer Terminserie (item.start_date sortiert nach
+// Datum aufsteigend) kann sein Starttag dadurch bereits in der
+// Vergangenheit liegen, während das Event selbst noch heute stattfindet —
+// "Nächster Termin: Fr. 07. Aug." wäre dann irreführend, da der 7. schon
+// vorbei ist (per Nutzer-Screenshot gemeldet, 2026-08-09: heute ist der 9.,
+// die Karte zeigte trotzdem "Nächster Termin: Fr. 07. Aug." für ein bis
+// zum 9. laufendes Open-Air). Betrifft nur die Beschriftung, nicht die
+// Sortierung selbst — ein noch laufendes Event soll weiterhin vor einem
+// erst künftigen Termin der Serie stehen, da es JETZT relevanter ist.
+function isOngoingMultiDay(startDate: string, endDate: string | null, todayStr: string): boolean {
+  return Boolean(endDate) && startDate < todayStr && endDate! >= todayStr;
 }
 
 // Mehrwöchige Ausstellungen und andere Dauerläufer bleiben auffindbar,
@@ -350,6 +367,10 @@ registerStrings({
   'events.reminderModalTitle': { de: 'Erinnerung bei Favoriten', en: 'Reminder for favorites' },
   'events.close': { de: 'Schließen', en: 'Close' },
   'events.dates': { de: 'Termine', en: 'dates' },
+  'events.nextDate': { de: 'Nächster Termin: ', en: 'Next date: ' },
+  // Für ein Mehrtages-Event, das gerade läuft (Starttag schon vergangen,
+  // Endtag noch nicht) — siehe isOngoingMultiDay-Kommentar weiter oben.
+  'events.ongoingUntil': { de: 'Läuft noch: ', en: 'Ongoing: ' },
   'events.moreDatesOnSource': { de: 'weitere Termine (auf der Quellseite sichtbar)', en: 'more dates (visible on the source page)' },
   'events.reminderModalSubtitle': { de: 'Wann sollen wir dich an ein favorisiertes Event erinnern?', en: 'When should we remind you about a favorited event?' },
 });
@@ -444,15 +465,58 @@ export default function EventListScreen() {
   // Filter sind bewusst reiner useState statt AsyncStorage — bleiben aber auf
   // dem Handy trotzdem "erhalten", weil iOS/Android die installierte PWA beim
   // Schließen meist nur einschläfern statt den Tab wirklich zu beenden, der
-  // React-State also einfach weiterlebt. Setzt Filter deshalb explizit beim
-  // Wiederaufwecken aus dem Hintergrund zurück, statt sich auf einen echten
-  // Neustart zu verlassen, den es auf dem Handy in der Praxis selten gibt
-  // (per Nutzer-Feedback erwartet).
+  // React-State also einfach weiterlebt.
+  //
+  // Frühere Version setzte Filter bei JEDEM erkannten Wiederaufwecken aus dem
+  // Hintergrund zurück — das ging aber zweifach daneben: (a) ein kurzer
+  // App-Wechsel (z.B. schnell eine Nachricht beantworten) löschte Filter, die
+  // der Nutzer gerade erst gesetzt hatte, obwohl die App faktisch die ganze
+  // Zeit "offen" blieb, und (b) die zugrundeliegenden Browser-Signale
+  // (AppState/pageshow) feuern auf iOS Safari nicht zuverlässig genug, um
+  // sich überhaupt darauf zu verlassen (per Nutzer-Feedback wiederholt: nach
+  // echtem Wegwischen+Neustart blieben alte Filter trotzdem bestehen).
+  //
+  // Robusterer Ansatz statt eines weiteren Lifecycle-Events: die
+  // tatsächliche Pause messen. Beim Verlassen wird ein Zeitstempel in
+  // AsyncStorage geschrieben (übersteht auch einen echten Prozess-Neustart,
+  // anders als eine reine In-Memory-Ref). Beim Zurückkehren wird nur dann
+  // zurückgesetzt, wenn die Pause den Schwellwert überschreitet — kurze
+  // Unterbrechungen ("war gerade noch offen") bleiben unangetastet, eine
+  // lange Pause ("wirklich geschlossen") setzt zurück. Funktioniert auch,
+  // wenn eines der beiden Signale (AppState/pageshow) mal nicht feuert: das
+  // jeweils andere holt die Entscheidung beim nächsten Mal nach, statt dass
+  // die Korrektheit von einem einzelnen zuverlässigen Event abhängt.
+  const BACKGROUNDED_AT_KEY = 'vibe:backgrounded_at';
+  const RESET_AFTER_MS = 20 * 60 * 1000; // 20 Minuten
+
+  async function markBackgrounded() {
+    try {
+      await AsyncStorage.setItem(BACKGROUNDED_AT_KEY, String(Date.now()));
+    } catch {
+      // AsyncStorage-Fehler hier zu ignorieren ist unkritisch — im
+      // schlimmsten Fall bleiben Filter beim nächsten Rückkehren einfach
+      // erhalten, statt zurückgesetzt zu werden.
+    }
+  }
+
+  async function resetFiltersIfWasAwayLongEnough() {
+    try {
+      const raw = await AsyncStorage.getItem(BACKGROUNDED_AT_KEY);
+      if (!raw) return;
+      const awayMs = Date.now() - Number(raw);
+      if (Number.isFinite(awayMs) && awayMs >= RESET_AFTER_MS) resetAllFilters();
+    } catch {
+      // Im Zweifel nichts zurücksetzen — siehe markBackgrounded().
+    }
+  }
+
   const appState = useRef(AppState.currentState);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
-      if (appState.current.match(/inactive|background/) && nextState === 'active') {
-        resetAllFilters();
+      if (appState.current === 'active' && nextState.match(/inactive|background/)) {
+        markBackgrounded();
+      } else if (appState.current.match(/inactive|background/) && nextState === 'active') {
+        resetFiltersIfWasAwayLongEnough();
       }
       appState.current = nextState;
     });
@@ -463,20 +527,35 @@ export default function EventListScreen() {
   // (siehe node_modules/react-native-web/dist/exports/AppState) — das feuert
   // auf iOS Safari nicht in jedem Fall zuverlässig, wenn eine als "Zum Home-
   // Bildschirm hinzufügen" installierte PWA nach dem Wegwischen im App-
-  // Switcher aus dem eingefrorenen Zustand zurückkehrt (per Nutzer-Feedback:
-  // Filter von "vor längerem" blieben trotz Wegwischen+Neustart erhalten).
-  // Das Standard-Browser-Event genau für diesen Fall ("Seite wurde aus dem
-  // Freeze-/BFCache-Zustand wiederhergestellt, kein echter Neuladen") ist
-  // pageshow mit event.persisted === true — zusätzlich zur AppState-Lösung
-  // oben, nicht als Ersatz, da unklar ist, welcher Mechanismus auf welcher
+  // Switcher aus dem eingefrorenen Zustand zurückkehrt. pageshow/pagehide
+  // sind die dafür vorgesehenen Standard-Browser-Events ("Seite wurde aus
+  // dem Freeze-/BFCache-Zustand wiederhergestellt bzw. dorthin überführt,
+  // kein echter Neu-/Abladevorgang") — zusätzlich zur AppState-Lösung oben,
+  // nicht als Ersatz, da unklar ist, welcher Mechanismus auf welcher
   // iOS-Version zuverlässig feuert.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const handlePageHide = () => { markBackgrounded(); };
     const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) resetAllFilters();
+      if (event.persisted) resetFiltersIfWasAwayLongEnough();
     };
+    window.addEventListener('pagehide', handlePageHide);
     window.addEventListener('pageshow', handlePageShow);
-    return () => window.removeEventListener('pageshow', handlePageShow);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, []);
+
+  // Deckt den Fall eines ECHTEN Kaltstarts ab (Prozess wirklich beendet,
+  // nicht nur eingefroren) — dabei feuert innerhalb dieses frischen JS-Laufs
+  // naturgemäß kein "Wechsel"-Event (es gibt ja keinen vorherigen Zustand,
+  // von dem aus zu wechseln wäre), obwohl genau das der Fall ist, den der
+  // Nutzer mit "wirklich geschlossen" meint. Einmalig beim allerersten
+  // Mount ebenfalls prüfen.
+  useEffect(() => {
+    resetFiltersIfWasAwayLongEnough();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Favoriten und explizit gespeicherte Suchen werden laufend synchronisiert.
@@ -1539,9 +1618,10 @@ export default function EventListScreen() {
               {soldOut && <Text style={styles.soldOutBadge}>{t('events.soldOut')}</Text>}
             </View>
           );
+          const itemIsOngoing = isOngoingMultiDay(item.start_date, item.end_date, toLocalDateStr(new Date()));
           const metaText = (
             <Text style={styles.meta}>
-              {hasMore ? 'Nächster Termin: ' : ''}
+              {hasMore ? (itemIsOngoing ? t('events.ongoingUntil') : t('events.nextDate')) : ''}
               {formatDate(item.start_date, item.start_time)}
               {formatEndDateSuffix(item.start_date, item.end_date)}
               {item.location_name ? ` · ${item.location_name}` : ''}
