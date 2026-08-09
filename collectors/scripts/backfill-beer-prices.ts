@@ -26,17 +26,40 @@ async function main() {
   if (!supabaseUrl || !supabaseKey) { console.log('[backfill-beer-prices] missing supabase envs — skipping'); return; }
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const { data: venues, error } = await supabase
+  // Supabase deckelt jede Abfrage hart bei 1000 Zeilen, unabhängig vom
+  // angeforderten .limit() (gleiche Falle wie app/lib/fetchAllVenues.ts) —
+  // eine einfache .select() hätte bei ~2200 Treffern über die Hälfte
+  // stillschweigend verschluckt (per Live-Lauf beobachtet: 1000 statt der
+  // tatsächlich erwarteten ~2200 Venues). Erst zählen, dann seitenweise mit
+  // .range() holen, id als Tiebreaker für eine deterministische Reihenfolge.
+  const PAGE_SIZE = 1000;
+  const { count, error: countError } = await supabase
     .from('venues')
-    .select('id,name,name_override,website,lunch_menu_url,dinner_menu_url')
+    .select('id', { count: 'exact', head: true })
     .is('beer_price_eur', null)
     .not('website', 'is', null);
-  if (error) { console.error('[backfill-beer-prices] fetch failed', error); return; }
-  console.log(`[backfill-beer-prices] ${venues?.length ?? 0} venues mit Website, aber ohne Bierpreis`);
+  if (countError) { console.error('[backfill-beer-prices] count failed', countError); return; }
+  const pageCount = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, i) =>
+      supabase
+        .from('venues')
+        .select('id,name,name_override,website,lunch_menu_url,dinner_menu_url')
+        .is('beer_price_eur', null)
+        .not('website', 'is', null)
+        .order('id', { ascending: true })
+        .range(i * PAGE_SIZE, i * PAGE_SIZE + PAGE_SIZE - 1)
+    )
+  );
+  for (const p of pages) {
+    if (p.error) console.error('[backfill-beer-prices] page fetch failed', p.error);
+  }
+  const venues = pages.flatMap((p) => p.data ?? []);
+  console.log(`[backfill-beer-prices] ${venues.length} venues mit Website, aber ohne Bierpreis (${count} laut Zählung)`);
 
   let found = 0;
   let checked = 0;
-  for (const venue of venues ?? []) {
+  for (const venue of venues) {
     const label = venue.name_override ?? venue.name;
     checked++;
     try {
@@ -62,10 +85,10 @@ async function main() {
     } catch (err) {
       console.warn(`[backfill-beer-prices] error for ${label}`, err);
     }
-    if (checked % 50 === 0) console.log(`[backfill-beer-prices] progress: ${checked}/${venues?.length ?? 0}, ${found} gefunden`);
+    if (checked % 50 === 0) console.log(`[backfill-beer-prices] progress: ${checked}/${venues.length}, ${found} gefunden`);
     await new Promise((r) => setTimeout(r, 400));
   }
-  console.log(`[backfill-beer-prices] done: ${found}/${venues?.length ?? 0} neue Bierpreise`);
+  console.log(`[backfill-beer-prices] done: ${found}/${venues.length} neue Bierpreise`);
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
