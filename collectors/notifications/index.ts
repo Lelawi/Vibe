@@ -11,6 +11,16 @@ import { matchesSavedSearch, type SavedSearchCriteria } from '../core/savedSearc
 // entspricht dem alten fest codierten Verhalten (3h vorher).
 const DEFAULT_OFFSETS_MINUTES = [180];
 
+// Die PWA liegt nicht auf der Domain-Wurzel, sondern unter /Vibe (GitHub
+// Pages Project-Site, siehe experiments.baseUrl in app/app.json und die
+// Service-Worker-Registrierung in app/app/_layout.tsx). Ein root-relativer
+// Klick-Link wie "/event/123" (ohne dieses Präfix) resolved im Service
+// Worker gegen die Domain-Wurzel, nicht gegen den App-Unterordner, und
+// landet auf GitHub Pages' generischer 404-Seite statt in der App (per
+// Nutzer-Feedback entdeckt, 2026-08-11). Alle hier gebauten Notification-
+// URLs müssen deshalb mit diesem Präfix beginnen.
+const APP_BASE_PATH = '/Vibe';
+
 function berlinDate(date = new Date()): string {
   const parts = new Intl.DateTimeFormat('de-DE', {
     timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -128,7 +138,7 @@ async function sendFavoriteReminders(supabase: ReturnType<typeof createClient>) 
     if (dueOffset === undefined) continue; // noch nichts fällig, nächster Lauf prüft erneut
 
     const { title, body } = reminderCopy(dueOffset, event);
-    const ok = await sendPush(supabase, sub, { title, body, url: `/event/${event.id}` });
+    const ok = await sendPush(supabase, sub, { title, body, url: `${APP_BASE_PATH}/event/${event.id}` });
 
     if (ok) {
       sent += 1;
@@ -203,7 +213,7 @@ async function sendFilterMatches(supabase: ReturnType<typeof createClient>) {
       const ok = await sendPush(supabase, sub, {
         title,
         body,
-        url: matches.length === 1 ? `/event/${first.id}` : '/',
+        url: matches.length === 1 ? `${APP_BASE_PATH}/event/${first.id}` : `${APP_BASE_PATH}/`,
       });
       if (ok) sent += 1;
     }
@@ -256,7 +266,7 @@ async function sendSavedSearchMatches(supabase: ReturnType<typeof createClient>)
         body: matches.length === 1
           ? `${first.title}${first.location_name ? ` · ${first.location_name}` : ''}`
           : matches.slice(0, 3).map((event: any) => event.title).join(', '),
-        url: matches.length === 1 ? `/event/${first.id}` : '/',
+        url: matches.length === 1 ? `${APP_BASE_PATH}/event/${first.id}` : `${APP_BASE_PATH}/`,
       });
       if (ok) sent += 1;
     }
@@ -290,7 +300,7 @@ async function sendArtistMatches(supabase: ReturnType<typeof createClient>) {
         const ok = await sendPush(supabase, follow.push_subscriptions, {
           title: `Neues Event von ${name}`,
           body: `${first.title}${first.location_name ? ` · ${first.location_name}` : ''}`,
-          url: `/event/${first.id}`,
+          url: `${APP_BASE_PATH}/event/${first.id}`,
         });
         if (ok) sent += 1;
       }
@@ -328,7 +338,7 @@ async function sendFavoriteChanges(supabase: ReturnType<typeof createClient>) {
       const ok = await sendPush(supabase, favorite.push_subscriptions, {
         title: cancelled ? `Nicht mehr verfügbar: ${change.events?.title}` : `Event aktualisiert: ${change.events?.title}`,
         body: cancelled ? 'Der Anbieter meldet dieses Event als ausverkauft oder nicht verfügbar.' : `Geändert: ${fields}`,
-        url: `/event/${change.event_id}`,
+        url: `${APP_BASE_PATH}/event/${change.event_id}`,
       });
       if (ok) sent += 1;
     }

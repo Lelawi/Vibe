@@ -23,10 +23,15 @@ self.addEventListener('activate', (event) => {
 });
 
 // Push-Payload kommt als JSON { title, body, url } vom Notifications-Sender
-// (collectors/notifications). url wird beim Klick geöffnet bzw. ein bereits
-// offener Tab dorthin fokussiert, statt immer einen neuen Tab aufzumachen.
+// (collectors/notifications), url bereits mit dem GitHub-Pages-Unterordner
+// (/Vibe) präfixiert. url wird beim Klick geöffnet bzw. ein bereits offener
+// Tab dorthin fokussiert, statt immer einen neuen Tab aufzumachen. Der
+// Default hier (falls ein Payload doch mal ohne url ankommt) braucht
+// denselben Präfix, sonst landet auch dieser Fallback root-relativ auf der
+// GitHub-Pages-404-Seite statt in der App (siehe collectors/notifications/
+// index.ts, APP_BASE_PATH).
 self.addEventListener('push', (event) => {
-  let payload = { title: 'Vibe', body: 'Es gibt etwas Neues für dich.', url: '/' };
+  let payload = { title: 'Vibe', body: 'Es gibt etwas Neues für dich.', url: '/Vibe/' };
   try {
     if (event.data) payload = { ...payload, ...event.data.json() };
   } catch (err) {
@@ -44,7 +49,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || '/';
+  const targetUrl = event.notification.data?.url || '/Vibe/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
