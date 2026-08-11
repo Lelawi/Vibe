@@ -1128,7 +1128,20 @@ out body;
         address: v.address ?? cached?.address ?? reverseGeocodedByOsmId.get(v.osm_id) ?? null,
         image_url: fetched?.image ?? cached?.image ?? null,
         opening_hours_override: fetched?.hours ?? cached?.hours ?? null,
-        lunch_available: fetched?.lunchAvailable ?? cached?.lunchAvailable ?? false,
+        // Bewusst || statt ?? (anders als bei den URL-/Preisfeldern
+        // darunter): fetched.lunchAvailable ist ein echtes false, kein
+        // null/undefined, sobald extractLunchSignal auf der (immer nur
+        // einzeln gescrapten) Startseite nichts findet — ein reines
+        // Nullish-Coalescing hätte einen einmal bestätigten Treffer bei
+        // jedem künftigen Re-Fetch wieder verworfen, sobald die Karte selbst
+        // nicht (mehr) auf der Startseite steht, z.B. weil sie nur auf einer
+        // Unterseite verlinkt ist (per Nutzer-Feedback entdeckt, 2026-08-11:
+        // Café Westends Mittagskarte steht nur auf /speisen, nie auf der
+        // gescrapten Root-URL). Kein Signal zu finden ist genauso wenig ein
+        // Beleg für "gibt es nicht mehr" wie anderswo im Projekt (siehe
+        // Google-Places-Closure-Heuristik) — einmal bestätigt bleibt sticky
+        // true, bis jemand es manuell zurücksetzt.
+        lunch_available: fetched?.lunchAvailable || cached?.lunchAvailable || false,
         lunch_menu_url: fetched?.lunchMenuUrl ?? cached?.lunchMenuUrl ?? null,
         dinner_menu_url: fetched?.dinnerMenuUrl ?? cached?.dinnerMenuUrl ?? null,
         beer_price_eur: fetched?.beerPriceEur ?? cached?.beerPriceEur ?? null,
