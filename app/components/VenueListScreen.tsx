@@ -886,6 +886,27 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
               <Text style={[styles.filterButtonText, onlyOpen && styles.filterChipTextActive]}>{t('venues.onlyOpen')}</Text>
             </TouchableOpacity>
 
+            {/* Direkt nach "Geöffnet" statt hinter Favoriten/Mittagskarte —
+                per Nutzer-Feedback der mit Abstand meistgeklickte Button
+                nach dem Öffnen-Filter, verdient also den zweiten Platz statt
+                ans Ende der Zeile verbannt zu werden (2026-08-11). */}
+            {Platform.OS === 'web' && (
+              <TouchableOpacity
+                style={[styles.filterButton, userLocation && styles.filterChipActive]}
+                onPress={toggleNearby}
+                disabled={locationStatus === 'loading'}
+              >
+                {locationStatus === 'loading' ? (
+                  <ActivityIndicator size="small" color="#999" />
+                ) : (
+                  <Ionicons name="location-outline" size={16} color={userLocation ? '#000' : '#999'} />
+                )}
+                <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
+                  {locationStatus === 'loading' ? t('venues.loading') : t('venues.nearby')}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {type === 'restaurant' && (
               <TouchableOpacity
                 style={[styles.filterButton, lunchOnly && styles.filterChipActive]}
@@ -909,23 +930,6 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
                 {t('venues.favorites')}
               </Text>
             </TouchableOpacity>
-
-            {Platform.OS === 'web' && (
-              <TouchableOpacity
-                style={[styles.filterButton, userLocation && styles.filterChipActive]}
-                onPress={toggleNearby}
-                disabled={locationStatus === 'loading'}
-              >
-                {locationStatus === 'loading' ? (
-                  <ActivityIndicator size="small" color="#999" />
-                ) : (
-                  <Ionicons name="location-outline" size={16} color={userLocation ? '#000' : '#999'} />
-                )}
-                <Text style={[styles.filterButtonText, userLocation && styles.filterChipTextActive]}>
-                  {locationStatus === 'loading' ? t('venues.loading') : t('venues.nearby')}
-                </Text>
-              </TouchableOpacity>
-            )}
 
             {/* Kein eigener Bildkarten/Kompakt-Umschalter mehr hier — steuert
                 jetzt zentral die "Ansicht der Eventliste"-Einstellung im
