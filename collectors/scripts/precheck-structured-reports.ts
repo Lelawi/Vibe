@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { fetchDetails, looksLikeSameVenue, resolvePlaceCandidateWithFallback, type RatingVenue } from '../sources/google-ratings/index.js';
 import { probePublicUrl, type UrlProbe } from '../core/urlProbe.js';
+import { probeVenueOnOsm } from '../core/osmProbe.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../../app/.env') });
@@ -87,12 +88,21 @@ async function precheckClosures(supabase: SupabaseClient, apiKey: string | undef
       const matched = candidate && (venue.google_place_id || looksLikeSameVenue(venue, candidate));
       const details = matched ? await fetchDetails(apiKey, candidate.id) : null;
       const websiteProbe = venue.website ? await probePublicUrl(venue.website) : null;
+      // Zweites, von Google unabhaengiges Signal nur einholen, wenn Google
+      // schon "kein Treffer" sagt und eine hinterlegte Website (falls
+      // vorhanden) ebenfalls nicht mehr erreichbar ist — sonst unnoetiger
+      // Nominatim-Traffic fuer Faelle, die ohnehin schon anders entschieden
+      // werden.
+      const noGoogleMatch = !matched;
+      const websiteGoneOrAbsent = !venue.website || websiteProbe?.outcome === 'gone';
+      const osmProbe = noGoogleMatch && websiteGoneOrAbsent ? await probeVenueOnOsm(venue.name, venue.address) : null;
       const evidence = [{
         provider: 'google_places',
         matched: Boolean(matched),
         place_id: matched ? candidate.id : null,
         business_status: details?.businessStatus ?? null,
-      }, ...(websiteProbe ? [{ provider: 'official_website', ...websiteProbe }] : [])];
+      }, ...(websiteProbe ? [{ provider: 'official_website', ...websiteProbe }] : []),
+        ...(osmProbe ? [{ provider: 'osm_nominatim', ...osmProbe }] : [])];
 
       if (matched) {
         await supabase.from('venues').update({
@@ -114,6 +124,25 @@ async function precheckClosures(supabase: SupabaseClient, apiKey: string | undef
           analysis_evidence: evidence,
         });
         await audit(supabase, 'google_places', 'closure_verification', 'venue_closure_reports', report.venue_id, 'confirmed', evidence);
+      } else if (osmProbe?.outcome === 'not_found') {
+        // Heuristik: zwei unabhaengige Quellen (Google Places, OSM/Nominatim)
+        // finden die Location nicht UND eine hinterlegte Website ist tot oder
+        // fehlt. Anders als der 2026 abgeschaffte "3x Google-Nichttreffer"-
+        // Mechanismus (0033_weekly_manual_review.sql) ist das keine Wieder-
+        // holung derselben Quelle, sondern echte unabhaengige Evidenz — aber
+        // immer noch kein Vollbeweis (kleine Lokale fehlen auch bei OSM oft
+        // schon im Normalbetrieb), daher bewusst niedrigere Konfidenz als der
+        // eindeutige Google-CLOSED_PERMANENTLY-Fall oben.
+        await updateAnalysis(supabase, 'venue_closure_reports', 'venue_id', report.venue_id, {
+          status: 'confirmed',
+          review_note: `Automatisch bestaetigt (Heuristik): weder bei Google Places noch bei OpenStreetMap/Nominatim auffindbar${venue.website ? '; hinterlegte Website nicht mehr erreichbar' : '; keine Website hinterlegt'}.`,
+          analysis_status: 'auto_resolved',
+          analysis_category: 'venue_closure_heuristic',
+          analysis_summary: `Zwei unabhaengige Quellen (Google Places, OpenStreetMap) finden die Location nicht${venue.website ? '; hinterlegte Website ist ebenfalls nicht erreichbar.' : '.'}`,
+          analysis_confidence: 0.75,
+          analysis_evidence: evidence,
+        });
+        await audit(supabase, 'google_places+osm', 'closure_verification_heuristic', 'venue_closure_reports', report.venue_id, 'confirmed_heuristic', evidence);
       } else {
         await updateAnalysis(supabase, 'venue_closure_reports', 'venue_id', report.venue_id, {
           analysis_status: 'manual_review',

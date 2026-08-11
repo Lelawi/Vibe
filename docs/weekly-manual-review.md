@@ -38,7 +38,31 @@ Für jeden Eintrag gibt es drei Möglichkeiten:
 Fehlende Online-Belege sind kein Ablehnungsgrund. Insbesondere bei einem lokal
 abgelesenen Bierpreis kann die manuelle Entscheidung die maßgebliche Quelle
 sein. Ein Google-Nichttreffer beweist ebenfalls keine Schließung; der frühere
-Mechanismus mit drei aufeinanderfolgenden Nichttreffern ist deaktiviert.
+Mechanismus mit drei aufeinanderfolgenden Nichttreffern (derselben Quelle, an
+verschiedenen Tagen) ist deaktiviert.
+
+Seit der Ergänzung um eine zweite, unabhängige Quelle bestätigt
+`precheck-structured-reports.ts` eine Closure-Meldung automatisch (Status
+`confirmed`, `analysis_category: venue_closure_heuristic`, Konfidenz 0.75),
+wenn **alle drei** zutreffen: kein zuordenbarer Google-Places-Eintrag, keine
+oder eine nicht mehr erreichbare hinterlegte Website, und kein
+OSM/Nominatim-Treffer für Name+Adresse. Anders als der abgeschaltete
+3x-Google-Mechanismus sind das zwei unabhängige Quellen statt derselben Quelle
+mehrfach — trotzdem kein Vollbeweis, daher niedrigere Konfidenz als der
+eindeutige Google-`CLOSED_PERMANENTLY`-Fall (Konfidenz 1). Solche Fälle
+tauchen im Wochenreview nicht mehr auf; bei Verdacht auf einen Fehlgriff
+lässt sich der Eintrag jederzeit per `npm run review-closures -- reject
+<venue_id> [Notiz]` zurücksetzen.
+
+Für eigene, bereits sicher entschiedene Fälle (z.B. eine selbst gemeldete
+Location, die man vor Ort als nicht mehr existent kennt) gibt es außerdem
+einen Batch-Weg, der nicht auf den Wochenreview wartet:
+
+```powershell
+cd collectors
+npm run review-closures -- confirm-batch <venue_id1,venue_id2,...> [Notiz]
+npm run review-closures -- reject-batch <venue_id1,venue_id2,...> [Notiz]
+```
 
 ## Statusmodell
 
