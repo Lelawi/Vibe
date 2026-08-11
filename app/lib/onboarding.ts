@@ -9,17 +9,24 @@ type OnboardingState = {
   completed: boolean;
   categories: string[];
   nearby: boolean;
+  // Durabler Konsum-Status statt einer reinen In-Memory-Sperre (siehe
+  // Kommentar an consumeOnboardingSeed unten) — sonst wurde die Onboarding-
+  // Auswahl bei jedem ECHTEN Neuladen der Seite (Modul wird frisch
+  // instanziiert, jede In-Memory-Sperre startet wieder bei false) erneut als
+  // aktiver Filter gesetzt, obwohl categories/nearby längst "konsumiert"
+  // waren. Bei einer lange eingefrorenen/vom OS beendeten Home-Bildschirm-
+  // PWA passiert das öfter, als man denkt — sah für den Nutzer aus wie
+  // "meine Filter von vor Tagen kommen immer wieder" (per Nutzer-Feedback,
+  // 2026-08-11), war aber die einmalige Onboarding-Auswahl, nicht ein
+  // Hintergrund/Aufwach-Problem.
+  seedApplied: boolean;
 };
 
 const STORAGE_KEY = 'vibe:onboarding';
-const DEFAULT_STATE: OnboardingState = { completed: false, categories: [], nearby: false };
+const DEFAULT_STATE: OnboardingState = { completed: false, categories: [], nearby: false, seedApplied: false };
 
 let cache: OnboardingState = DEFAULT_STATE;
 let loaded = false;
-// Verhindert, dass index.tsx die Auswahl bei jedem Mount erneut anwendet
-// (z.B. nach Tab-Wechsel zurück zu Events) — einmal konsumiert, bleiben
-// spätere manuelle Filteränderungen unangetastet.
-let seedConsumed = false;
 const listeners = new Set<(state: OnboardingState) => void>();
 
 async function load(): Promise<OnboardingState> {
@@ -33,6 +40,11 @@ async function load(): Promise<OnboardingState> {
           completed: Boolean(parsed.completed),
           categories: Array.isArray(parsed.categories) ? parsed.categories : [],
           nearby: Boolean(parsed.nearby),
+          // Fehlt bei alten, vor diesem Fix gespeicherten Stände (undefined
+          // -> false) — dadurch wird die Onboarding-Auswahl für bestehende
+          // Nutzer einmalig noch ein letztes Mal angewendet, danach dauerhaft
+          // nicht mehr. Siehe Kommentar an OnboardingState.seedApplied.
+          seedApplied: Boolean(parsed.seedApplied),
         };
       }
     } catch {
@@ -69,18 +81,21 @@ export function useOnboarding() {
     loading: state === null,
     completed: state?.completed ?? false,
     complete: (categories: string[], nearby: boolean) => {
-      persist({ completed: true, categories, nearby });
+      persist({ completed: true, categories, nearby, seedApplied: false });
     },
   };
 }
 
-// Einmaliger Abruf außerhalb von React (index.tsx ruft das in einem
-// useEffect beim Mount auf) — liefert die Auswahl nur beim ersten Aufruf
-// nach Abschluss des Onboardings, danach immer null.
+// Liefert die Onboarding-Auswahl nur EINMAL PRO GERÄT (index.tsx ruft das in
+// einem useEffect beim Mount auf, um sie als Startfilter anzuwenden) — der
+// Konsum-Status ist in AsyncStorage persistiert (seedApplied), nicht nur im
+// RAM, damit ein echtes Neuladen der Seite die Onboarding-Auswahl nicht
+// erneut als aktiven Filter aufdrängt (siehe Kommentar an
+// OnboardingState.seedApplied oben).
 export async function consumeOnboardingSeed(): Promise<{ categories: string[]; nearby: boolean } | null> {
-  if (seedConsumed) return null;
   const s = await load();
-  seedConsumed = true;
+  if (s.seedApplied) return null;
+  await persist({ ...s, seedApplied: true });
   if (!s.completed || (s.categories.length === 0 && !s.nearby)) return null;
   return { categories: s.categories, nearby: s.nearby };
 }
