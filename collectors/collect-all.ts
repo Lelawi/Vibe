@@ -43,6 +43,7 @@ import { run as runMeinestadt } from './sources/meinestadt/index.js';
 import { run as runKindaling } from './sources/kindaling/index.js';
 import { run as runEventbrite } from './sources/eventbrite/index.js';
 import { run as runLieberScholli } from './sources/lieber_scholli/index.js';
+import { run as runRausgegangen } from './sources/rausgegangen/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -55,7 +56,13 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 //   OAuth-gebundene API-Keys, die hier nicht konfiguriert sind. eventbrite
 //   war früher hier gelistet -- die offizielle API stimmt, aber die
 //   öffentlichen Browse-Seiten sind scrapbar, siehe eigener Kommentar unten.
-// - residentadvisor: keine freie API, starker Bot-Schutz (Cloudflare/SPA)
+// - residentadvisor: keine freie API, starker DataDome-Bot-Schutz (JS-
+//   Challenge statt Event-HTML bei jedem einfachen Abruf). robots.txt sperrt
+//   zusätzlich explizit NAMENTLICH ClaudeBot/Claude-Web/anthropic-ai (nicht
+//   nur "alle Bots") — bewusst nicht umgangen, das ist ein expliziter Opt-out
+//   gegen genau diesen Agenten (verifiziert 2026-08). rausgegangen.de deckt
+//   stattdessen einen Teil derselben Techno-/Clubszene ab, siehe eigener
+//   Kommentar unten.
 // - reddit: keine strukturierten Eventdaten, ungeeignet als Quelle
 // - kulturserver, tickets_de, sueddeutsche: keine echte/erreichbare München-Quelle
 // - tz_az: tz.de/muenchen/veranstaltungen antwortet mit 404, keine funktionierende
@@ -145,6 +152,14 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // Geo-Koordinaten inklusive) im Server-HTML, robots.txt erlaubt
 // uneingeschränkt. Kein eigener host-Tag, da ticket.io von keiner anderen
 // Quelle hier genutzt wird. Details siehe sources/lieber_scholli/index.ts.
+// rausgegangen (2026-08): rausgegangen.de, München-Techno-Tag-Seite.
+// robots.txt erlaubt Crawler ausdrücklich (auch ClaudeBot, nur mit
+// Crawl-Delay) — Ersatz für das nicht nutzbare Resident Advisor (siehe
+// residentadvisor-Kommentar oben). Serverseitig gerenderte Event-Kacheln mit
+// stabilen data-testid-Attributen statt JSON-LD (das JSON-LD dort ist nur
+// eine URL-Liste ohne Datum/Preis/Location). Nur die erste, ohne Scroll
+// geladene Seite (~27 Events) ist erreichbar. Details siehe
+// sources/rausgegangen/index.ts.
 // eventbrite (2026-08): eventbrite.de. Die offizielle Event-Search-API ist
 // seit Februar 2020 für Drittanbieter abgeschaltet, robots.txt sperrt aber
 // weder die öffentlichen Kategorie-Browse-Seiten noch liefern die leeres
@@ -177,6 +192,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'kindaling', run: runKindaling, host: 'www.kindaling.de' },
   { name: 'eventbrite', run: runEventbrite, host: 'www.eventbrite.de' },
   { name: 'lieber-scholli', run: runLieberScholli },
+  { name: 'rausgegangen', run: runRausgegangen, host: 'rausgegangen.de' },
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.
