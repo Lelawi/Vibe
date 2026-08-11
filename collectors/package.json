@@ -52,6 +52,7 @@
     "google-ratings": "tsx sources/google-ratings/index.ts",
     "review-closures": "tsx scripts/review-closures.ts",
     "review-weekly": "tsx scripts/weekly-review.ts",
+    "feedback-history": "tsx scripts/feedback-history.ts",
     "routine-feedback-inbox": "tsx scripts/routine-feedback-inbox.ts",
     "duplicate-audit": "tsx scripts/duplicate-audit.ts",
     "backfill-beer-prices": "tsx scripts/backfill-beer-prices.ts",

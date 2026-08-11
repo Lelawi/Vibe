@@ -141,3 +141,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Generated reports containing real (potentially sensitive) user feedback --
+# never commit, see collectors/scripts/feedback-history.ts
+collectors/reports/
