@@ -536,15 +536,43 @@ export default function EventListScreen() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     const handlePageHide = () => { markBackgrounded(); };
-    const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) resetFiltersIfWasAwayLongEnough();
-    };
+    // event.persisted (gesetzt bei Wiederherstellung aus dem Back-Forward-
+    // Cache) war hier bisher die Bedingung fürs Zurücksetzen — bei einer als
+    // Home-Bildschirm-App installierten iOS-PWA ist unklar, ob dieses Flag
+    // beim Aufwachen aus dem eingefrorenen Zustand überhaupt gesetzt wird
+    // (kein klassischer Browser-Tab-bfcache-Fall). Möglicher stiller Grund,
+    // warum der Reset trotz feuerndem pageshow nicht griff (per wiederholtem
+    // Nutzer-Feedback, 2026-08-11). Kostet nichts, die Bedingung ganz
+    // wegzulassen: resetFiltersIfWasAwayLongEnough() prüft die tatsächliche
+    // Pause ohnehin selbst über den AsyncStorage-Zeitstempel.
+    const handlePageShow = () => { resetFiltersIfWasAwayLongEnough(); };
     window.addEventListener('pagehide', handlePageHide);
     window.addEventListener('pageshow', handlePageShow);
     return () => {
       window.removeEventListener('pagehide', handlePageHide);
       window.removeEventListener('pageshow', handlePageShow);
     };
+  }, []);
+
+  // Dritter, unabhängiger Signalpfad: rohes DOM-visibilitychange statt der
+  // react-native-web-AppState-Abstraktion (die intern selbst nur
+  // visibilitychange nutzt, siehe Kommentar oben) oder pageshow/pagehide.
+  // Nötig geworden, weil beide bisherigen Wege bei mindestens einem Nutzer
+  // reproduzierbar NICHT gereicht haben (per wiederholtem Nutzer-Feedback,
+  // 2026-08-11: als Home-Bildschirm-PWA über Tage weggelegt, beim
+  // Zurückkehren waren die Filter von vor Tagen weiterhin aktiv — weder
+  // AppState- noch pageshow-Reset hatten offenbar gegriffen). Statt eines
+  // weiteren Events, das genauso unzuverlässig sein könnte, gilt hier: JEDER
+  // der drei Wege reicht zum Zurücksetzen, sie ergänzen sich nur — feuert
+  // auch nur einer zuverlässig, ist der Bug behoben.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') markBackgrounded();
+      else if (document.visibilityState === 'visible') resetFiltersIfWasAwayLongEnough();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   // Deckt den Fall eines ECHTEN Kaltstarts ab (Prozess wirklich beendet,
