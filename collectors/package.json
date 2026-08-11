@@ -45,6 +45,7 @@
     "meinestadt": "tsx sources/meinestadt/index.ts",
     "kindaling": "tsx sources/kindaling/index.ts",
     "eventbrite": "tsx sources/eventbrite/index.ts",
+    "lieber-scholli": "tsx sources/lieber_scholli/index.ts",
     "bars": "tsx sources/bars/index.ts",
     "restaurants": "tsx sources/restaurants/index.ts",
     "spaetis": "tsx sources/spaetis/index.ts",

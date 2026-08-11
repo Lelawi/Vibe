@@ -42,6 +42,7 @@ import { run as runMuenchenStadtportal } from './sources/muenchen_stadtportal/in
 import { run as runMeinestadt } from './sources/meinestadt/index.js';
 import { run as runKindaling } from './sources/kindaling/index.js';
 import { run as runEventbrite } from './sources/eventbrite/index.js';
+import { run as runLieberScholli } from './sources/lieber_scholli/index.js';
 
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -137,6 +138,13 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // Termine (inkl. wiederkehrender Wochenmärkte via eventSchedule) stecken
 // nur auf den Einzelseiten, daher 1 Request pro Event zusätzlich zu den
 // Listing-Seiten. Details siehe sources/kindaling/index.ts.
+// lieber-scholli (2026-08): lieberscholli.de selbst hat keine eigene
+// Programmseite mehr, sondern bettet nur noch ein Ticketshop-Widget einer
+// eigenen Subdomain ein (lieberscholli.ticket.io, "shop-legacy"). Diese
+// Subdomain liefert echtes schema.org-JSON-LD pro Event (Preis, Adresse,
+// Geo-Koordinaten inklusive) im Server-HTML, robots.txt erlaubt
+// uneingeschränkt. Kein eigener host-Tag, da ticket.io von keiner anderen
+// Quelle hier genutzt wird. Details siehe sources/lieber_scholli/index.ts.
 // eventbrite (2026-08): eventbrite.de. Die offizielle Event-Search-API ist
 // seit Februar 2020 für Drittanbieter abgeschaltet, robots.txt sperrt aber
 // weder die öffentlichen Kategorie-Browse-Seiten noch liefern die leeres
@@ -168,6 +176,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'meinestadt', run: runMeinestadt, host: 'veranstaltungen.meinestadt.de' },
   { name: 'kindaling', run: runKindaling, host: 'www.kindaling.de' },
   { name: 'eventbrite', run: runEventbrite, host: 'www.eventbrite.de' },
+  { name: 'lieber-scholli', run: runLieberScholli },
   // Alle folgenden nutzen dieselbe verifizierte in-muenchen.de-Locationseiten-
   // Extraktion wie p1/muenchen-de (extractInMuenchenTeasers) — eigene
   // Programmseiten der Venues sind JS-gerendert oder nicht scrapbar.
