@@ -72,6 +72,14 @@ export const KNOWN_VENUES: Record<string, string> = {
   'fat cat': 'FAT CAT München',
   'fat cat, kleiner konzertsaal': 'FAT CAT München',
   'live evil im fat cat': 'FAT CAT München',
+  // muenchenticket.de nennt dieselbe Konzertreihe/denselben Saal nur "Live/Evil"
+  // ohne "Fat Cat" im Namen — per Nutzer-Screenshot gefunden ("Chat Pile" 2x,
+  // 2026-08-12): muenchenticket-Zeile (location_name "Live/Evil") und die vom
+  // eigenen fat-cat-Collector (location_name "FAT CAT") blieben unverbunden,
+  // weil weder die Trigram-Ähnlichkeit noch die bisherige Alias-Liste die
+  // beiden zusammenführte.
+  'live/evil': 'FAT CAT München',
+  'live evil': 'FAT CAT München',
   // Per Nutzer-Screenshot (2x bestätigt: "Vitus Ehrenthaler & Matti Mauro"/
   // "Doppelsolo", "Improv Jam"/"Improv Comedy Jam") — Lucky Punch bespielt
   // denselben Raum wie FAT CAT unter eigenem Comedy-Reihen-Namen.
