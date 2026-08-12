@@ -140,20 +140,22 @@ function parseListingPage($: cheerio.CheerioAPI): RawItem[] {
 
 // Die muenchen.de-Listing-Karten selbst haben KEIN <img> im Markup (per
 // Direktabruf verifiziert, 2026-08) — anders als die anderen Felder gibt es
-// hier nichts zum Scrapen. Viele Ticket-Links zeigen aber direkt auf
-// muenchenticket.de (siehe ticketUrl), das pro Event-Seite ein reales
-// og:image liefert (per Nutzer-Beispiel verifiziert: "Putsch - Anleitung zur
-// Zerstörung einer Demokratie"). Ein zusätzlicher, günstiger Seitenabruf pro
-// Event mit einer muenchenticket.de-URL — andere Ticket-Hosts (eventim,
-// reservix, ...) bleiben bewusst ohne Bild statt für jeden denkbaren Anbieter
-// eine eigene og:image-Heuristik zu bauen.
+// hier nichts zum Scrapen. Zwei Fundgruben stattdessen, beide mit echtem
+// og:image im Server-HTML: (1) muenchenticket.de, wenn der Ticket-Link
+// dorthin zeigt (per Nutzer-Beispiel verifiziert: "Putsch - Anleitung zur
+// Zerstörung einer Demokratie"), (2) seit dem detailUrl-Fund vom 2026-08-13
+// (siehe parseListingPage-Kommentar) auch muenchen.de selbst — die eigene
+// Detailseite hat ebenfalls ein echtes og:image (per Direktabruf verifiziert:
+// "Inside the Suit" liefert .../inside_the_suit_raumanzug3.jpg). Andere
+// Ticket-Hosts (eventim, reservix, ...) bleiben bewusst ohne eigene
+// og:image-Heuristik.
 const ogImageCache = new Map<string, string | null>();
 
-async function fetchMuenchenTicketOgImage(ticketUrl: string): Promise<string | null> {
-  if (ogImageCache.has(ticketUrl)) return ogImageCache.get(ticketUrl)!;
+async function fetchOgImage(url: string): Promise<string | null> {
+  if (ogImageCache.has(url)) return ogImageCache.get(url)!;
   let image: string | null = null;
   try {
-    const res = await fetch(ticketUrl, { headers: BROWSER_HEADERS });
+    const res = await fetch(url, { headers: BROWSER_HEADERS });
     if (res.ok) {
       const html = await res.text();
       const match = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
@@ -162,7 +164,7 @@ async function fetchMuenchenTicketOgImage(ticketUrl: string): Promise<string | n
   } catch {
     // Bild bleibt null, kein harter Fehler für den restlichen Collector-Lauf.
   }
-  ogImageCache.set(ticketUrl, image);
+  ogImageCache.set(url, image);
   return image;
 }
 
@@ -227,7 +229,10 @@ export async function run() {
           let imageUrl: string | null = null;
           const ticketHost = item.ticketUrl ? (() => { try { return new URL(item.ticketUrl!).hostname; } catch { return null; } })() : null;
           if (item.ticketUrl && ticketHost?.endsWith('muenchenticket.de')) {
-            imageUrl = await fetchMuenchenTicketOgImage(item.ticketUrl);
+            imageUrl = await fetchOgImage(item.ticketUrl);
+            await wait(requestSpacingMs());
+          } else if (item.detailUrl) {
+            imageUrl = await fetchOgImage(item.detailUrl);
             await wait(requestSpacingMs());
           }
           collected.push({
