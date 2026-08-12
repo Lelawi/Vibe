@@ -5,11 +5,10 @@ import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
 import { buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 
-// Ersatz für Resident Advisor (ra.co): dort sperrt robots.txt Claude-
-// Crawler NAMENTLICH (ClaudeBot/Claude-Web/anthropic-ai), zusätzlich starker
-// DataDome-Bot-Schutz und keine freie API — bewusst nicht angetastet (siehe
-// Kommentar zu "residentadvisor" weiter unten). rausgegangen.de deckt einen
-// Teil derselben Techno-/Clubszene ab und erlaubt Crawler explizit
+// Kostenlose Ergänzung zu Resident Advisor für die Münchner Clubszene. Die
+// RA-Quelle nutzt mit schriftlicher Erlaubnis den internen GraphQL-Endpunkt;
+// rausgegangen.de bleibt wegen teilweise anderer Events parallel aktiv und
+// erlaubt Crawler explizit
 // (robots.txt: "User-agent: *  Disallow:", ClaudeBot nur mit Crawl-Delay,
 // nicht gesperrt). Die München-Techno-Tag-Seite liefert serverseitig
 // gerenderte Event-Kacheln mit stabilen data-testid-Attributen (kein JSON-LD
