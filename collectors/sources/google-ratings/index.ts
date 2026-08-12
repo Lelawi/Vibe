@@ -28,7 +28,12 @@ dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '.
 // gut 3 Monate für die erste vollständige Abdeckung, danach läuft die
 // Rotation endlos weiter und hält die Bewertungen halbwegs aktuell.
 const PLACES_API_BASE = 'https://places.googleapis.com/v1';
-const MONTHLY_BUDGET = 900;
+// 2026-08-13 (per Nutzer-Vorgabe): auf 960 angehoben, um genau mit dem
+// GCP-Console-Quota-Limit uebereinzustimmen, das dort manuell gesetzt werden
+// muss (dieses Skript kann keine GCP-Quotas setzen -- kein gcloud-Zugriff/
+// Service-Account-Key in diesem Repo). 960 statt 1000 laesst 40 Anfragen
+// Puffer zum echten kostenlosen Enterprise-Tier-Limit.
+const MONTHLY_BUDGET = 960;
 const DAILY_BATCH = 30;
 // Ohne explizites Timeout hängt ein einzelner ausbleibender Response die
 // gesamte Batch-Verarbeitung unbegrenzt lange auf (per Nutzer-Feedback

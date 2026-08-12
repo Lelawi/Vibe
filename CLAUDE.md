@@ -234,7 +234,7 @@ tool).
   (cheap, id-only field mask), then fetches `rating`/`userRatingCount` via
   Place Details — that field pushes Place Details into the pricier
   "Enterprise" SKU, which only has 1,000 free requests/month (resets on the
-  1st, no rollover). `MONTHLY_BUDGET` in the script self-limits to 900/month
+  1st, no rollover). `MONTHLY_BUDGET` in the script self-limits to 960/month
   as a safety margin, processing up to `DAILY_BATCH` (30) oldest-checked
   venues per run — full rotation across ~2,500 venues takes ~3 months, then
   repeats indefinitely to keep ratings from going stale.
