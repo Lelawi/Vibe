@@ -139,7 +139,17 @@ function normalize(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFD')
-    .replace(DIACRITICS_RE, '') // Umlaute/Akzente auf Basisbuchstaben reduzieren
+    .replace(DIACRITICS_RE, '') // Umlaute/Akzente auf Basisbuchstaben reduzieren (ü -> u)
+    // Bugfund 2026-08-12 (M.C. Mueller-Fall): unsere Venue-Namen kommen oft in
+    // ASCII-Transliteration ("ue"/"oe"/"ae"/"ss"), Googles Namen dagegen mit
+    // echten Umlauten ("ü"/"ö"/"ä"/"ß"). Nach dem Diakritika-Strip oben landet
+    // "ü" bei "u", aber "ue" bleibt "ue" -- "Mueller" und "Müller" (-> "muller")
+    // galten dadurch faelschlich als unterschiedliche Namen. Beide Schreib-
+    // weisen hier auf dieselbe Form zusammenfuehren.
+    .replace(/ue/g, 'u')
+    .replace(/oe/g, 'o')
+    .replace(/ae/g, 'a')
+    .replace(/ss/g, 's')
     .replace(/[^a-z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -160,9 +170,17 @@ export function looksLikeSameVenue(venue: RatingVenue, candidate: PlaceCandidate
   const a = normalize(venue.name);
   const b = normalize(candidate.name);
   if (!a || !b) return false;
+  // Kompakte (leerzeichenfreie) Form zusaetzlich vergleichen: Google
+  // schreibt manche Namen als ein Wort ("HEYLUIGI", "München72"), unsere
+  // Venue-Namen mit Leerzeichen ("Hey Luigi", "München 72") — sonst
+  // scheitert der sonst identische Name nur an der Leerzeichensetzung.
+  const aCompact = a.replace(/ /g, '');
+  const bCompact = b.replace(/ /g, '');
   const nameMatches =
     a.includes(b) ||
     b.includes(a) ||
+    aCompact.includes(bCompact) ||
+    bCompact.includes(aCompact) ||
     a.split(' ').some((w) => w.length >= 4 && b.split(' ').includes(w));
   if (!nameMatches) return false;
   const venuePlz = extractPostcode(venue.address);
@@ -226,6 +244,42 @@ export async function resolvePlaceCandidateWithFallback(
 
   const fallback = await searchText(apiKey, `${venue.name}, München`, venue);
   return { candidate: fallback, usedFallback: true };
+}
+
+// Dritter Versuch, wenn Name+Adresse-Suche (auch der Fallback oben) leer
+// bleibt: unsere Venue-Namen kommen oft unveraendert von OSM und sind
+// manchmal generische Kategoriebezeichnungen statt des echten
+// Geschaeftsnamens (z.B. "Schreib- und Tabakwaren" statt "Schreibwaren BAL",
+// "M. C. Mueller" statt "M.C. Müller Burger und Bar") — Google kennt den
+// echten Namen, findet ihn aber unter dem OSM-Namen nicht. Manuell geloest
+// wurde das bisher immer gleich: den echten Namen von der eigenen Website
+// (Seitentitel) holen und damit erneut suchen. Da der Name hier bewusst vom
+// hinterlegten venue.name abweichen darf/soll, prüft looksLikeSameVenue()
+// nicht — stattdessen wird strikt über die Postleitzahl abgesichert
+// (sameApproxAddress), sonst kein Match.
+export function sameApproxAddress(venue: RatingVenue, candidate: PlaceCandidate): boolean {
+  const venuePlz = extractPostcode(venue.address);
+  const candidatePlz = extractPostcode(candidate.address);
+  return Boolean(venuePlz && candidatePlz && venuePlz === candidatePlz);
+}
+
+// Seitentitel enthalten oft Zusaetze ("Startseite", "| München", Claims) —
+// nur den Teil vor dem ersten Trenner verwenden.
+export function cleanWebsiteTitle(title: string): string | null {
+  const cleaned = title.split(/[|\-–—•·]/)[0].trim();
+  return cleaned.length >= 3 ? cleaned : null;
+}
+
+export async function resolvePlaceCandidateByWebsiteTitle(
+  apiKey: string,
+  venue: RatingVenue,
+  websiteTitle: string
+): Promise<PlaceCandidate | null> {
+  const name = cleanWebsiteTitle(websiteTitle);
+  if (!name || !venue.address) return null;
+  const candidate = await searchText(apiKey, `${name}, ${venue.address}`, venue);
+  if (candidate && sameApproxAddress(venue, candidate)) return candidate;
+  return null;
 }
 
 export async function fetchDetails(apiKey: string, placeId: string): Promise<PlaceDetails | null> {

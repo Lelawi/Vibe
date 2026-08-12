@@ -2,8 +2,15 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { fetchDetails, looksLikeSameVenue, resolvePlaceCandidateWithFallback, type RatingVenue } from '../sources/google-ratings/index.js';
-import { probePublicUrl, type UrlProbe } from '../core/urlProbe.js';
+import {
+  fetchDetails,
+  looksLikeSameVenue,
+  resolvePlaceCandidateByWebsiteTitle,
+  resolvePlaceCandidateWithFallback,
+  type PlaceCandidate,
+  type RatingVenue,
+} from '../sources/google-ratings/index.js';
+import { fetchPageTitle, probePublicUrl, type UrlProbe } from '../core/urlProbe.js';
 import { probeVenueOnOsm } from '../core/osmProbe.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -82,29 +89,59 @@ async function precheckClosures(supabase: SupabaseClient, apiKey: string | undef
     const attempt = report.analysis_attempts + 1;
     await updateAnalysis(supabase, 'venue_closure_reports', 'venue_id', report.venue_id, { analysis_status: 'processing', analysis_attempts: attempt });
     try {
-      const candidate = venue.google_place_id
+      let candidate: PlaceCandidate | null = venue.google_place_id
         ? { id: venue.google_place_id, name: venue.name, address: venue.address }
         : (await resolvePlaceCandidateWithFallback(apiKey, venue)).candidate;
-      const matched = candidate && (venue.google_place_id || looksLikeSameVenue(venue, candidate));
-      const details = matched ? await fetchDetails(apiKey, candidate.id) : null;
+      let matched = Boolean(candidate) && (Boolean(venue.google_place_id) || looksLikeSameVenue(venue, candidate!));
+      let usedWebsiteNameFallback = false;
+
       const websiteProbe = venue.website ? await probePublicUrl(venue.website) : null;
+
+      // Dritter Versuch: Name+Adresse-Suche (inkl. Fallback ohne Adresse)
+      // findet nichts, aber die Venue hat eine erreichbare eigene Website —
+      // deren Seitentitel enthaelt oft den echten Geschaeftsnamen, wo unser
+      // (meist von OSM uebernommener) Name nur eine generische Kategorie ist
+      // (z.B. "Schreib- und Tabakwaren" statt "Schreibwaren BAL"). Genau der
+      // Schritt, der bei manueller Pruefung ("kurz googeln") sofort zum
+      // Treffer fuehrt. Siehe resolvePlaceCandidateByWebsiteTitle().
+      if (!matched && venue.website && websiteProbe?.outcome === 'reachable') {
+        const { title } = await fetchPageTitle(venue.website);
+        if (title) {
+          const viaTitle = await resolvePlaceCandidateByWebsiteTitle(apiKey, venue, title);
+          if (viaTitle) {
+            candidate = viaTitle;
+            matched = true;
+            usedWebsiteNameFallback = true;
+          }
+        }
+      }
+
+      const details = matched && candidate ? await fetchDetails(apiKey, candidate.id) : null;
       // Zweites, von Google unabhaengiges Signal nur einholen, wenn Google
-      // schon "kein Treffer" sagt und eine hinterlegte Website (falls
-      // vorhanden) ebenfalls nicht mehr erreichbar ist — sonst unnoetiger
-      // Nominatim-Traffic fuer Faelle, die ohnehin schon anders entschieden
-      // werden.
+      // (auch nach dem Website-Namen-Fallback) weiterhin "kein Treffer" sagt
+      // und eine hinterlegte Website (falls vorhanden) ebenfalls nicht mehr
+      // erreichbar ist — sonst unnoetiger Nominatim-Traffic fuer Faelle, die
+      // ohnehin schon anders entschieden werden.
       const noGoogleMatch = !matched;
       const websiteGoneOrAbsent = !venue.website || websiteProbe?.outcome === 'gone';
       const osmProbe = noGoogleMatch && websiteGoneOrAbsent ? await probeVenueOnOsm(venue.name, venue.address) : null;
+      // Fuer den Fall "Google findet's trotz Website-Namen-Fallback nicht,
+      // aber OSM UND die eigene Website bestaetigen unabhaengig voneinander
+      // laufenden Betrieb" separat pruefen (auch wenn websiteGoneOrAbsent
+      // false ist, also der obige osmProbe nicht ausgeloest wurde).
+      const osmProbeForReject = noGoogleMatch && !osmProbe && websiteProbe?.outcome === 'reachable'
+        ? await probeVenueOnOsm(venue.name, venue.address)
+        : osmProbe;
       const evidence = [{
         provider: 'google_places',
         matched: Boolean(matched),
-        place_id: matched ? candidate.id : null,
+        place_id: matched && candidate ? candidate.id : null,
         business_status: details?.businessStatus ?? null,
+        ...(usedWebsiteNameFallback ? { via: 'website_title' } : {}),
       }, ...(websiteProbe ? [{ provider: 'official_website', ...websiteProbe }] : []),
-        ...(osmProbe ? [{ provider: 'osm_nominatim', ...osmProbe }] : [])];
+        ...(osmProbeForReject ? [{ provider: 'osm_nominatim', ...osmProbeForReject }] : [])];
 
-      if (matched) {
+      if (matched && candidate) {
         await supabase.from('venues').update({
           google_place_id: candidate.id,
           ...(details?.displayName ? { name_override: details.displayName } : {}),
@@ -124,6 +161,42 @@ async function precheckClosures(supabase: SupabaseClient, apiKey: string | undef
           analysis_evidence: evidence,
         });
         await audit(supabase, 'google_places', 'closure_verification', 'venue_closure_reports', report.venue_id, 'confirmed', evidence);
+      } else if (matched && details?.businessStatus === 'OPERATIONAL') {
+        // Symmetrisch zum CLOSED_PERMANENTLY-Fall oben: ein eindeutig
+        // zugeordneter, als aktiv gemeldeter Google-Places-Eintrag ist
+        // ebenso ein Auto-Entscheid wert — bisher blieb genau das trotz
+        // eindeutiger Evidenz auf "manual_review" haengen, weil ein Nicht-
+        // Treffer beim urspruenglichen (oft generischen) Namen nie mit dem
+        // Website-Namen-Fallback nachgebessert wurde.
+        await updateAnalysis(supabase, 'venue_closure_reports', 'venue_id', report.venue_id, {
+          status: 'rejected',
+          review_note: usedWebsiteNameFallback
+            ? 'Automatisch abgelehnt: ueber den Seitentitel der hinterlegten Website als aktiver Google-Places-Eintrag zugeordnet (Existenzbeleg, kein Uebereinstimmungs-Risiko dank Adressabgleich).'
+            : 'Automatisch abgelehnt: eindeutig zugeordneter Google-Places-Eintrag ist aktiv.',
+          analysis_status: 'auto_resolved',
+          analysis_category: 'venue_closure',
+          analysis_summary: 'Google Places meldet die eindeutig zugeordnete Location als aktiv (OPERATIONAL).',
+          analysis_confidence: usedWebsiteNameFallback ? 0.85 : 0.95,
+          analysis_evidence: evidence,
+        });
+        await audit(supabase, 'google_places', 'closure_verification', 'venue_closure_reports', report.venue_id, 'rejected', evidence);
+      } else if (noGoogleMatch && websiteProbe?.outcome === 'reachable' && osmProbeForReject?.outcome === 'found') {
+        // Google findet auch mit Website-Namen-Fallback nichts, aber zwei
+        // andere unabhaengige Quellen (eigene Website erreichbar + OSM/
+        // Nominatim kennt die Adresse) bestaetigen uebereinstimmend
+        // laufenden Betrieb — genau die Beleglage, die zuvor mehrfach
+        // manuell per "existiert noch"-Ablehnung entschieden wurde (BAL,
+        // Schreibwaren, M.C. Mueller, Hey Luigi, ...).
+        await updateAnalysis(supabase, 'venue_closure_reports', 'venue_id', report.venue_id, {
+          status: 'rejected',
+          review_note: 'Automatisch abgelehnt: kein Google-Places-Treffer, aber eigene Website erreichbar und OpenStreetMap/Nominatim bestaetigt die Adresse unabhaengig.',
+          analysis_status: 'auto_resolved',
+          analysis_category: 'venue_closure',
+          analysis_summary: 'Zwei von Google unabhaengige Quellen (eigene Website, OpenStreetMap) bestaetigen laufenden Betrieb.',
+          analysis_confidence: 0.8,
+          analysis_evidence: evidence,
+        });
+        await audit(supabase, 'website+osm', 'closure_verification_heuristic', 'venue_closure_reports', report.venue_id, 'rejected_heuristic', evidence);
       } else if (osmProbe?.outcome === 'not_found') {
         // Heuristik: zwei unabhaengige Quellen (Google Places, OSM/Nominatim)
         // finden die Location nicht UND eine hinterlegte Website ist tot oder

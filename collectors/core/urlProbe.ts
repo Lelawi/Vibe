@@ -90,6 +90,47 @@ export async function probePublicUrl(input: string): Promise<UrlProbe> {
   return { outcome: 'unclear', url: input, reason: 'Zu viele Weiterleitungen' };
 }
 
+// Holt nur den <title>-Text einer Seite, ohne den Rest wie
+// fetchPublicPageText() zu Fliesstext zu verstuemmeln — gebraucht, um den
+// tatsaechlichen Geschaeftsnamen einer Venue-Website zu ermitteln, wenn der
+// hinterlegte (oft von OSM uebernommene) Name bei Google Places keinen
+// Treffer liefert. Siehe resolvePlaceCandidateByWebsiteTitle().
+export async function fetchPageTitle(input: string, maxBytes = 20_000): Promise<{ probe: UrlProbe; title: string | null }> {
+  let current: URL;
+  try { current = new URL(input); } catch { return { probe: { outcome: 'unclear', url: input, reason: 'Ungueltige URL' }, title: null }; }
+  for (let redirect = 0; redirect <= 5; redirect++) {
+    try {
+      await assertPublicTarget(current);
+      const response = await fetch(current, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: { 'User-Agent': 'Vibe-Feedback-Precheck/1.0', Accept: 'text/html' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get('location');
+        if (!location) return { probe: { outcome: 'unclear', url: input, status: response.status, reason: 'Weiterleitung ohne Ziel' }, title: null };
+        current = new URL(location, current);
+        continue;
+      }
+      if (response.status < 200 || response.status >= 400) {
+        return { probe: { outcome: response.status === 410 ? 'gone' : 'unclear', url: input, finalUrl: current.toString(), status: response.status, reason: `HTTP ${response.status}` }, title: null };
+      }
+      const html = await readLimitedText(response, maxBytes);
+      const match = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+      const title = match ? match[1].replace(/&amp;/gi, '&').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim() || null : null;
+      return { probe: { outcome: 'reachable', url: input, finalUrl: current.toString(), status: response.status, reason: 'Website erreichbar' }, title };
+    } catch (error) {
+      const err = error as Error & { code?: string; cause?: { code?: string } };
+      const code = err.code ?? err.cause?.code;
+      if (code === 'ENOTFOUND' || code === 'ENODATA') return { probe: { outcome: 'gone', url: input, reason: `DNS ${code}` }, title: null };
+      if (/Private|Lokale|HTTP\(S\)/.test(err.message)) return { probe: { outcome: 'blocked', url: input, reason: err.message }, title: null };
+      return { probe: { outcome: 'unclear', url: input, reason: err.message }, title: null };
+    }
+  }
+  return { probe: { outcome: 'unclear', url: input, reason: 'Zu viele Weiterleitungen' }, title: null };
+}
+
 export async function fetchPublicPageText(input: string, maxBytes = 50_000): Promise<{ probe: UrlProbe; text: string | null }> {
   let current: URL;
   try { current = new URL(input); } catch { return { probe: { outcome: 'unclear', url: input, reason: 'Ungueltige URL' }, text: null }; }
