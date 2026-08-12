@@ -10,10 +10,18 @@ import type { VenueType } from '../components/VenueListScreen';
 // deterministische Seitenreihenfolge.
 export async function fetchAllVenues<T>(type: VenueType, columns: string): Promise<T[]> {
   const pageSize = 1000;
+  // Bugfund 2026-08-13 (per Nutzer-Meldung "Cafe Bar Omonoia"): diese Query
+  // filterte bisher NUR nach `type` — bestaetigt geschlossene Venues wurden
+  // nie ausgeblendet, egal ob per Nutzermeldung oder automatisch per Google
+  // Places (google_business_status='CLOSED_PERMANENTLY') erkannt. closed_at
+  // wird per DB-Trigger synchron zu venue_closure_reports.status gehalten
+  // (siehe supabase/migrations/0044_venues_closed_at.sql) — unabhaengig
+  // davon, ueber welchen Weg eine Schliessung bestaetigt wurde.
   const { count, error: countError } = await supabase
     .from('venues')
     .select('id', { count: 'exact', head: true })
-    .eq('type', type);
+    .eq('type', type)
+    .is('closed_at', null);
   if (countError) {
     console.error('[fetchAllVenues] count query failed', countError);
     return [];
@@ -27,6 +35,7 @@ export async function fetchAllVenues<T>(type: VenueType, columns: string): Promi
         .from('venues')
         .select(columns)
         .eq('type', type)
+        .is('closed_at', null)
         .order('id', { ascending: true })
         .range(i * pageSize, i * pageSize + pageSize - 1)
     )

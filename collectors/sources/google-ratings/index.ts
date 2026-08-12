@@ -491,6 +491,42 @@ export async function run() {
       if (!venue.website && details?.website) update.website = details.website;
       if (!venue.phone && details?.phone) update.phone = details.phone;
       await supabase.from('venues').update(update).eq('id', venue.id);
+
+      // Bugfund 2026-08-13 (per Nutzer-Meldung "Cafe Bar Omonoia"): bisher
+      // wurde CLOSED_PERMANENTLY hier nur im Feld google_business_status
+      // abgelegt, ohne je eine Konsequenz -- keine Schliessungsmeldung,
+      // kein Ausblenden in der App (siehe 0044_venues_closed_at.sql). Diese
+      // eindeutige Google-Evidenz braucht keine manuelle Pruefung wie ein
+      // reiner Nichttreffer (siehe precheck-structured-reports.ts, das
+      // dieselbe Logik fuer den reaktiven/gemeldeten Pfad schon hatte) --
+      // direkt bestaetigen statt nur zu speichern.
+      if (details?.businessStatus === 'CLOSED_PERMANENTLY') {
+        // Falls ein Mensch diese Venue schon einmal explizit als "existiert
+        // noch" abgelehnt hatte, nicht stillschweigend ueberstimmen -- neu
+        // in die Pruefwarteschlange einreihen (macht submit_venue_closure_
+        // report ohnehin bei 'rejected'), aber die Entscheidung selbst
+        // einem Menschen ueberlassen statt automatisch zu kippen.
+        const { data: existing } = await supabase
+          .from('venue_closure_reports')
+          .select('status')
+          .eq('venue_id', venue.id)
+          .maybeSingle();
+        const { error: queueError } = await supabase.rpc('submit_venue_closure_report', { p_venue_id: venue.id });
+        if (queueError) {
+          console.warn(`[google-ratings] could not queue closure for "${venue.name}"`, queueError.message);
+        } else if (existing?.status !== 'rejected') {
+          await supabase
+            .from('venue_closure_reports')
+            .update({
+              status: 'confirmed',
+              review_note: 'Automatisch bestätigt: eindeutig zugeordneter Google-Places-Eintrag ist dauerhaft geschlossen (gefunden während der regulären Rotation, nicht durch eine Nutzermeldung).',
+            })
+            .eq('venue_id', venue.id)
+            .eq('status', 'pending');
+        } else {
+          console.log(`[google-ratings] "${venue.name}" zeigt CLOSED_PERMANENTLY, war aber zuvor von einem Menschen abgelehnt — zur erneuten manuellen Pruefung eingereiht statt automatisch bestaetigt.`);
+        }
+      }
     } catch (err) {
       console.warn(`[google-ratings] error processing "${venue.name}"`, err);
     }

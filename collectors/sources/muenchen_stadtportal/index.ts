@@ -81,6 +81,7 @@ interface RawItem {
   startTime: string | null;
   locationName: string | null;
   ticketUrl: string | null;
+  detailUrl: string | null;
 }
 
 // Markup per Direktabruf verifiziert (2026-08):
@@ -96,12 +97,26 @@ interface RawItem {
 // Direktabruf verifiziert) — deshalb wird die Kategorie hier NICHT aus dem
 // HTML gelesen, sondern kommt aus dem CATEGORIES-Eintrag, mit dem die
 // jeweilige Seite angefragt wurde.
+//
+// Bugfund 2026-08-13 (per Nutzer-Meldung "Inside the Suit" führte auf die
+// generische Kategorie-Übersichtsseite, dann nach dem ersten Fix auf gar
+// keinen Link/Google-Maps-Fallback): der Titel-Link
+// h3.m-event-list-item__headline > a[itemprop="url"] verweist auf die
+// ECHTE muenchen.de-Detailseite dieses konkreten Events (per Direktabruf
+// verifiziert, z.B. /veranstaltungen/ausstellung-museen/familie-kinder/
+// inside-suit-der-mensch-im-raumanzug) — wurde bisher komplett ignoriert,
+// obwohl er auf jeder Karte vorhanden ist. Das ist ein zuverlässigerer
+// Link als der optionale externe Ticket-Link (existiert für praktisch
+// jedes Event, nicht nur für die mit Ticketverkauf) und war die
+// eigentlich fehlende Zutat, nicht bloß "kein Fallback auf die
+// Kategorieseite".
 function parseListingPage($: cheerio.CheerioAPI): RawItem[] {
   const items: RawItem[] = [];
 
   $('.m-listing__list-item').each((_, el) => {
     const el$ = $(el);
-    const title = el$.find('.m-event-list-item__headline').first().text().replace(/\s+/g, ' ').trim();
+    const titleLink = el$.find('.m-event-list-item__headline a[itemprop="url"]').first();
+    const title = (titleLink.text() || el$.find('.m-event-list-item__headline').first().text()).replace(/\s+/g, ' ').trim();
     const startDate = el$.find('time[itemprop="startDate"]').first().attr('datetime')?.slice(0, 10) ?? null;
     const endDate = el$.find('time[itemprop="endDate"]').first().attr('datetime')?.slice(0, 10) ?? null;
 
@@ -114,8 +129,10 @@ function parseListingPage($: cheerio.CheerioAPI): RawItem[] {
 
     const locationName = el$.find('.m-event-list-item__detail[itemprop="location"]').first().text().replace(/\s+/g, ' ').trim() || null;
     const ticketUrl = el$.find('.m-event-list-item__meta a[href]').first().attr('href') ?? null;
+    const detailHref = titleLink.attr('href');
+    const detailUrl = detailHref ? new URL(detailHref, 'https://www.muenchen.de').toString() : null;
 
-    if (title && startDate) items.push({ title, startDate, endDate, startTime, locationName, ticketUrl });
+    if (title && startDate) items.push({ title, startDate, endDate, startTime, locationName, ticketUrl, detailUrl });
   });
 
   return items;
@@ -226,15 +243,18 @@ export async function run() {
             address: null,
             city: 'München',
             organizer: null,
-            // Kein Fallback auf BASE_URL mehr: das ist nur die generische
-            // Kategorie-Listing-Seite, kein Bezug zu diesem konkreten Event
-            // (per Nutzer-Meldung, 2026-08-09: "Jetzt geht's rund –
-            // Kreisläufe statt Abfälle" landete dadurch auf einer
-            // unrelated Konzert-Übersichtsseite). Events ohne eigenen
-            // Ticket-Link (z.B. freier Eintritt) bekommen stattdessen gar
-            // keinen source_url — die App blendet den Link dann aus, statt
-            // auf etwas Irreführendes zu verweisen.
-            source_url: item.ticketUrl ?? null,
+            // Kein Fallback auf BASE_URL (die generische Kategorie-Listing-
+            // Seite, per Nutzer-Meldung 2026-08-09: "Jetzt geht's rund –
+            // Kreisläufe statt Abfälle" landete dadurch auf einer unrelated
+            // Konzert-Übersichtsseite). Stattdessen: externer Ticket-Link,
+            // wenn vorhanden, sonst die echte muenchen.de-Detailseite
+            // dieses konkreten Events (per Nutzer-Meldung 2026-08-13:
+            // "Inside the Suit" hatte nach dem ersten Fix GAR keinen Link
+            // mehr, obwohl muenchen.de sehr wohl eine eigene Detailseite
+            // dafür hat — die wurde bisher nur nie erfasst, siehe
+            // parseListingPage-Kommentar oben). Nur wenn wirklich beides
+            // fehlt, bleibt source_url leer.
+            source_url: item.ticketUrl ?? item.detailUrl ?? null,
             image_url: imageUrl,
             price_info: null,
             sold_out: null,
