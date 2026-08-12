@@ -19,7 +19,20 @@ subdirectory before running npm commands.
 
 - `app/` — React Native / Expo app (the mobile client, reads only from Supabase)
 - `collectors/` — scrapers/API clients that populate Supabase, run on a schedule via GitHub Actions
-- `supabase/migrations/` — SQL schema migrations for the shared `events` table
+- `supabase/migrations/` — SQL schema migrations for the shared `events` table. Applied
+  directly via the Supabase CLI (`npx supabase db push --db-url "$SUPABASE_DB_URL"` from
+  the repo root — no `supabase init`/`link` needed, `--db-url` alone is enough) instead of
+  pasting SQL into the dashboard manually. `SUPABASE_DB_URL` (2026-08-12, `app/.env`, not
+  committed) is the **Session pooler** connection string from Supabase's "Connect" dialog
+  → Direct → Session pooler (not "Direct connection" — that defaults to IPv6, unreliable
+  on this network; not "Transaction pooler" — incompatible with some migration DDL). All
+  42 existing migrations were already applied by hand before this was set up, so their
+  history was backfilled with `supabase migration repair --status applied <versions...>`
+  rather than re-run — only genuinely new migrations going forward hit `db push` for real.
+  Two legacy files (`0035a_...`, `0035b_...`) don't match the CLI's `<number>_name.sql`
+  pattern and are silently skipped by every CLI command; harmless (already applied,
+  already tracked won't matter since the CLI never sees them to re-check), just don't
+  expect the CLI to notice if they ever needed changing.
 - `docs/` — architecture notes and ADRs
 
 ### Architecture principle
