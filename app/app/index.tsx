@@ -61,7 +61,6 @@ type Event = {
   subcategory: string | null;
   organizer: string | null;
   address: string | null;
-  description: string | null;
   source_url: string | null;
   image_url: string | null;
   price_info: string | null;
@@ -95,6 +94,39 @@ type ListRow =
 // Tab-Switching. Mit Cache: sofort der zuletzt geladene Stand sichtbar,
 // im Hintergrund läuft trotzdem ein stiller Refresh (siehe loadEvents).
 let eventsCache: Event[] | null = null;
+
+// Zusätzlich auf AsyncStorage gespiegelt (siehe hydrateFromDiskCache/
+// persistEventsToDisk unten): eventsCache allein hilft nur innerhalb
+// derselben JS-Session (Tab-Wechsel) — bei einem echten Neuladen der Seite
+// (Browser-Neustart, harter Reload, nicht nur "App eingeschlafen") ist das
+// Modul neu und eventsCache wieder null, wodurch bisher jedes Mal von vorn
+// alle 6000+ Events über Supabase geholt werden mussten, bevor überhaupt
+// etwas sichtbar war (per Nutzer-Feedback 2026-08-13: "die App wird
+// relativ träge, Ladezeiten... störend"). Der Disk-Cache überlebt das:
+// zuletzt geladener Stand erscheint sofort, der übliche stille
+// Hintergrund-Refresh (loadEvents) holt danach trotzdem frische Daten.
+const DISK_CACHE_KEY = 'vibe:events_cache_v1';
+
+async function hydrateFromDiskCache(): Promise<Event[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(DISK_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    // Kaputter/fehlender Cache-Eintrag ist unkritisch — loadEvents holt die
+    // Daten ohnehin frisch, nur ohne den Sofort-Anzeige-Vorteil.
+    return null;
+  }
+}
+
+function persistEventsToDisk(events: Event[]) {
+  AsyncStorage.setItem(DISK_CACHE_KEY, JSON.stringify(events)).catch(() => {
+    // Quota-/Storage-Fehler (z.B. voller localStorage) sind unkritisch —
+    // die App funktioniert auch ohne Disk-Cache, nur ohne dessen
+    // Sofort-Anzeige-Vorteil beim nächsten echten Neuladen.
+  });
+}
 
 // Haversine-Formel für die Distanz zweier Koordinaten in km.
 function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -662,8 +694,14 @@ export default function EventListScreen() {
     if (isRefresh) setRefreshing(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
+      // description bewusst NICHT in der Liste geladen: nur die Detailseite
+      // (app/event/[id].tsx) braucht den vollen Freitext, hier diente er
+      // bisher nur als Zusatzfeld im Such-Haystack (siehe enrichedEvents
+      // weiter unten). Bei 6000+ Events macht allein dieses Feld ~360KB
+      // zusätzlichen Payload bei JEDEM Laden aus, für einen Suchtreffer, den
+      // Titel/Ort/Kategorie/Genre in der Praxis fast immer auch liefern.
       const columns =
-        'id, title, category, subcategory, organizer, address, description, source_url, image_url, price_info, sold_out, start_date, start_time, end_date, location_name, latitude, longitude';
+        'id, title, category, subcategory, organizer, address, source_url, image_url, price_info, sold_out, start_date, start_time, end_date, location_name, latitude, longitude';
       // Mehrtägige Events (end_date gesetzt) sollen sichtbar bleiben,
       // solange sie noch laufen — nicht nur bis zu ihrem Starttag.
       const upcomingFilter = `start_date.gte.${today},end_date.gte.${today}`;
@@ -713,6 +751,7 @@ export default function EventListScreen() {
         const loaded = pages.flatMap((p) => p.data ?? []);
         eventsCache = loaded;
         setEvents(loaded);
+        persistEventsToDisk(loaded);
       }
     } finally {
       setLoading(false);
@@ -720,7 +759,22 @@ export default function EventListScreen() {
     }
   }
 
+  // Bei einem echten Neuladen der Seite (nicht nur Tab-Wechsel, siehe
+  // eventsCache/DISK_CACHE_KEY-Kommentar oben) ist eventsCache leer und die
+  // App würde sonst bis zum ersten Supabase-Roundtrip nichts als das
+  // Lade-Skeleton zeigen. Der Disk-Cache füllt diese Lücke: sofort der
+  // zuletzt bekannte Stand, loadEvents() läuft parallel trotzdem als
+  // stiller Hintergrund-Refresh (überschreibt bei Erfolg beides wieder).
   useEffect(() => {
+    if (eventsCache === null) {
+      hydrateFromDiskCache().then((cached) => {
+        if (cached && eventsCache === null) {
+          eventsCache = cached;
+          setEvents(cached);
+          setLoading(false);
+        }
+      });
+    }
     loadEvents();
   }, []);
 
@@ -779,7 +833,6 @@ export default function EventListScreen() {
           eventGenre,
           e.organizer,
           e.address,
-          e.description,
           formattedDate,
           toGermanNumericDates(e.start_date),
         ]
