@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Platform, SafeAreaView, Image } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Platform, SafeAreaView, Image, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { registerStrings, useTranslation } from '../lib/strings';
@@ -51,10 +51,19 @@ export default function OnboardingScreen({ onComplete }: { onComplete: (categori
 
   return (
     <SafeAreaView style={styles.wrap}>
-      <View style={styles.content}>
+      <View style={styles.header}>
         <Text style={styles.title}>{t('onboarding.title')}</Text>
         <Text style={styles.subtitle}>{t('onboarding.subtitle')}</Text>
+      </View>
 
+      {/* ScrollView statt fixer View: auf kleinen/älteren Geräten (v.a.
+          Android mit schmaler Logical-Width) reichte der Inhalt sonst über
+          den Bildschirmrand hinaus und der CTA-Button war unerreichbar —
+          per Freundes-Testlauf real beobachtet, nicht nur theoretisch. Der
+          CTA selbst bleibt trotzdem als fixe Bottom-Bar außerhalb der
+          ScrollView (siehe unten), damit "Weiter" so oder so sichtbar ist,
+          auch ohne dass jemand zum Scrollen kommt. */}
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.grid}>
           {ONBOARDING_CATEGORIES.map((cat) => {
             const on = selected.includes(cat.label);
@@ -82,8 +91,6 @@ export default function OnboardingScreen({ onComplete }: { onComplete: (categori
           })}
         </View>
 
-        <View style={styles.spacer} />
-
         <TouchableOpacity
           style={[styles.nearbyRow, nearby && styles.nearbyRowActive]}
           onPress={() => setNearby((v) => !v)}
@@ -96,7 +103,9 @@ export default function OnboardingScreen({ onComplete }: { onComplete: (categori
           </View>
           <Ionicons name={nearby ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={nearby ? '#0af' : '#888'} />
         </TouchableOpacity>
+      </ScrollView>
 
+      <View style={styles.ctaWrap}>
         <TouchableOpacity style={styles.cta} onPress={() => onComplete(selected, nearby)} activeOpacity={0.85}>
           <Text style={styles.ctaText}>{ctaLabel}</Text>
         </TouchableOpacity>
@@ -107,12 +116,21 @@ export default function OnboardingScreen({ onComplete }: { onComplete: (categori
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: '#000' },
-  content: { flex: 1, paddingHorizontal: 20, paddingTop: Platform.OS === 'web' ? 40 : 12, paddingBottom: 24 },
+  header: { paddingHorizontal: 20, paddingTop: Platform.OS === 'web' ? 40 : 12 },
   title: { fontSize: 34, fontWeight: '800', color: '#fff', letterSpacing: -0.4, lineHeight: 38 },
   subtitle: { fontSize: 15, color: '#999', marginTop: 10 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16 },
+  // Zwei Spalten rein über Prozentbreite + space-between statt über einen
+  // zusätzlichen festen `gap` — ein `gap: 10` on top von 2x48.5% reicht auf
+  // schmalen Handys (~<370px Logical Width) aus, um die Zeile minimal zu
+  // sprengen; Flexbox wirft dann jede Kachel einzeln um und aus dem
+  // zweireihigen Grid wird eine einspaltige Liste mit doppelter Höhe (siehe
+  // Freundes-Testlauf). space-between braucht keinen Gap-Puffer, bleibt
+  // also garantiert zweispaltig.
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   tile: {
-    width: '48.5%',
+    width: '48%',
     height: 108,
     borderRadius: 16,
     overflow: 'hidden',
@@ -120,13 +138,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: '#161616',
     justifyContent: 'flex-end',
+    marginBottom: 10,
   },
   tileActive: { borderColor: '#0af' },
   tileMark: { position: 'absolute', right: 10, top: 10 },
   tileLabelRow: { position: 'absolute', left: 12, bottom: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   tileLabel: { fontSize: 14, fontWeight: '700', color: '#fff' },
   tileLabelActive: { color: '#0af' },
-  spacer: { flex: 1, minHeight: 24 },
   nearbyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -136,12 +154,17 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: 16,
     padding: 14,
-    marginBottom: 14,
+    marginTop: 10,
   },
   nearbyRowActive: { borderColor: 'rgba(0,170,255,0.55)' },
   nearbyTextWrap: { flex: 1 },
   nearbyTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
   nearbySub: { fontSize: 12, color: '#888', marginTop: 2 },
+  // Fixe Bottom-Bar statt Teil der ScrollView: der CTA-Button muss immer
+  // sichtbar/erreichbar sein, unabhängig davon, ob/wie weit jemand scrollt
+  // — genau das war der gemeldete Bug (Button unerreichbar, kein Scrollen
+  // möglich).
+  ctaWrap: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20, backgroundColor: '#000' },
   cta: {
     backgroundColor: '#0af',
     borderRadius: 30,
