@@ -3,7 +3,6 @@ import {
   StyleSheet,
   Text,
   View,
-  Image,
   ActivityIndicator,
   SafeAreaView,
   ScrollView,
@@ -11,6 +10,9 @@ import {
   TextInput,
   Modal,
 } from 'react-native';
+// expo-image statt react-native Image für das Event-Herobild (externe
+// Quelle) — Disk-Caching zwischen Sessions, sonst gleiches Verhalten.
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -387,6 +389,7 @@ export default function EventDetailScreen() {
           <Image
             source={{ uri: event.image_url! }}
             style={styles.image}
+            contentFit="cover"
             onError={() => setImageFailed(true)}
           />
         ) : (

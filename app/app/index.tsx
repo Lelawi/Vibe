@@ -3,7 +3,6 @@ import {
   StyleSheet,
   Text,
   View,
-  Image,
   FlatList,
   ActivityIndicator,
   SafeAreaView,
@@ -14,6 +13,14 @@ import {
   Modal,
   AppState,
 } from 'react-native';
+// expo-image statt react-native Image für die Event-Bilder (Karussell/
+// Karten-Ansicht/Listen-Thumbnails, alle drei laden item.image_url von
+// externen Quellen): bringt Disk-Caching zwischen Sessions und schonenderen
+// Speicherumgang mit, ohne dass sich am sichtbaren Verhalten etwas ändert
+// (contentFit="cover" entspricht dem bisherigen RN-Image-Standardverhalten
+// ohne explizites resizeMode). Keine lokalen require()-Assets in dieser
+// Datei, die die RN-Image-API bräuchten — reiner Ersatz.
+import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1654,7 +1661,7 @@ export default function EventListScreen() {
                       onPress={() => router.push(`/event/${item.id}`)}
                     >
                       <View style={styles.featuredImageWrap}>
-                        <Image source={{ uri: item.image_url! }} style={styles.featuredCardImage} />
+                        <Image source={{ uri: item.image_url! }} style={styles.featuredCardImage} contentFit="cover" />
                         <View style={styles.featuredDatePill}>
                           <Text style={styles.featuredDatePillText} numberOfLines={1}>
                             {formatDate(item.start_date, item.start_time)}
@@ -1722,7 +1729,7 @@ export default function EventListScreen() {
             return (
               <TouchableOpacity style={styles.cardsCard} onPress={onPress}>
                 <View style={styles.cardsImageWrap}>
-                  <Image source={{ uri: item.image_url }} style={styles.cardsImage} />
+                  <Image source={{ uri: item.image_url }} style={styles.cardsImage} contentFit="cover" />
                   <TouchableOpacity
                     style={styles.cardsFavoriteBtn}
                     onPress={(e) => {
@@ -1764,7 +1771,7 @@ export default function EventListScreen() {
                 />
               </TouchableOpacity>
               {item.image_url ? (
-                <Image source={{ uri: item.image_url }} style={styles.cardThumb} />
+                <Image source={{ uri: item.image_url }} style={styles.cardThumb} contentFit="cover" />
               ) : (
                 // Platzhalter statt einfach nichts zu rendern — sonst rutscht
                 // cardBody nach links und Karten ohne Bild sind nicht mehr

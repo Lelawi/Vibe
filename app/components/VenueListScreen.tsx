@@ -9,11 +9,15 @@ import {
   TextInput,
   ActivityIndicator,
   SafeAreaView,
-  Image,
   Linking,
   Platform,
   Alert,
 } from 'react-native';
+// expo-image statt react-native Image für die Venue-Fotos (item.image_url,
+// externe Quellen) — Disk-Caching zwischen Sessions, sonst gleiches
+// Verhalten (contentFit="cover" entspricht dem bisherigen RN-Image-
+// Standard). Keine lokalen require()-Assets in dieser Datei.
+import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -324,7 +328,12 @@ registerStrings({
   'venues.dinnerMenu': { de: 'Abendkarte', en: 'Dinner menu' },
   'venues.reportLink': { de: "Gibt's nicht mehr?", en: 'No longer exists?' },
   'venues.pendingReview': { de: '⏳ Als geschlossen gemeldet — wird geprüft', en: '⏳ Reported as closed — under review' },
-  'venues.beerPrice': { de: '0,5l Helles', en: '0.5L Helles' },
+  // Absichtlich ohne "Helles" im Label: die Collector-Heuristik
+  // (extractBeerPrice, collectors/core/venues.ts) zielt zwar primär auf
+  // Münchner Helles, matcht aber auf einigen (v.a. mehrsprachigen)
+  // Getränkekarten auch andere helle Lagerbiere als "hell"/"hells" — das
+  // Badge soll deshalb nicht behaupten, es sei garantiert ein Helles.
+  'venues.beerPrice': { de: '0,5l', en: '0.5L' },
   'venues.wifi': { de: 'WLAN', en: 'WiFi' },
 });
 
@@ -1333,6 +1342,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             <Image
               source={{ uri: item.image_url! }}
               style={useCardsLayout ? styles.cardsImage : styles.compactThumb}
+              contentFit="cover"
               onError={() => setBrokenImageIds((prev) => new Set(prev).add(item.id))}
             />
           ) : (
