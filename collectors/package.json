@@ -68,6 +68,7 @@
     "test:feedback": "tsx --test core/urlProbe.test.ts",
     "test:google-hours": "tsx --test sources/google-ratings/index.test.ts",
     "test:venue-hours": "tsx --test core/venues.test.ts",
+    "test:timezone": "tsx --test core/timezone.test.ts",
     "send-notifications": "tsx notifications/index.ts",
     "collect-all": "npm run collect-all:runner",
     "collect-all:runner": "tsx collect-all.ts"

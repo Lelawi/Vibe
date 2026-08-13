@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { canonicalizeVenue } from '../core/canonicalizeVenue';
 import { normalizeGenreGroup } from '../core/genreGroup';
 import { matchesSavedSearch, type SavedSearchCriteria } from '../core/savedSearchFilter';
+import { berlinWallClockToDate } from '../core/timezone';
 
 // Vorlaufzeiten sind jetzt pro Subscription wählbar (push_reminder_settings,
 // siehe Migration 0010) statt fix — dieser Default greift nur, wenn eine
@@ -114,7 +115,11 @@ async function sendFavoriteReminders(supabase: ReturnType<typeof createClient>) 
 
     const configuredOffsets: number[] = offsetsBySubscription.get(row.subscription_id) ?? DEFAULT_OFFSETS_MINUTES;
     const alreadySent: number[] = row.notified_offsets_minutes ?? [];
-    const eventStart = new Date(`${event.start_date}T${event.start_time}`);
+    // start_date/start_time sind naive Europe/Berlin-Wandzeit (siehe
+    // berlinWallClockToDate) — dieser Job läuft auf dem GitHub-Actions-Runner
+    // (TZ=UTC), ein simples `new Date(...)` würde die Wandzeit fälschlich als
+    // UTC interpretieren und "3h vorher" um 1-2h verschieben (DST-abhängig).
+    const eventStart = berlinWallClockToDate(event.start_date, event.start_time);
 
     if (eventStart < now) {
       // Termin ist schon vorbei oder läuft bereits (z.B. weil der Job
