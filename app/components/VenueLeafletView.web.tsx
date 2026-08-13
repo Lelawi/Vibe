@@ -34,7 +34,9 @@ registerStrings({
   'venues.closed': { de: 'Geschlossen', en: 'Closed' },
   'venues.today': { de: 'Heute', en: 'Today' },
   'venues.lunch': { de: 'Mittagslunch', en: 'Lunch menu' },
-  'venues.beerPrice': { de: '0,5l Helles', en: '0.5L Helles' },
+  // Absichtlich ohne "Helles" — siehe Kommentar zu diesem Key in
+  // VenueListScreen.tsx.
+  'venues.beerPrice': { de: '0,5l', en: '0.5L' },
   'venueMap.openWebsite': { de: 'Website öffnen', en: 'Open website' },
   'venues.lunchMenu': { de: 'Mittagskarte', en: 'Lunch menu' },
   'venues.dinnerMenu': { de: 'Abendkarte', en: 'Dinner menu' },
