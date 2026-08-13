@@ -14,6 +14,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -223,6 +224,47 @@ type VenueScreenCache = {
   closureStatusByVenue: Map<string, ClosureStatus>;
 };
 const venueScreenCache = new Map<VenueType, VenueScreenCache>();
+
+// Zusätzlich auf AsyncStorage gespiegelt, analog zum Events-Disk-Cache
+// (siehe DISK_CACHE_KEY-Kommentar in app/index.tsx) — venueScreenCache
+// allein hilft nur beim Tab-Wechsel innerhalb derselben JS-Session, nicht
+// bei einem echten Neuladen der Seite. Ein eigener Key pro type, damit
+// Bars/Restaurants/Spätis sich nicht gegenseitig überschreiben. closureMap
+// ist eine Map — JSON.stringify würde sie stillschweigend zu "{}"
+// serialisieren, daher der Umweg über Array.from(map.entries())/new Map(...).
+function diskCacheKey(type: VenueType) {
+  return `vibe:venues_cache_v1:${type}`;
+}
+
+async function hydrateVenueScreenFromDisk(type: VenueType): Promise<VenueScreenCache | null> {
+  try {
+    const raw = await AsyncStorage.getItem(diskCacheKey(type));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.venues)) return null;
+    return {
+      venues: parsed.venues,
+      nearbyEvents: Array.isArray(parsed.nearbyEvents) ? parsed.nearbyEvents : [],
+      closureStatusByVenue: new Map(Array.isArray(parsed.closureStatusEntries) ? parsed.closureStatusEntries : []),
+    };
+  } catch {
+    // Kaputter/fehlender Cache-Eintrag ist unkritisch — load() holt die
+    // Daten ohnehin frisch, nur ohne den Sofort-Anzeige-Vorteil.
+    return null;
+  }
+}
+
+function persistVenueScreenToDisk(type: VenueType, cache: VenueScreenCache) {
+  const serializable = {
+    venues: cache.venues,
+    nearbyEvents: cache.nearbyEvents,
+    closureStatusEntries: Array.from(cache.closureStatusByVenue.entries()),
+  };
+  AsyncStorage.setItem(diskCacheKey(type), JSON.stringify(serializable)).catch(() => {
+    // Quota-/Storage-Fehler sind unkritisch — nur ohne Disk-Cache-Vorteil
+    // beim nächsten echten Neuladen.
+  });
+}
 
 const OPEN_PRIORITY: Record<'open' | 'unknown' | 'closed', number> = { open: 0, unknown: 1, closed: 2 };
 
@@ -556,14 +598,31 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       setVenues(sortedVenues);
       setNearbyEvents(nearby);
       setClosureStatusByVenue(closureMap);
-      venueScreenCache.set(type, { venues: sortedVenues, nearbyEvents: nearby, closureStatusByVenue: closureMap });
+      const freshCache = { venues: sortedVenues, nearbyEvents: nearby, closureStatusByVenue: closureMap };
+      venueScreenCache.set(type, freshCache);
+      persistVenueScreenToDisk(type, freshCache);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }
 
+  // Bei einem echten Neuladen der Seite ist venueScreenCache leer (siehe
+  // Kommentar oben) — der Disk-Cache füllt diese Lücke mit dem zuletzt
+  // bekannten Stand, load() läuft parallel trotzdem als stiller
+  // Hintergrund-Refresh (überschreibt bei Erfolg beides wieder).
   useEffect(() => {
+    if (!venueScreenCache.has(type)) {
+      hydrateVenueScreenFromDisk(type).then((cached) => {
+        if (cached && !venueScreenCache.has(type)) {
+          venueScreenCache.set(type, cached);
+          setVenues(cached.venues);
+          setNearbyEvents(cached.nearbyEvents);
+          setClosureStatusByVenue(cached.closureStatusByVenue);
+          setLoading(false);
+        }
+      });
+    }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
