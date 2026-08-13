@@ -168,6 +168,55 @@ async function fetchOgImage(url: string): Promise<string | null> {
   return image;
 }
 
+// Preisangaben stehen auf muenchen.de nicht in einem eigenen strukturierten
+// Feld, sondern (wenn überhaupt) als Nebensatz im freien Beschreibungstext
+// (itemprop="description") — per Nutzer-Meldung 2026-08-13 ("unbekleidet |
+// ausgezogen" hat dort klar "Der Eintritt ist frei.") und per Stichprobe
+// über 33 weitere Ausstellungs-/Fest-Detailseiten verifiziert: 5 davon
+// nannten denselben "Eintritt ist frei"-Satz, aber KEINE einzige nannte
+// einen konkreten bezahlten Preis im Fließtext — bezahlte Preise stehen
+// offenbar nur auf dem externen Ticket-Anbieter, nie hier. Deshalb bewusst
+// nur eine Freitext-Erkennung für "kostenlos", kein allgemeiner Preis-
+// Extraktor: ein Nicht-Treffer heißt nicht "kostenpflichtig", sondern nur
+// "nicht erwähnt" (price_info bleibt dann wie bisher null, siehe
+// Spaltenkommentar in 0002_add_price_and_availability.sql).
+const FREE_ADMISSION_PATTERN =
+  /eintritt\s+(ist\s+)?frei|freier\s+eintritt|eintritt\s+kostenlos|kostenloser\s+eintritt|eintritt\s+kostenfrei|kostenfreier\s+eintritt/i;
+
+interface DetailPageInfo {
+  image: string | null;
+  priceInfo: string | null;
+}
+
+const detailPageCache = new Map<string, DetailPageInfo>();
+
+// Wie fetchOgImage, aber liest zusätzlich den Beschreibungstext auf freien
+// Eintritt aus — nur für muenchen.de-eigene Detailseiten sinnvoll (siehe
+// FREE_ADMISSION_PATTERN-Kommentar), deshalb ein separater Cache statt
+// fetchOgImage einfach zu erweitern (die Ticket-Host-Fälle unten brauchen
+// weiterhin nur das Bild, kein zweites Muster auf fremden Seiten suchen).
+async function fetchDetailPageInfo(url: string): Promise<DetailPageInfo> {
+  if (detailPageCache.has(url)) return detailPageCache.get(url)!;
+  let info: DetailPageInfo = { image: null, priceInfo: null };
+  try {
+    const res = await fetch(url, { headers: BROWSER_HEADERS });
+    if (res.ok) {
+      const html = await res.text();
+      const imageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+      const descMatch = html.match(/itemprop="description">([\s\S]*?)<\/p>/);
+      const descText = descMatch ? descMatch[1].replace(/<[^>]+>/g, ' ') : '';
+      info = {
+        image: imageMatch?.[1] ?? null,
+        priceInfo: FREE_ADMISSION_PATTERN.test(descText) ? 'Kostenlos' : null,
+      };
+    }
+  } catch {
+    // Bleibt bei { image: null, priceInfo: null }, kein harter Fehler für den restlichen Collector-Lauf.
+  }
+  detailPageCache.set(url, info);
+  return info;
+}
+
 async function fetchCategoryPage(categoryId: string, from: string, to: string, page: number): Promise<cheerio.CheerioAPI | null> {
   const query = new URLSearchParams({
     search: '1',
@@ -227,12 +276,15 @@ export async function run() {
           const idSource = `${item.title}::${item.locationName ?? ''}`;
           const coords = await getCoordinates(supabase, item.locationName ?? 'München', null, 'München');
           let imageUrl: string | null = null;
+          let priceInfo: string | null = null;
           const ticketHost = item.ticketUrl ? (() => { try { return new URL(item.ticketUrl!).hostname; } catch { return null; } })() : null;
           if (item.ticketUrl && ticketHost?.endsWith('muenchenticket.de')) {
             imageUrl = await fetchOgImage(item.ticketUrl);
             await wait(requestSpacingMs());
           } else if (item.detailUrl) {
-            imageUrl = await fetchOgImage(item.detailUrl);
+            const info = await fetchDetailPageInfo(item.detailUrl);
+            imageUrl = info.image;
+            priceInfo = info.priceInfo;
             await wait(requestSpacingMs());
           }
           collected.push({
@@ -261,7 +313,7 @@ export async function run() {
             // fehlt, bleibt source_url leer.
             source_url: item.ticketUrl ?? item.detailUrl ?? null,
             image_url: imageUrl,
-            price_info: null,
+            price_info: priceInfo,
             sold_out: null,
             latitude: coords?.latitude ?? null,
             longitude: coords?.longitude ?? null,
