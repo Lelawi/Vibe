@@ -21,6 +21,7 @@ import { run as runGasteigHp8 } from './sources/gasteig_hp8/index.js';
 import { run as runUnterDeck } from './sources/unter_deck/index.js';
 import { run as runBahnwaerterThiel } from './sources/bahnwaerter_thiel/index.js';
 import { run as runMinnaThiel } from './sources/minna_thiel/index.js';
+import { run as runBangbangConcerts } from './sources/bangbang_concerts/index.js';
 import { run as runTonhalle } from './sources/tonhalle/index.js';
 import { run as runVolkstheater } from './sources/volkstheater/index.js';
 import { run as runResidenztheater } from './sources/residenztheater/index.js';
@@ -207,6 +208,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'unter-deck', run: runUnterDeck, host: 'in-muenchen.de' },
   { name: 'bahnwaerter-thiel', run: runBahnwaerterThiel },
   { name: 'minna-thiel', run: runMinnaThiel },
+  { name: 'bangbang-concerts', run: runBangbangConcerts },
   { name: 'tonhalle', run: runTonhalle, host: 'in-muenchen.de' },
   { name: 'volkstheater', run: runVolkstheater, host: 'in-muenchen.de' },
   { name: 'residenztheater', run: runResidenztheater, host: 'in-muenchen.de' },
