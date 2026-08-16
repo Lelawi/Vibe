@@ -40,6 +40,18 @@ const CURATED_NEW_VENUES = [
     website: 'https://www.coffeedream-mnchen.de',
     opening_hours_raw: null,
   },
+  {
+    // Per Nutzer-Fund über missing_items (2026-08-14, per Google-Maps-Link
+    // am 2026-08-16 bestätigt) noch nicht in OSM erfasst (Reverse-Geocode
+    // der Google-Maps-Koordinate bestätigt die Straße, aber ohne
+    // Hausnummer — die Hausnummer stammt aus mehreren übereinstimmenden
+    // Branchenbucheinträgen). Keine eigene Website auffindbar.
+    osm_id: -2026081601,
+    name: 'Feinkost Lisa',
+    address: 'Westendstraße 143, 80339 München',
+    website: null,
+    opening_hours_raw: 'Mo-Fr 11:00-14:00',
+  },
 ];
 
 // Selbe Grundlage wie sources/bars (OSM/Overpass, siehe core/venues.ts) —

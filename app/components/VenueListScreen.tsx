@@ -1332,12 +1332,23 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
           // brokenImageIds oben) — sonst bliebe ein toter Link ein leeres
           // schwarzes Rechteck statt auf den Platzhalter umzuschalten.
           const hasUsableImage = Boolean(item.image_url) && !brokenImageIds.has(item.id);
-          // Die große Bild-Karten-Größe nur ansetzen, wenn dieser Eintrag
-          // tatsächlich den großen Karten-Zweig unten erreicht (Bild-Karten-
-          // Modus UND echtes, ladbares Foto vorhanden) — sonst würde ein
-          // Eintrag ohne Foto im Bild-Karten-Modus fälschlich mit der großen
-          // Boxgröße in die kompakte Zeile durchfallen.
-          const useCardsLayout = viewMode === 'cards' && hasUsableImage;
+          // Bewusst NUR auf image_url (nicht zusätzlich auf hasUsableImage)
+          // geprüft: image_url selbst ändert sich nie nach dem ersten Render,
+          // brokenImageIds aber schon (Image onError feuert erst, NACHDEM
+          // die Zeile beim Scrollen neu gemountet wurde und zu laden
+          // begonnen hat). Hing useCardsLayout mit an hasUsableImage, kippte
+          // eine Zeile mit kaputtem Bild mitten im Scrollen von der großen
+          // Bild-Karte auf die viel kürzere Kompakt-Zeile um — der Sprung um
+          // ca. eine halbe Bildschirmhöhe, den Nutzer beim Scrollen durch
+          // Restaurants reproduzierbar gemeldet haben. Mit image_url als
+          // Bedingung steht die Kartengröße von Anfang an fest; nur der
+          // Inhalt der (gleich großen) Box wechselt bei einem Ladefehler
+          // still von <Image> auf den Farbverlauf-Platzhalter (siehe
+          // `image` unten) — kein Layout-Sprung mehr. Einträge ganz ohne
+          // image_url fallen weiterhin sofort und dauerhaft auf die
+          // Kompakt-Zeile zurück (unverändertes Verhalten, siehe
+          // Nutzer-Feedback-Kommentar unten).
+          const useCardsLayout = viewMode === 'cards' && Boolean(item.image_url);
           const image = hasUsableImage ? (
             <Image
               source={{ uri: item.image_url! }}
