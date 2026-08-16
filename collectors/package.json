@@ -63,6 +63,7 @@
     "duplicate-audit": "tsx scripts/duplicate-audit.ts",
     "backfill-beer-prices": "tsx scripts/backfill-beer-prices.ts",
     "backfill-venue-images": "tsx scripts/backfill-venue-images.ts",
+    "backfill-google-places-onetime": "tsx scripts/backfill-google-places-onetime.ts",
     "precheck-structured": "tsx scripts/precheck-structured-reports.ts",
     "cleanup-feedback-screenshots": "tsx scripts/cleanup-feedback-screenshots.ts",
     "test:eventim": "tsx --test sources/eventim/index.test.ts",
