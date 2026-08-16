@@ -22,6 +22,8 @@ import { run as runUnterDeck } from './sources/unter_deck/index.js';
 import { run as runBahnwaerterThiel } from './sources/bahnwaerter_thiel/index.js';
 import { run as runMinnaThiel } from './sources/minna_thiel/index.js';
 import { run as runBangbangConcerts } from './sources/bangbang_concerts/index.js';
+import { run as runTollwoodMusikarena } from './sources/tollwood_musikarena/index.js';
+import { run as runKocherlball } from './sources/kocherlball/index.js';
 import { run as runTonhalle } from './sources/tonhalle/index.js';
 import { run as runVolkstheater } from './sources/volkstheater/index.js';
 import { run as runResidenztheater } from './sources/residenztheater/index.js';
@@ -209,6 +211,8 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'bahnwaerter-thiel', run: runBahnwaerterThiel },
   { name: 'minna-thiel', run: runMinnaThiel },
   { name: 'bangbang-concerts', run: runBangbangConcerts },
+  { name: 'tollwood-musikarena', run: runTollwoodMusikarena },
+  { name: 'kocherlball', run: runKocherlball },
   { name: 'tonhalle', run: runTonhalle, host: 'in-muenchen.de' },
   { name: 'volkstheater', run: runVolkstheater, host: 'in-muenchen.de' },
   { name: 'residenztheater', run: runResidenztheater, host: 'in-muenchen.de' },

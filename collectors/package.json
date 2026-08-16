@@ -25,6 +25,8 @@
     "bahnwaerter-thiel": "tsx sources/bahnwaerter_thiel/index.ts",
     "minna-thiel": "tsx sources/minna_thiel/index.ts",
     "bangbang-concerts": "tsx sources/bangbang_concerts/index.ts",
+    "tollwood-musikarena": "tsx sources/tollwood_musikarena/index.ts",
+    "kocherlball": "tsx sources/kocherlball/index.ts",
     "tonhalle": "tsx sources/tonhalle/index.ts",
     "volkstheater": "tsx sources/volkstheater/index.ts",
     "residenztheater": "tsx sources/residenztheater/index.ts",
