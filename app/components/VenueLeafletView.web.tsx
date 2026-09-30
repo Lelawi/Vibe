@@ -355,6 +355,6 @@ const styles = StyleSheet.create({
   popupAddress: { fontSize: 12, color: '#444' },
   popupHours: { fontSize: 12, color: '#444', marginTop: 2 },
   popupLunchBadge: { fontSize: 12, color: '#a8730a', fontWeight: '600', marginTop: 4 },
-  popupLink: { fontSize: 12, color: '#0af', fontWeight: '600', marginTop: 6 },
-  popupMapsButton: { fontSize: 12, color: '#0af', fontWeight: '600', marginTop: 4 },
+  popupLink: { fontSize: 12, color: '#0077b3', fontWeight: '600', marginTop: 6 },
+  popupMapsButton: { fontSize: 12, color: '#0077b3', fontWeight: '600', marginTop: 4 },
 });

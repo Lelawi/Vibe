@@ -9,14 +9,24 @@ const listeners = new Set<(artists: FollowedArtist[]) => void>();
 async function load(): Promise<FollowedArtist[]> {
   if (cache) return cache;
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  cache = raw ? JSON.parse(raw) : [];
+  try {
+    cache = raw ? JSON.parse(raw) : [];
+  } catch {
+    cache = [];
+  }
   return cache!;
 }
 
 async function persist(artists: FollowedArtist[]) {
   cache = artists;
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(artists));
+  // Erst die UI aktualisieren, dann speichern: scheiterte setItem (z.B.
+  // voller Speicher), blieb die Änderung vorher unsichtbar und ging verloren.
   listeners.forEach((listener) => listener(artists));
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(artists));
+  } catch (err) {
+    console.warn('[followedArtists] Speichern fehlgeschlagen', err);
+  }
 }
 
 export function useFollowedArtists() {

@@ -127,15 +127,24 @@ export default function SettingsScreen() {
   const [showOrganizers, setShowOrganizers] = useState(false);
   const [refreshRequested, setRefreshRequested] = useState(false);
 
-  function goBackWithAction(action: 'open-reminder' | 'open-saved-searches') {
-    requestSettingsAction(action);
-    router.back();
+  // Zurück zur Eventliste, die die Aktion ausführt — per back(), wenn sie im
+  // Hintergrund lebt, sonst (Aufruf von einem Venue-Tab oder nach Reload auf
+  // /settings) per replace('/'), wo sie die vorgemerkte Aktion abholt.
+  function leaveWithAction(action: 'refresh' | 'open-reminder' | 'open-saved-searches') {
+    const delivered = requestSettingsAction(action);
+    if (delivered && router.canGoBack()) router.back();
+    else router.replace('/');
+  }
+
+  function goBack() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
   }
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
+        <TouchableOpacity onPress={goBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
           <Ionicons name="chevron-back" size={26} color="#0af" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('settings.title')}</Text>
@@ -203,7 +212,7 @@ export default function SettingsScreen() {
               icon="time-outline"
               label={t('settings.reminder')}
               badge={reminderOffsets.length}
-              onPress={() => goBackWithAction('open-reminder')}
+              onPress={() => leaveWithAction('open-reminder')}
             />
           )}
           <SettingsRow
@@ -237,7 +246,7 @@ export default function SettingsScreen() {
             icon="bookmark-outline"
             label={t('settings.savedSearches')}
             badge={savedSearches.length}
-            onPress={() => goBackWithAction('open-saved-searches')}
+            onPress={() => leaveWithAction('open-saved-searches')}
           />
         </SettingsGroup>
 
@@ -254,8 +263,7 @@ export default function SettingsScreen() {
             disabled={refreshRequested}
             onPress={() => {
               setRefreshRequested(true);
-              requestSettingsAction('refresh');
-              router.back();
+              leaveWithAction('refresh');
             }}
             right={refreshRequested ? <ActivityIndicator size="small" color="#999" /> : undefined}
           />
@@ -291,7 +299,7 @@ const styles = StyleSheet.create({
   badge: { backgroundColor: '#fff', borderRadius: 9, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   badgeText: { color: '#000', fontSize: 11, fontWeight: '800' },
   organizerList: { backgroundColor: '#0e0e0e', borderRadius: 12, marginTop: 6, padding: 10, gap: 8 },
-  emptyHint: { color: '#777', fontSize: 12.5, lineHeight: 18, padding: 4 },
+  emptyHint: { color: '#8f8f8f', fontSize: 12.5, lineHeight: 18, padding: 4 },
   organizerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   organizerName: { flex: 1, color: '#ddd', fontSize: 13.5 },
   organizerUnfollow: { color: '#ff6b6b', fontSize: 12.5, fontWeight: '700' },

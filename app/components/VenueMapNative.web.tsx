@@ -149,7 +149,11 @@ export default function VenueMapNative({
       setClosedIds(new Set((reportsRes.data ?? []).map((r) => r.venue_id as string)));
       setLoading(false);
     }
-    load();
+    // Offline/Netzfehler: Spinner beenden statt endlos drehen zu lassen.
+    load().catch((err) => {
+      console.warn('[VenueMapNative] load failed', err);
+      setLoading(false);
+    });
   }, [type]);
 
   const markers: VenueMarker[] = useMemo(() => {

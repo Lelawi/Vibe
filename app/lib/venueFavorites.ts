@@ -14,14 +14,24 @@ const listeners = new Set<(ids: string[]) => void>();
 async function load(): Promise<string[]> {
   if (cache) return cache;
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  cache = raw ? JSON.parse(raw) : [];
+  try {
+    cache = raw ? JSON.parse(raw) : [];
+  } catch {
+    cache = [];
+  }
   return cache!;
 }
 
 async function persist(ids: string[]) {
   cache = ids;
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+  // Erst die UI aktualisieren, dann speichern: scheiterte setItem (z.B.
+  // voller Speicher), blieb die Änderung vorher unsichtbar und ging verloren.
   listeners.forEach((l) => l(ids));
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+  } catch (err) {
+    console.warn('[venueFavorites] Speichern fehlgeschlagen', err);
+  }
 }
 
 export async function toggleVenueFavoriteId(id: string): Promise<string[]> {

@@ -30,6 +30,8 @@ import { registerStrings, useTranslation } from '../lib/strings';
 import { categoryLabel } from '../lib/eventCategories';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
+import { getLargeCache, setLargeCache } from '../lib/largeCache';
+import { berlinToday } from '../lib/berlinDate';
 import { computeSeriesKey, seriesDisplayTitle, seriesVariantLabel } from '../lib/seriesKey';
 import { setFilteredEventsForMap } from '../lib/mapFilterCache';
 import { fuzzyMatch } from '../lib/fuzzySearch';
@@ -89,7 +91,8 @@ type ListRow =
   | { kind: 'dateRow' }
   | { kind: 'filterInfo' }
   | { kind: 'featured'; events: Event[] }
-  | { kind: 'group'; group: Event[] };
+  | { kind: 'group'; group: Event[] }
+  | { kind: 'empty' };
 
 // Modul-level statt useState-Default: bleibt über einen Tab-Wechsel hinweg
 // erhalten, obwohl der Screen bei jedem Wechsel zwischen Events/Bars/
@@ -114,25 +117,15 @@ let eventsCache: Event[] | null = null;
 // Hintergrund-Refresh (loadEvents) holt danach trotzdem frische Daten.
 const DISK_CACHE_KEY = 'vibe:events_cache_v1';
 
+// Seit 2026-09-30 über lib/largeCache (IndexedDB im Web): im localStorage
+// sprengte die Liste das Kontingent und blockierte damit auch Favoriten.
 async function hydrateFromDiskCache(): Promise<Event[] | null> {
-  try {
-    const raw = await AsyncStorage.getItem(DISK_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    // Kaputter/fehlender Cache-Eintrag ist unkritisch — loadEvents holt die
-    // Daten ohnehin frisch, nur ohne den Sofort-Anzeige-Vorteil.
-    return null;
-  }
+  const cached = await getLargeCache<Event[]>(DISK_CACHE_KEY);
+  return Array.isArray(cached) ? cached : null;
 }
 
 function persistEventsToDisk(events: Event[]) {
-  AsyncStorage.setItem(DISK_CACHE_KEY, JSON.stringify(events)).catch(() => {
-    // Quota-/Storage-Fehler (z.B. voller localStorage) sind unkritisch —
-    // die App funktioniert auch ohne Disk-Cache, nur ohne dessen
-    // Sofort-Anzeige-Vorteil beim nächsten echten Neuladen.
-  });
+  void setLargeCache(DISK_CACHE_KEY, events);
 }
 
 // Haversine-Formel für die Distanz zweier Koordinaten in km.
@@ -391,6 +384,9 @@ registerStrings({
   'events.emptyTitle': { de: 'Keine Events gefunden', en: 'No events found' },
   'events.emptyHintFiltered': { de: 'Mit den aktuellen Filtern gibt es nichts zu sehen.', en: "There's nothing to see with the current filters." },
   'events.emptyHint': { de: 'Schau später nochmal vorbei.', en: 'Check back again later.' },
+  'events.loadFailedTitle': { de: 'Events konnten nicht geladen werden', en: 'Could not load events' },
+  'events.loadFailedHint': { de: 'Keine Verbindung zum Server. Prüfe dein Netz und versuche es erneut.', en: 'No connection to the server. Check your network and try again.' },
+  'events.retry': { de: 'Erneut versuchen', en: 'Try again' },
   'events.featuredTitle': { de: 'Empfohlen für dich', en: 'Recommended for you' },
   'events.soldOut': { de: 'Ausverkauft', en: 'Sold out' },
   'events.calendarReset': { de: 'Zurücksetzen', en: 'Reset' },
@@ -403,6 +399,7 @@ registerStrings({
   'events.filterLocation': { de: 'Ort', en: 'Location' },
   'events.locationSearchPlaceholder': { de: 'Ort suchen...', en: 'Search location...' },
   'events.resetAll': { de: 'Alle zurücksetzen', en: 'Reset all' },
+  'events.clearSearch': { de: 'Suche löschen', en: 'Clear search' },
   'events.reminderModalTitle': { de: 'Erinnerung bei Favoriten', en: 'Reminder for favorites' },
   'events.close': { de: 'Schließen', en: 'Close' },
   'events.dates': { de: 'Termine', en: 'dates' },
@@ -440,6 +437,7 @@ export default function EventListScreen() {
   const [events, setEvents] = useState<Event[]>(() => eventsCache ?? []);
   const [loading, setLoading] = useState(() => eventsCache === null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const listRef = useRef<FlatList<ListRow>>(null);
   const [isOffline, setIsOffline] = useState(
@@ -700,7 +698,7 @@ export default function EventListScreen() {
   async function loadEvents(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = berlinToday();
       // description bewusst NICHT in der Liste geladen: nur die Detailseite
       // (app/event/[id].tsx) braucht den vollen Freitext, hier diente er
       // bisher nur als Zusatzfeld im Such-Haystack (siehe enrichedEvents
@@ -734,6 +732,7 @@ export default function EventListScreen() {
 
       if (countError || count == null) {
         console.error('Fehler beim Zählen:', countError);
+        setLoadFailed(true);
         return;
       }
 
@@ -754,7 +753,9 @@ export default function EventListScreen() {
       const firstError = pages.find((p) => p.error)?.error;
       if (firstError) {
         console.error('Fehler beim Laden:', firstError);
+        setLoadFailed(true);
       } else {
+        setLoadFailed(false);
         const loaded = pages.flatMap((p) => p.data ?? []);
         eventsCache = loaded;
         setEvents(loaded);
@@ -1057,6 +1058,10 @@ export default function EventListScreen() {
     // nochmal in der Liste steht, keinen Mehrwert.
     if (showFeaturedCarousel && featuredEvents.length > 1) rows.push({ kind: 'featured', events: featuredEvents });
     eventGroups.forEach((group) => rows.push({ kind: 'group', group }));
+    // Eigene Zeile statt ListEmptyComponent: die Liste hat nie 0 Einträge
+    // (Banner/Datum/Filter-Zeilen), ListEmptyComponent erschien deshalb nie —
+    // gleicher Fix wie in VenueListScreen.
+    if (eventGroups.length === 0) rows.push({ kind: 'empty' });
     return rows;
   }, [featuredEvents, eventGroups, showFeaturedCarousel]);
 
@@ -1305,7 +1310,7 @@ export default function EventListScreen() {
         <TextInput
           style={[styles.search, styles.searchInput]}
           placeholder={t('events.searchPlaceholder')}
-          placeholderTextColor="#666"
+          placeholderTextColor="#8a8a8a"
           value={search}
           onChangeText={setSearch}
         />
@@ -1314,7 +1319,7 @@ export default function EventListScreen() {
             style={styles.searchClearBtn}
             onPress={() => setSearch('')}
             accessibilityRole="button"
-            accessibilityLabel={t('events.resetAll')}
+            accessibilityLabel={t('events.clearSearch')}
           >
             <Text style={styles.searchClearBtnText}>✕</Text>
           </TouchableOpacity>
@@ -1614,7 +1619,21 @@ export default function EventListScreen() {
         // gepinnte Bereich auf dem Handy nicht zu viel Platz frisst.
         stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={
+        renderItem={({ item: row }) => {
+          if (row.kind === 'empty') {
+            if (loadFailed && events.length === 0) {
+              return (
+                <View style={styles.emptyState}>
+                  <Ionicons name="cloud-offline-outline" size={40} color="#8f8f8f" />
+                  <Text style={styles.emptyTitle}>{t('events.loadFailedTitle')}</Text>
+                  <Text style={styles.emptyHint}>{t('events.loadFailedHint')}</Text>
+                  <TouchableOpacity style={styles.emptyResetButton} onPress={() => loadEvents(true)} disabled={refreshing}>
+                    <Text style={styles.emptyResetButtonText}>{refreshing ? '…' : t('events.retry')}</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            }
+            return (
           <View style={styles.emptyState}>
             <Ionicons name="calendar-clear-outline" size={40} color="#444" />
             <Text style={styles.emptyTitle}>{t('events.emptyTitle')}</Text>
@@ -1631,8 +1650,8 @@ export default function EventListScreen() {
               <Text style={styles.emptyHint}>{t('events.emptyHint')}</Text>
             )}
           </View>
-        }
-        renderItem={({ item: row }) => {
+            );
+          }
           if (row.kind === 'banner') {
             return bannerSection;
           }
@@ -1962,7 +1981,7 @@ export default function EventListScreen() {
               <TextInput
                 style={[styles.search, styles.locationSearchInput]}
                 placeholder={t('events.locationSearchPlaceholder')}
-                placeholderTextColor="#666"
+                placeholderTextColor="#8a8a8a"
                 value={locationSearch}
                 onChangeText={setLocationSearch}
               />
@@ -2055,7 +2074,7 @@ export default function EventListScreen() {
                 <TextInput
                   style={[styles.search, styles.savedSearchInput]}
                   placeholder={t('events.savedSearchName')}
-                  placeholderTextColor="#666"
+                  placeholderTextColor="#8a8a8a"
                   value={savedSearchName}
                   onChangeText={setSavedSearchName}
                 />
@@ -2100,7 +2119,7 @@ export default function EventListScreen() {
           onPress={() => setShowReminderModal(false)}
         >
           <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>{t('events.reminderModalTitle')}</Text>
+            <Text style={[styles.modalTitle, styles.modalTitleInset]}>{t('events.reminderModalTitle')}</Text>
             <Text style={styles.modalSubtitle}>
               {t('events.reminderModalSubtitle')}
             </Text>
@@ -2144,7 +2163,7 @@ export default function EventListScreen() {
           onPress={() => setSelectedGroup(null)}
         >
           <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>
+            <Text style={[styles.modalTitle, styles.modalTitleInset]}>
               {selectedGroup?.[0] ? seriesDisplayTitle(selectedGroup[0].title) : ''}
             </Text>
             <Text style={styles.modalSubtitle}>
@@ -2184,7 +2203,7 @@ export default function EventListScreen() {
             />
             {selectedGroup && selectedGroup.length > 1 && (
               <TouchableOpacity
-                style={styles.modalSecondaryButton}
+                style={[styles.modalSecondaryButton, { marginHorizontal: 16 }]}
                 onPress={() =>
                   addEventsToCalendar(
                     selectedGroup.map((ev) => ({
@@ -2392,7 +2411,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
   },
-  resultCount: { color: '#666', fontSize: 12 },
+  resultCount: { color: '#8f8f8f', fontSize: 12 },
   resultCountResetLink: {
     color: '#888',
     fontSize: 12,
@@ -2431,7 +2450,7 @@ const styles = StyleSheet.create({
   calendarWeekLabel: {
     flex: 1,
     textAlign: 'center',
-    color: '#666',
+    color: '#8f8f8f',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -2500,7 +2519,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  activePillResetAllText: { color: '#666', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
+  activePillResetAllText: { color: '#8f8f8f', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
   filterTabRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -2540,10 +2559,10 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
-  empty: { color: '#666', textAlign: 'center', marginTop: 40 },
+  empty: { color: '#8f8f8f', textAlign: 'center', marginTop: 40 },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 32, gap: 6 },
   emptyTitle: { color: '#ccc', fontSize: 16, fontWeight: '700', marginTop: 12 },
-  emptyHint: { color: '#666', fontSize: 13, textAlign: 'center' },
+  emptyHint: { color: '#8f8f8f', fontSize: 13, textAlign: 'center' },
   emptyResetButton: {
     marginTop: 14,
     paddingVertical: 10,
@@ -2670,7 +2689,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 4, letterSpacing: 0.1 },
   meta: { fontSize: 13, color: '#999' },
-  subMeta: { fontSize: 12, color: '#666', marginTop: 2 },
+  subMeta: { fontSize: 12, color: '#8f8f8f', marginTop: 2 },
   priceMeta: {
     fontSize: 12,
     color: '#7cd992',
@@ -2724,6 +2743,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flexShrink: 1,
   },
+  // Für Sheets ohne eigenen Header-Wrapper (Erinnerung, Serie): Titel lag
+  // sonst ohne Innenabstand am Bildschirmrand.
+  modalTitleInset: { paddingHorizontal: 16 },
   modalResetLink: {
     color: '#0af',
     fontSize: 13,
@@ -2748,7 +2770,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   filterSectionLabel: {
-    color: '#777',
+    color: '#8f8f8f',
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -2795,7 +2817,7 @@ const styles = StyleSheet.create({
   filterOptionsList: { minHeight: 100 },
   savedSearchTitle: { paddingHorizontal: 16, marginBottom: 6 },
   savedSearchList: { maxHeight: 430 },
-  savedSearchEmpty: { color: '#666', paddingHorizontal: 16, paddingVertical: 16 },
+  savedSearchEmpty: { color: '#8f8f8f', paddingHorizontal: 16, paddingVertical: 16 },
   savedSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2807,7 +2829,7 @@ const styles = StyleSheet.create({
   },
   savedSearchNameWrap: { flex: 1 },
   savedSearchName: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  savedSearchStatus: { color: '#777', fontSize: 11, marginTop: 3 },
+  savedSearchStatus: { color: '#8f8f8f', fontSize: 11, marginTop: 3 },
   savedSearchAction: { paddingHorizontal: 8, paddingVertical: 8 },
   savedSearchActionText: { color: '#0af', fontSize: 12, fontWeight: '700' },
   savedSearchIconAction: {
@@ -2826,7 +2848,7 @@ const styles = StyleSheet.create({
   savedSearchPreview: { color: '#8ad7ff', fontSize: 12 },
   savedSearchButtonDisabled: { opacity: 0.4 },
   modalFooterHint: {
-    color: '#666',
+    color: '#8f8f8f',
     fontSize: 12,
     textAlign: 'center',
     paddingVertical: 14,

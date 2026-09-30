@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { supabase } from '../lib/supabase';
+import { fetchMapEvents } from '../lib/fetchMapEvents';
 import { canonicalizeVenue } from '../lib/venue';
 import { getFilteredEventsForMap } from '../lib/mapFilterCache';
 import MapCategorySwitcher from './MapCategorySwitcher';
@@ -73,18 +73,11 @@ export default function MapNative() {
         setLoading(false);
         return;
       }
-      const today = new Date().toISOString().slice(0, 10);
-      const { data, error } = await supabase
-        .from('events')
-        .select('id, title, location_name, latitude, longitude, start_date, start_time')
-        .gte('start_date', today)
-        .is('duplicate_of', null)
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null)
-        .order('start_date', { ascending: true })
-        .limit(2000);
-
-      if (!error) setEvents((data ?? []) as RawEvent[]);
+      try {
+        setEvents(await fetchMapEvents<RawEvent>('id, title, location_name, latitude, longitude, start_date, start_time'));
+      } catch (err) {
+        console.warn('[MapNative] loading events failed', err);
+      }
       setLoading(false);
     }
     loadEvents();

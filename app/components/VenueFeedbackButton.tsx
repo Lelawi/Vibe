@@ -92,7 +92,7 @@ export default function VenueFeedbackButton({ venueId }: { venueId: string }) {
                 <TextInput
                   style={styles.input}
                   placeholder={t('venueFeedback.notePlaceholder')}
-                  placeholderTextColor="#666"
+                  placeholderTextColor="#8a8a8a"
                   value={note}
                   onChangeText={setNote}
                   multiline
@@ -122,7 +122,7 @@ export default function VenueFeedbackButton({ venueId }: { venueId: string }) {
 
 const styles = StyleSheet.create({
   link: { alignSelf: 'flex-start' },
-  linkText: { color: '#555', fontSize: 12 },
+  linkText: { color: '#8f8f8f', fontSize: 12 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   card: { backgroundColor: '#0a0a0a', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 24 },
   title: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 14 },

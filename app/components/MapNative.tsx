@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator, Text, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import MapView, { Marker, Callout, CalloutSubview, Region } from 'react-native-maps';
-import { supabase } from '../lib/supabase';
+import { fetchMapEvents } from '../lib/fetchMapEvents';
 import { canonicalizeVenue } from '../lib/venue';
 
 type RawEvent = {
@@ -61,18 +61,11 @@ export default function MapNative() {
 
   useEffect(() => {
     async function loadEvents() {
-      const today = new Date().toISOString().slice(0, 10);
-      const { data, error } = await supabase
-        .from('events')
-        .select('id, title, location_name, latitude, longitude, start_date, start_time')
-        .gte('start_date', today)
-        .is('duplicate_of', null)
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null)
-        .order('start_date', { ascending: true })
-        .limit(2000);
-
-      if (!error) setEvents((data ?? []) as RawEvent[]);
+      try {
+        setEvents(await fetchMapEvents<RawEvent>('id, title, location_name, latitude, longitude, start_date, start_time'));
+      } catch (err) {
+        console.warn('[MapNative] loading events failed', err);
+      }
       setLoading(false);
     }
     loadEvents();

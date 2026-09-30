@@ -23,14 +23,24 @@ const listeners = new Set<(offsets: number[]) => void>();
 async function load(): Promise<number[]> {
   if (cache) return cache;
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  cache = raw ? JSON.parse(raw) : DEFAULT_OFFSETS_MINUTES;
+  try {
+    cache = raw ? JSON.parse(raw) : DEFAULT_OFFSETS_MINUTES;
+  } catch {
+    cache = DEFAULT_OFFSETS_MINUTES;
+  }
   return cache!;
 }
 
 async function persist(offsets: number[]) {
   cache = offsets;
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(offsets));
+  // Erst die UI aktualisieren, dann speichern: scheiterte setItem (z.B.
+  // voller Speicher), blieb die Änderung vorher unsichtbar und ging verloren.
   listeners.forEach((l) => l(offsets));
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(offsets));
+  } catch (err) {
+    console.warn('[reminderSettings] Speichern fehlgeschlagen', err);
+  }
 }
 
 export function useReminderSettings() {

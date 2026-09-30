@@ -22,8 +22,14 @@ async function load(): Promise<EventViewMode> {
 
 async function persist(value: EventViewMode) {
   cache = value;
-  await AsyncStorage.setItem(STORAGE_KEY, value);
+  // Erst die UI aktualisieren, dann speichern: scheiterte setItem (z.B.
+  // voller Speicher), blieb die Änderung vorher unsichtbar und ging verloren.
   listeners.forEach((l) => l(value));
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, value);
+  } catch (err) {
+    console.warn('[eventViewMode] Speichern fehlgeschlagen', err);
+  }
 }
 
 export function useEventViewMode() {

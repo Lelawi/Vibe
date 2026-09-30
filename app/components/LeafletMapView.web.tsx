@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   },
   popupEventTitle: { fontSize: 13, fontWeight: '600', color: '#111' },
   popupEventDate: { fontSize: 11, color: '#666', marginTop: 1 },
-  popupMoreLink: { fontSize: 12, color: '#0af', fontWeight: '600', marginTop: 6 },
+  popupMoreLink: { fontSize: 12, color: '#0077b3', fontWeight: '600', marginTop: 6 },
   popupMapsButton: {
     backgroundColor: '#0af',
     borderRadius: 8,

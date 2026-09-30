@@ -238,24 +238,35 @@ function matchesMonthWeek(rule: DayRule, date: Date): boolean {
   return rule.monthWeeks.includes(positiveWeek) || rule.monthWeeks.includes(negativeWeek);
 }
 
+// OSM-Semantik: eine spätere Regel ersetzt frühere für die Tage, die sie
+// nennt. Vorher wurden alle Regeln gleichzeitig ausgewertet und "off"
+// einfach übersprungen — "Mo-Sa 10:00-22:00; Tu off" zeigte dienstags
+// "Geöffnet" (Fund 2026-09-30, echte Datensätze in venues).
+function effectiveRulesForDay(rules: DayRule[], weekday: number, date: Date): DayRule[] {
+  let effective: DayRule[] = [];
+  for (const rule of rules) {
+    if (rule.days.includes(weekday) && matchesMonthWeek(rule, date)) effective = [rule];
+  }
+  return effective;
+}
+
 function isWithinRules(rules: DayRule[], at: Date): boolean {
   const weekday = at.getDay();
   const minutesOfDay = at.getHours() * 60 + at.getMinutes();
   const previousDate = new Date(at);
   previousDate.setDate(at.getDate() - 1);
-  for (const rule of rules) {
+  for (const rule of effectiveRulesForDay(rules, weekday, at)) {
     if (rule.closed) continue;
-    if (rule.days.includes(weekday) && matchesMonthWeek(rule, at)) {
-      for (const range of rule.ranges) {
-        if (minutesOfDay >= range.startMinutes && minutesOfDay < range.endMinutes) return true;
-      }
+    for (const range of rule.ranges) {
+      if (minutesOfDay >= range.startMinutes && minutesOfDay < range.endMinutes) return true;
     }
-    // Vortag-Regel, deren Über-Mitternacht-Bereich noch in den aktuellen Tag reicht.
-    const previousWeekday = (weekday + 6) % 7;
-    if (rule.days.includes(previousWeekday) && matchesMonthWeek(rule, previousDate)) {
-      for (const range of rule.ranges) {
-        if (range.endMinutes > 24 * 60 && minutesOfDay < range.endMinutes - 24 * 60) return true;
-      }
+  }
+  // Vortag-Regel, deren Über-Mitternacht-Bereich noch in den aktuellen Tag reicht.
+  const previousWeekday = (weekday + 6) % 7;
+  for (const rule of effectiveRulesForDay(rules, previousWeekday, previousDate)) {
+    if (rule.closed) continue;
+    for (const range of rule.ranges) {
+      if (range.endMinutes > 24 * 60 && minutesOfDay < range.endMinutes - 24 * 60) return true;
     }
   }
   return false;
@@ -279,7 +290,7 @@ export function todayLabel(
   const rules = parseOpeningHours(raw);
   if (!rules) return null;
   const weekday = at.getDay();
-  const todayRules = rules.filter((r) => r.days.includes(weekday) && matchesMonthWeek(r, at));
+  const todayRules = effectiveRulesForDay(rules, weekday, at);
   if (todayRules.length === 0) return null;
   if (todayRules.every((r) => r.closed)) return language === 'de' ? 'Geschlossen' : 'Closed';
 

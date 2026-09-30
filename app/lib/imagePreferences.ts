@@ -21,8 +21,14 @@ async function load(): Promise<boolean> {
 
 async function persist(value: boolean) {
   cache = value;
-  await AsyncStorage.setItem(STORAGE_KEY, value ? '1' : '0');
+  // Erst die UI aktualisieren, dann speichern: scheiterte setItem (z.B.
+  // voller Speicher), blieb die Änderung vorher unsichtbar und ging verloren.
   listeners.forEach((l) => l(value));
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, value ? '1' : '0');
+  } catch (err) {
+    console.warn('[imagePreferences] Speichern fehlgeschlagen', err);
+  }
 }
 
 export function useShowFeaturedCarousel() {

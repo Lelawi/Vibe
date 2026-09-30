@@ -14,14 +14,24 @@ const listeners = new Set<(names: string[]) => void>();
 async function load(): Promise<string[]> {
   if (cache) return cache;
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  cache = raw ? JSON.parse(raw) : [];
+  try {
+    cache = raw ? JSON.parse(raw) : [];
+  } catch {
+    cache = [];
+  }
   return cache!;
 }
 
 async function persist(names: string[]) {
   cache = names;
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(names));
+  // Erst die UI aktualisieren, dann speichern: scheiterte setItem (z.B.
+  // voller Speicher), blieb die Änderung vorher unsichtbar und ging verloren.
   listeners.forEach((l) => l(names));
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(names));
+  } catch (err) {
+    console.warn('[followedOrganizers] Speichern fehlgeschlagen', err);
+  }
 }
 
 export async function toggleFollowedOrganizerName(name: string): Promise<string[]> {

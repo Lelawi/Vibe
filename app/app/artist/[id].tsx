@@ -117,5 +117,5 @@ const styles = StyleSheet.create({
   eventTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
   meta: { color: '#999', fontSize: 12, marginTop: 5, lineHeight: 17 },
   soldOut: { color: '#ff6b6b', fontSize: 11, fontWeight: '700' },
-  empty: { color: '#777', lineHeight: 20 },
+  empty: { color: '#8f8f8f', lineHeight: 20 },
 });

@@ -18,12 +18,13 @@ import {
 // Verhalten (contentFit="cover" entspricht dem bisherigen RN-Image-
 // Standard). Keine lokalen require()-Assets in dieser Datei.
 import { Image } from 'expo-image';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { canonicalizeVenue } from '../lib/venue';
+import { getLargeCache, setLargeCache } from '../lib/largeCache';
+import { berlinToday } from '../lib/berlinDate';
 import { isOpenNow, todayLabel } from '../lib/openingHours';
 import { fuzzyMatch } from '../lib/fuzzySearch';
 import { distanceKm, formatDistance } from '../lib/geo';
@@ -171,7 +172,12 @@ async function fetchVenuesResilient(type: VenueType): Promise<Venue[]> {
         return { ...venue, google_place_id: venue.google_place_id ?? null };
       });
     } catch (err) {
-      if (i === attempts.length - 1) throw err;
+      // Weniger Spalten helfen nur bei einer unbekannten Spalte (Migration
+      // noch nicht angewendet: Postgres 42703 / PostgREST PGRST204). Ein
+      // Netzfehler lief vorher durch alle 9 Varianten und cachte am Ende
+      // eine Liste ohne Google-Öffnungszeiten.
+      const code = (err as { code?: string } | null)?.code;
+      if (i === attempts.length - 1 || (code !== '42703' && code !== 'PGRST204')) throw err;
       console.warn(`[VenueListScreen] retrying with fewer columns (attempt ${i + 2}/${attempts.length})`, err);
     }
   }
@@ -240,11 +246,11 @@ function diskCacheKey(type: VenueType) {
   return `vibe:venues_cache_v1:${type}`;
 }
 
+// Seit 2026-09-30 über lib/largeCache (IndexedDB im Web) statt localStorage,
+// siehe Kommentar dort.
 async function hydrateVenueScreenFromDisk(type: VenueType): Promise<VenueScreenCache | null> {
   try {
-    const raw = await AsyncStorage.getItem(diskCacheKey(type));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
+    const parsed = await getLargeCache<any>(diskCacheKey(type));
     if (!parsed || !Array.isArray(parsed.venues)) return null;
     return {
       venues: parsed.venues,
@@ -264,10 +270,7 @@ function persistVenueScreenToDisk(type: VenueType, cache: VenueScreenCache) {
     nearbyEvents: cache.nearbyEvents,
     closureStatusEntries: Array.from(cache.closureStatusByVenue.entries()),
   };
-  AsyncStorage.setItem(diskCacheKey(type), JSON.stringify(serializable)).catch(() => {
-    // Quota-/Storage-Fehler sind unkritisch — nur ohne Disk-Cache-Vorteil
-    // beim nächsten echten Neuladen.
-  });
+  void setLargeCache(diskCacheKey(type), serializable);
 }
 
 const OPEN_PRIORITY: Record<'open' | 'unknown' | 'closed', number> = { open: 0, unknown: 1, closed: 2 };
@@ -297,6 +300,7 @@ registerStrings({
   'venues.bar.emptyText': { de: 'Keine Bars gefunden.', en: 'No bars found.' },
   'venues.restaurant.emptyText': { de: 'Keine Restaurants gefunden.', en: 'No restaurants found.' },
   'venues.spaeti.emptyText': { de: 'Keine Spätis gefunden.', en: 'No kiosks found.' },
+  'venues.loadFailed': { de: 'Keine Verbindung. Bitte später erneut laden.', en: 'No connection. Please reload later.' },
   'venues.reportTitle': { de: 'Melden?', en: 'Report?' },
   'venues.cancel': { de: 'Abbrechen', en: 'Cancel' },
   'venues.report': { de: 'Melden', en: 'Report' },
@@ -508,6 +512,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   const [venues, setVenues] = useState<Venue[]>(() => venueScreenCache.get(type)?.venues ?? []);
   const [nearbyEvents, setNearbyEvents] = useState<NearbyEvent[]>(() => venueScreenCache.get(type)?.nearbyEvents ?? []);
   const [loading, setLoading] = useState(() => !venueScreenCache.has(type));
+  const [loadFailed, setLoadFailed] = useState(false);
   const [search, setSearch] = useState('');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
@@ -576,12 +581,12 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = berlinToday();
       // Nur die nächsten 2 Tage statt aller künftigen Events laden: der
       // Anwendungsfall ist "was ist JETZT/heute Abend los", nicht
       // Wochen-Planung — hält diese eigene Abfrage klein und unabhängig von
       // der (viel größeren, paginierten) Hauptliste.
-      const soon = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+      const soon = berlinToday(2);
       const [venuesData, eventsRes, reportsRes] = await Promise.all([
         // Supabase deckelt eine einzelne Abfrage hart bei 1000 Zeilen — bei
         // 2263 Restaurants hätte ein einfaches .select() über die Hälfte
@@ -607,9 +612,15 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
       setVenues(sortedVenues);
       setNearbyEvents(nearby);
       setClosureStatusByVenue(closureMap);
+      setLoadFailed(false);
       const freshCache = { venues: sortedVenues, nearbyEvents: nearby, closureStatusByVenue: closureMap };
       venueScreenCache.set(type, freshCache);
       persistVenueScreenToDisk(type, freshCache);
+    } catch (err) {
+      // Offline oder Netzfehler: bisherigen Stand (Speicher/Disk-Cache)
+      // stehen lassen statt ihn zu leeren.
+      console.warn('[VenueListScreen] load failed', err);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -907,7 +918,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
         <TextInput
           style={[styles.search, styles.searchInput]}
           placeholder={t(config.searchPlaceholderKey)}
-          placeholderTextColor="#666"
+          placeholderTextColor="#8a8a8a"
           value={search}
           onChangeText={setSearch}
         />
@@ -1137,7 +1148,7 @@ export default function VenueListScreen({ type }: { type: VenueType }) {
             return (
               <View style={styles.emptyState}>
                 <Ionicons name={config.icon} size={40} color="#444" />
-                <Text style={styles.emptyTitle}>{t(config.emptyTextKey)}</Text>
+                <Text style={styles.emptyTitle}>{loadFailed && venues.length === 0 ? t('venues.loadFailed') : t(config.emptyTextKey)}</Text>
                 {hasAnyActiveFilter ? (
                   <>
                     <Text style={styles.emptyHint}>{t('venues.emptyHintFiltered')}</Text>
@@ -1499,7 +1510,7 @@ const styles = StyleSheet.create({
   },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 32, gap: 6 },
   emptyTitle: { color: '#ccc', fontSize: 16, fontWeight: '700', marginTop: 12 },
-  emptyHint: { color: '#666', fontSize: 13, textAlign: 'center' },
+  emptyHint: { color: '#8f8f8f', fontSize: 13, textAlign: 'center' },
   emptyResetButton: {
     marginTop: 14,
     paddingVertical: 10,
@@ -1594,7 +1605,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
   },
-  resultCount: { color: '#666', fontSize: 12 },
+  resultCount: { color: '#8f8f8f', fontSize: 12 },
   resultCountResetLink: { color: '#888', fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
   locationHint: { color: '#888', fontSize: 12, paddingHorizontal: 16, marginBottom: 8 },
   // paddingBottom deckt die fixe BottomTabBar ab, sonst wäre die letzte Karte
@@ -1698,7 +1709,7 @@ const styles = StyleSheet.create({
   },
   venueAddress: { color: '#999', fontSize: 13, marginTop: 4 },
   venueHours: { color: '#999', fontSize: 13, marginTop: 4 },
-  venueHoursUnknown: { color: '#555', fontSize: 13, marginTop: 4, fontStyle: 'italic' },
+  venueHoursUnknown: { color: '#8f8f8f', fontSize: 13, marginTop: 4, fontStyle: 'italic' },
   lunchBadge: { color: '#f2c94c', fontSize: 12, fontWeight: '600', marginTop: 4 },
   programWrap: { marginTop: 8, gap: 4 },
   programText: { color: '#5fd4ff', fontSize: 13 },
@@ -1733,6 +1744,6 @@ const styles = StyleSheet.create({
   actionChipMaps: { borderColor: '#c084fc33', backgroundColor: '#c084fc14' },
   actionChipTextMaps: { color: '#c084fc' },
   reportLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
-  reportLink: { color: '#555', fontSize: 12 },
+  reportLink: { color: '#8f8f8f', fontSize: 12 },
   pendingBadge: { color: '#f2c94c', fontSize: 12, fontWeight: '600', marginTop: 8 },
 });

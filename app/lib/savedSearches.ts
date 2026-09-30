@@ -78,13 +78,23 @@ export function matchesSavedSearch(event: SearchableEvent, criteria: SavedSearch
 async function load(): Promise<SavedSearch[]> {
   if (cache) return cache;
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  cache = raw ? JSON.parse(raw) : [];
+  try {
+    cache = raw ? JSON.parse(raw) : [];
+  } catch {
+    cache = [];
+  }
   return cache!;
 }
 async function persist(searches: SavedSearch[]) {
   cache = searches;
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(searches));
+  // Erst die UI aktualisieren, dann speichern: scheiterte setItem (z.B.
+  // voller Speicher), blieb die Änderung vorher unsichtbar und ging verloren.
   listeners.forEach((listener) => listener(searches));
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(searches));
+  } catch (err) {
+    console.warn('[savedSearches] Speichern fehlgeschlagen', err);
+  }
 }
 export async function saveSearch(search: SavedSearch) {
   const current = await load();

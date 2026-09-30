@@ -138,18 +138,18 @@ export default function FeedbackButton({ renderTrigger }: FeedbackButtonProps = 
 
                 {mode !== 'general' && (
                   <>
-                    <TextInput style={styles.compactInput} placeholder={t('feedback.name')} placeholderTextColor="#666" value={name} onChangeText={setName} />
+                    <TextInput style={styles.compactInput} placeholder={t('feedback.name')} placeholderTextColor="#8a8a8a" value={name} onChangeText={setName} />
                     {mode === 'event' && (
-                      <TextInput style={styles.compactInput} placeholder={t('feedback.date')} placeholderTextColor="#666" value={eventDate} onChangeText={setEventDate} />
+                      <TextInput style={styles.compactInput} placeholder={t('feedback.date')} placeholderTextColor="#8a8a8a" value={eventDate} onChangeText={setEventDate} />
                     )}
-                    <TextInput style={styles.compactInput} placeholder={t('feedback.location')} placeholderTextColor="#666" value={location} onChangeText={setLocation} />
-                    <TextInput style={styles.compactInput} placeholder={t('feedback.url')} placeholderTextColor="#666" value={sourceUrl} onChangeText={setSourceUrl} autoCapitalize="none" keyboardType="url" />
+                    <TextInput style={styles.compactInput} placeholder={t('feedback.location')} placeholderTextColor="#8a8a8a" value={location} onChangeText={setLocation} />
+                    <TextInput style={styles.compactInput} placeholder={t('feedback.url')} placeholderTextColor="#8a8a8a" value={sourceUrl} onChangeText={setSourceUrl} autoCapitalize="none" keyboardType="url" />
                   </>
                 )}
                 <TextInput
                   style={[styles.input, mode !== 'general' && styles.noteInput]}
                   placeholder={mode === 'general' ? t('feedback.placeholder') : t('feedback.note')}
-                  placeholderTextColor="#666"
+                  placeholderTextColor="#8a8a8a"
                   value={message}
                   onChangeText={setMessage}
                   multiline
@@ -226,7 +226,8 @@ const styles = StyleSheet.create({
   modeChipTextActive: { color: '#000' },
   compactInput: {
     backgroundColor: '#0a0a0a', borderRadius: 12, paddingHorizontal: 12,
-    paddingVertical: 10, color: '#fff', fontSize: 14, marginBottom: 8,
+    // 16px: darunter zoomt iOS Safari beim Fokussieren in die Seite.
+    paddingVertical: 10, color: '#fff', fontSize: 16, marginBottom: 8,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
   input: {
@@ -234,7 +235,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 12,
     color: '#fff',
-    fontSize: 15,
+    fontSize: 16,
     minHeight: 110,
     textAlignVertical: 'top',
     borderWidth: 1,
@@ -253,7 +254,7 @@ const styles = StyleSheet.create({
   preview: { width: 120, height: 120, borderRadius: 12, backgroundColor: '#000' },
   removeLink: { color: '#ff6b6b', fontSize: 13, fontWeight: '600' },
   errorText: { color: '#ff6b6b', fontSize: 13, marginTop: 10 },
-  aiNotice: { color: '#777', fontSize: 11, lineHeight: 16, marginTop: 12 },
+  aiNotice: { color: '#8f8f8f', fontSize: 11, lineHeight: 16, marginTop: 12 },
   actionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
   cancelBtn: { paddingVertical: 12, paddingHorizontal: 16 },
   cancelBtnText: { color: '#888', fontSize: 14, fontWeight: '600' },

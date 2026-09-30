@@ -57,8 +57,14 @@ async function load(): Promise<OnboardingState> {
 
 async function persist(state: OnboardingState) {
   cache = state;
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Erst die UI aktualisieren, dann speichern: scheiterte setItem (z.B.
+  // voller Speicher), blieb die Änderung vorher unsichtbar und ging verloren.
   listeners.forEach((l) => l(state));
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (err) {
+    console.warn('[onboarding] Speichern fehlgeschlagen', err);
+  }
 }
 
 export function useOnboarding() {

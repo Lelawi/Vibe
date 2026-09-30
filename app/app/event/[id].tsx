@@ -14,6 +14,7 @@ import {
 // Quelle) — Disk-Caching zwischen Sessions, sonst gleiches Verhalten.
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
@@ -174,6 +175,9 @@ export default function EventDetailScreen() {
   const { t, language } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  // Unterer Sicherheitsabstand (Home-Indikator im iPhone-PWA), sonst lag die
+  // Ticket-Leiste teils im Gestenbereich.
+  const insets = useSafeAreaInsets();
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied'>('idle');
@@ -643,7 +647,7 @@ export default function EventDetailScreen() {
       </ScrollView>
 
       {primaryAction && (
-        <View style={styles.primaryActionBar}>
+        <View style={[styles.primaryActionBar, { paddingBottom: 16 + insets.bottom }]}>
           <TouchableOpacity style={styles.primaryActionButton} onPress={primaryAction.onPress}>
             <Text style={styles.primaryActionButtonText}>
               {t(primaryAction.key === 'ticket' ? 'event.ticketPage' : 'event.openInGoogleMaps')}
@@ -687,7 +691,7 @@ export default function EventDetailScreen() {
                 <TextInput
                   style={styles.reportInput}
                   placeholder={t('event.reportNotePlaceholder')}
-                  placeholderTextColor="#666"
+                  placeholderTextColor="#8a8a8a"
                   value={reportNote}
                   onChangeText={setReportNote}
                   multiline
@@ -764,7 +768,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },
-  infoLabel: { fontSize: 12, color: '#666', textTransform: 'uppercase', marginBottom: 4 },
+  infoLabel: { fontSize: 12, color: '#8f8f8f', textTransform: 'uppercase', marginBottom: 4 },
   infoValue: { fontSize: 16, color: '#fff' },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   soldOutTag: { flexDirection: 'row', alignItems: 'center', gap: 3 },
@@ -848,7 +852,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
     paddingVertical: 8,
   },
-  reportButtonText: { color: '#666', fontWeight: '600', fontSize: 13 },
+  reportButtonText: { color: '#8f8f8f', fontWeight: '600', fontSize: 13 },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',

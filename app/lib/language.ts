@@ -25,8 +25,14 @@ async function load(): Promise<Language> {
 
 async function persist(lang: Language) {
   cache = lang;
-  await AsyncStorage.setItem(STORAGE_KEY, lang);
+  // Erst die UI aktualisieren, dann speichern: scheiterte setItem (z.B.
+  // voller Speicher), blieb die Änderung vorher unsichtbar und ging verloren.
   listeners.forEach((l) => l(lang));
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, lang);
+  } catch (err) {
+    console.warn('[language] Speichern fehlgeschlagen', err);
+  }
 }
 
 export function getCurrentLanguage(): Language {
