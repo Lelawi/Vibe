@@ -61,11 +61,16 @@ const WINDOW_DAYS = 30;
 const HORIZON_DAYS = 365;
 const MAX_HITS_PER_QUERY = 1000;
 
-async function queryAlgolia(fromUnix: number, toUnix: number): Promise<{ hits: AlgoliaHit[]; nbHits: number }> {
+async function queryAlgolia(fromUnix: number, toUnix: number, page: number): Promise<{ hits: AlgoliaHit[]; nbHits: number; nbPages: number }> {
   const params = new URLSearchParams({
     query: '',
     hitsPerPage: String(MAX_HITS_PER_QUERY),
-    page: '0',
+    page: String(page),
+    // Der Index gruppiert per distinct Aufführungen desselben Stücks — das
+    // würde genau die Termine wieder zusammenfassen, die hier einzeln
+    // gebraucht werden, und begrenzt hitsPerPage auf ~500 (bei 1000 kam
+    // "400 Invalid distinct value", Lauf 2026-09-30).
+    distinct: 'false',
     facetFilters: JSON.stringify([['venue.city:München']]),
     numericFilters: JSON.stringify([`date>=${fromUnix}`, `date<${toUnix}`]),
   }).toString();
@@ -88,20 +93,26 @@ async function queryAlgolia(fromUnix: number, toUnix: number): Promise<{ hits: A
   }
 
   const data = await response.json();
-  return { hits: data.results[0].hits, nbHits: data.results[0].nbHits };
+  return { hits: data.results[0].hits, nbHits: data.results[0].nbHits, nbPages: data.results[0].nbPages };
 }
 
-async function fetchMuenchenTicketEvents(): Promise<AlgoliaHit[]> {
+export async function fetchMuenchenTicketEvents(): Promise<AlgoliaHit[]> {
   const all: AlgoliaHit[] = [];
   const start = Math.floor(Date.now() / 1000) - 86_400; // gestern, Filter auf "heute" folgt in run()
   for (let offset = 0; offset < HORIZON_DAYS; offset += WINDOW_DAYS) {
     const from = start + offset * 86_400;
     const to = start + (offset + WINDOW_DAYS) * 86_400;
-    const { hits, nbHits } = await queryAlgolia(from, to);
-    if (nbHits > MAX_HITS_PER_QUERY) {
-      console.warn(`[muenchenticket] Fenster ab Tag ${offset}: ${nbHits} Treffer, nur ${MAX_HITS_PER_QUERY} abrufbar — WINDOW_DAYS verkleinern`);
+    // Normalerweise eine Seite (~700 Aufführungen pro 30 Tage); weitere
+    // Seiten nur zur Sicherheit. Algolia liefert pro Suche insgesamt max.
+    // 1000 Treffer — darüber hilft nur ein kleineres Fenster.
+    const first = await queryAlgolia(from, to, 0);
+    all.push(...first.hits);
+    for (let page = 1; page < first.nbPages; page++) {
+      all.push(...(await queryAlgolia(from, to, page)).hits);
     }
-    all.push(...hits);
+    if (first.nbHits > MAX_HITS_PER_QUERY) {
+      console.warn(`[muenchenticket] Fenster ab Tag ${offset}: ${first.nbHits} Treffer, nur ${MAX_HITS_PER_QUERY} abrufbar — WINDOW_DAYS verkleinern`);
+    }
   }
   return all;
 }
