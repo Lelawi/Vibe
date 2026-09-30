@@ -58,15 +58,6 @@ npm run build:web    # expo export --platform web -> app/dist, static PWA build 
 
 No lint or test scripts are configured for the app.
 
-**Do not add `expo start --tunnel` or the `@expo/ngrok` dependency back.**
-This was tried early on to test on a phone over the internet, but (a) the
-corporate network blocks ngrok's tunnel at the OS level regardless of
-network, so it never worked, and (b) `ngrok.exe` got flagged by corporate
-CERT/EDR as a possible C2 tunneling tool (a legitimate detection — ngrok
-really is abused for that — it's just also a real Expo dev dependency with
-no way to tell the two apart automatically). The PWA/GitHub Pages
-distribution below fully replaces the need for tunneling.
-
 Env vars (`.env`, not committed): `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (see `app/lib/supabase.ts`), `EXPO_PUBLIC_VAPID_PUBLIC_KEY` (see Push notifications below). These are baked into the web build at build time, so they must also be set as repo secrets for `.github/workflows/deploy-web.yml`.
 
 **Distribution:** the primary distribution channel is the web build (PWA,
@@ -97,7 +88,14 @@ reduced from twice daily 2026-08-07 after eventim/milla started returning
 403s more often, to cut request volume against their rate limits)
 just calls `npm run collect-all` followed by `npm run dedup`. When adding a
 new source to the automatic run, add it to `collect-all.ts`'s `sources` array,
-not as a separate workflow step. Several source files exist under
+not as a separate workflow step. The entry's `name` must equal the source's
+`source_id` prefix: `collect-all.ts` counts the rows each source wrote in the
+run (via `source_checked_at`), writes a table to the GitHub step summary,
+emits a `::warning::` for sources with an error or 0 rows (`seasonal: true`
+suppresses that), logs every run to the `collector_runs` table (shown in the
+weekly report), and gives each source a timeout (`timeoutMin`, default 15).
+The job only fails when more than half of the sources deliver nothing, so a
+single blocked site shows up as a warning instead of a daily failure mail. Several source files exist under
 `collectors/sources/` but are deliberately **not** in `collect-all.ts` — see
 the comment above the `sources` array for why (missing/paid API keys, no
 real public data source found, etc.).
@@ -131,13 +129,31 @@ script following the same shape:
    `onConflict: 'source_id'`.
 
 Dedup runs separately (`collectors/sources/dedup/index.ts`) by calling the
-`mark_duplicate_events` Postgres RPC (defined in Supabase, not in this repo)
-after all sources have written their events — it sets `duplicate_of` on
-rows the app then filters out.
+`mark_duplicate_events` Postgres RPC (current definition:
+`supabase/migrations/0049_fast_dedup.sql`) after all sources have written
+their events — it sets `duplicate_of` on rows the app then filters out. It
+only looks at days with upcoming/running events and normalizes titles once
+per row; keep it that way — the old per-pair version exceeded PostgREST's 8s
+statement timeout and failed daily from 2026-08-27 to 2026-09-30. Dedup
+updates set the transaction flag `vibe.skip_source_check` so they don't
+touch `source_checked_at`.
 
 When adding a new collector source, follow this same pattern (fetch →
 normalize → geocode → upsert) and add a corresponding `npm run <source>`
-script plus a step in `.github/workflows/collect-all.yml`.
+script plus an entry in `collect-all.ts` (see above).
+
+Dates and times: `events.start_date`/`start_time` are naive Europe/Berlin
+wall-clock values. Use the helpers in `collectors/core/timezone.ts` instead of
+`toISOString()` (which yields UTC and put ~470 events 1–2h too early):
+`isoToBerlinWallClock()` for ISO timestamps from a source, `berlinToday()` for
+"today", and `resolveYearlessDate()` for dates without a year ("18.07.") —
+it keeps recently past dates in the current year instead of pushing them
+into the next one (that created >80 phantom events). The app has the same
+`berlinToday()` in `app/lib/berlinDate.ts`.
+
+`source_id` must be stable across runs: never build it from a value that
+changes daily (e.g. the rolling start date of a running exhibition — that
+gave muenchen-stadtportal one new row per exhibition per day).
 
 ## App architecture
 
@@ -146,6 +162,14 @@ script plus a step in `.github/workflows/collect-all.yml`.
 - The app is **read-only** against Supabase: RLS on `events` only grants a
   public `select` policy (see `supabase/migrations/0001_initial_schema.sql`);
   writes happen exclusively from collectors using the service role key.
+- Large offline caches (event list, venue lists) go through
+  `app/lib/largeCache.ts` (IndexedDB on web), never plain AsyncStorage: on
+  web AsyncStorage is localStorage (~5 MB), which the lists overflowed —
+  and a full localStorage also broke small stores like favorites. Small
+  stores update listeners first and wrap `setItem` in try/catch.
+- Supabase caps every request at 1000 rows: page with `.range()` after a
+  count (see `lib/fetchAllVenues.ts`, `lib/fetchMapEvents.ts`), and throw on
+  any error instead of returning `[]` so callers keep their last good state.
 - Queries always filter `duplicate_of is null` and (for upcoming events)
   `start_date >= today OR end_date >= today` — the `end_date` half keeps
   multi-day events (exhibitions, Auer Dult) visible for their whole run
@@ -248,3 +272,20 @@ tool).
   `google-ratings.yml`. Setup (Google Cloud project, enabling Places API
   (New), billing account, API key, hard quota limit) is manual and owned by
   the project owner — not something this repo or Claude Code can provision.
+
+## Feedback review and weekly report
+
+User reports (closures, venue data, events, missing items, app feedback) are
+prechecked by the daily workflows (`precheck-reports.yml`,
+`promote-feedback.yml`) and cloud routines (see
+`docs/claude-routine-prompts.md`). Open cases are handled in the live report
+artifact https://claude.ai/artifact/5Zm1CqVKvXeUMuzeYWiehY: it loads all open
+cases directly from Supabase on open (via the owner's Supabase connector — no
+key in the page), offers direct fixes (venue category via `type_override`,
+beer price, opening hours, name, closed, event link) and a "Rückmeldung an
+Claude" field that turns free text into one whitelisted action to confirm, or
+stores it as `review_note` prefixed `[Hinweis vom Owner]` for the next Claude
+session to pick up. The weekly routine "Vibe - Wöchentliche
+Feedback-Zusammenfassung" (Mondays, email + push) only summarizes and links
+that page; it doesn't need to regenerate it. Venue category changes must set
+both `type` and `type_override`, otherwise the weekly OSM run reverts them.
