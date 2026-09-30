@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { resolveYearlessDate } from '../../core/timezone';
 
 const IMPORT_EXPORT_URL = 'https://import-export.cc/';
 const EVENT_LINK_SELECTOR = '.event.event-link.item > a.content';
@@ -47,15 +48,7 @@ export async function run() {
 
       if (dateParts.length === 2) {
         const [day, month] = dateParts;
-        const now = new Date();
-        const year = now.getFullYear();
-        const candidate = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00`);
-        if (!isNaN(candidate.getTime())) {
-          if (candidate < now) {
-            candidate.setFullYear(year + 1);
-          }
-          start_date = candidate.toISOString().slice(0, 10);
-        }
+        start_date = resolveYearlessDate(parseInt(month, 10), parseInt(day, 10));
       }
 
       events.push({

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
+import { getCoordinates } from '../../core/geocode';
 
 const API_URL =
   'https://public-api.eventim.com/websearch/search/api/exploration/v1/products';
@@ -411,6 +412,24 @@ export async function run() {
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
+
+  // Die API liefert nicht für jede Venue geoLocation — vorher blieben so
+  // ~2.300 kommende Events ohne Koordinaten (unsichtbar auf der Karte),
+  // verteilt auf nur ~120 Orte. Einmal pro Ort nachschlagen (core/geocode:
+  // Cache in venue_coordinates, Nominatim nur für unbekannte Orte).
+  const coordsByVenue = new Map<string, Awaited<ReturnType<typeof getCoordinates>>>();
+  for (const event of events) {
+    if (event.latitude != null || !event.location_name) continue;
+    if (!coordsByVenue.has(event.location_name)) {
+      coordsByVenue.set(event.location_name, await getCoordinates(supabase, event.location_name, null, event.city ?? 'München'));
+    }
+    const coords = coordsByVenue.get(event.location_name);
+    if (coords) {
+      event.latitude = coords.latitude;
+      event.longitude = coords.longitude;
+    }
+  }
+
   const { error } = await supabase
     .from('events')
     .upsert(events, { onConflict: 'source_id' });

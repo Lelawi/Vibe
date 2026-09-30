@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
 import { buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
+import { berlinToday } from '../../core/timezone';
 
 // Das offizielle Stadtportal muenchen.de (NICHT zu verwechseln mit dem
 // bereits genutzten privaten Magazin in-muenchen.de, siehe muenchen_de/
@@ -77,6 +78,7 @@ function addDays(date: Date, days: number): Date {
 interface RawItem {
   title: string;
   startDate: string | null;
+  occurrenceDate: string | null;
   endDate: string | null;
   startTime: string | null;
   locationName: string | null;
@@ -120,10 +122,16 @@ function parseListingPage($: cheerio.CheerioAPI): RawItem[] {
     const startDate = el$.find('time[itemprop="startDate"]').first().attr('datetime')?.slice(0, 10) ?? null;
     const endDate = el$.find('time[itemprop="endDate"]').first().attr('datetime')?.slice(0, 10) ?? null;
 
-    // Die feinere Uhrzeit steckt in einem zweiten, separaten <time>-Paar im
-    // Format "DD.MM.YYYY - HH:MM:SS" (kein ISO) — das grobe itemprop=startDate
-    // hat nur Tagesgranularität (immer 12:00:00Z).
+    // Der tatsächliche (nächste) Termin steckt in einem zweiten, separaten
+    // <time>-Paar im Format "DD.MM.YYYY - HH:MM:SS" (kein ISO) — das grobe
+    // itemprop=startDate hat nur Tagesgranularität (immer 12:00:00Z) und ist
+    // bei laufenden Ausstellungen ein täglich weiterwanderndes Datum
+    // (Fund 2026-09-30). Datum UND Uhrzeit deshalb beide von hier.
     const timeAttr = el$.find('.m-event-list-item__detail time').first().attr('datetime') ?? '';
+    const occurrenceMatch = timeAttr.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    const occurrenceDate = occurrenceMatch
+      ? `${occurrenceMatch[3]}-${occurrenceMatch[2].padStart(2, '0')}-${occurrenceMatch[1].padStart(2, '0')}`
+      : null;
     const timeMatch = timeAttr.match(/(\d{1,2}):(\d{2}):\d{2}\s*$/);
     const startTime = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
 
@@ -132,7 +140,7 @@ function parseListingPage($: cheerio.CheerioAPI): RawItem[] {
     const detailHref = titleLink.attr('href');
     const detailUrl = detailHref ? new URL(detailHref, 'https://www.muenchen.de').toString() : null;
 
-    if (title && startDate) items.push({ title, startDate, endDate, startTime, locationName, ticketUrl, detailUrl });
+    if (title && startDate) items.push({ title, startDate, occurrenceDate, endDate, startTime, locationName, ticketUrl, detailUrl });
   });
 
   return items;
@@ -247,7 +255,26 @@ export async function run() {
   const today = new Date();
   const from = isoDate(today);
   const to = isoDate(addDays(today, HORIZON_DAYS - 1));
+  const todayBerlin = berlinToday();
   const collected: any[] = [];
+
+  // Bild/Preis bereits bekannter Events wiederverwenden statt bei jedem Lauf
+  // jede Detail- bzw. Ticketseite neu zu laden (inkl. 2–4s Pause pro Abruf
+  // war das ~39 von 80 Minuten des Gesamtlaufs, für eine Handvoll neuer
+  // Treffer). Nur Events ohne Bild werden noch nachgeschlagen.
+  const known = new Map<string, { image_url: string | null; price_info: string | null }>();
+  for (let offset = 0; ; offset += 1000) {
+    const { data: page, error: knownError } = await supabase
+      .from('events')
+      .select('source_id,image_url,price_info')
+      .like('source_id', 'muenchen-stadtportal-%')
+      .not('image_url', 'is', null)
+      .order('source_id', { ascending: true })
+      .range(offset, offset + 999);
+    if (knownError) { console.warn('[muenchen-stadtportal] loading known events failed', knownError); break; }
+    for (const row of page ?? []) known.set(row.source_id as string, { image_url: row.image_url as string | null, price_info: row.price_info as string | null });
+    if (!page || page.length < 1000) break;
+  }
 
   for (const { id: categoryId, category } of CATEGORIES) {
     try {
@@ -263,7 +290,12 @@ export async function run() {
         sawAnyItem = true;
 
         for (const item of items) {
-          if (item.startDate < isoDate(today)) continue;
+          const isMultiDay = Boolean(item.endDate && item.endDate > item.startDate!);
+          // Laufende Mehrtages-Events (Ausstellungen) behalten, solange ihr
+          // Ende nicht vorbei ist — vorher fielen sie raus, sobald ihr
+          // itemprop-Startdatum in der Vergangenheit lag ("Yalla").
+          if ((isMultiDay ? item.endDate! : item.startDate!) < todayBerlin) continue;
+          const startDate = item.occurrenceDate && item.occurrenceDate >= todayBerlin ? item.occurrenceDate : item.startDate!;
           // Bewusst NICHT ticketUrl als Identität: dieselbe Aufführung wird
           // auf muenchen.de teils mit mehreren verschiedenen Ticket-Links
           // gezeigt (z.B. je Preiskategorie, oder mit einem pro Abruf
@@ -274,11 +306,19 @@ export async function run() {
           // an nur 3 Tagen auf 25 einzelne Zeilen). Titel+Ort ist die
           // stabile, tatsächliche Identität einer Aufführung.
           const idSource = `${item.title}::${item.locationName ?? ''}`;
+          // Identität eines Mehrtages-Events = Titel+Ort+Enddatum, NICHT das
+          // (täglich weiterwandernde) Startdatum — vorher entstand für jede
+          // laufende Ausstellung jeden Tag eine neue Zeile ("Inside the
+          // Suit" 108 Zeilen, 86 davon gleichzeitig sichtbar).
+          const sourceId = buildStableSourceId(`muenchen-stadtportal-${categoryId}`, idSource, isMultiDay ? item.endDate! : startDate);
           const coords = await getCoordinates(supabase, item.locationName ?? 'München', null, 'München');
-          let imageUrl: string | null = null;
-          let priceInfo: string | null = null;
+          const cached = known.get(sourceId);
+          let imageUrl: string | null = cached?.image_url ?? null;
+          let priceInfo: string | null = cached?.price_info ?? null;
           const ticketHost = item.ticketUrl ? (() => { try { return new URL(item.ticketUrl!).hostname; } catch { return null; } })() : null;
-          if (item.ticketUrl && ticketHost?.endsWith('muenchenticket.de')) {
+          if (cached) {
+            // schon bekannt, kein erneuter Detailabruf
+          } else if (item.ticketUrl && ticketHost?.endsWith('muenchenticket.de')) {
             imageUrl = await fetchOgImage(item.ticketUrl);
             await wait(requestSpacingMs());
           } else if (item.detailUrl) {
@@ -288,14 +328,14 @@ export async function run() {
             await wait(requestSpacingMs());
           }
           collected.push({
-            source_id: buildStableSourceId(`muenchen-stadtportal-${categoryId}`, idSource, item.startDate),
+            source_id: sourceId,
             title: item.title,
             description: null,
             category,
             subcategory: null,
-            start_date: item.startDate,
+            start_date: startDate,
             start_time: item.startTime,
-            end_date: item.endDate && item.endDate !== item.startDate ? item.endDate : null,
+            end_date: isMultiDay && item.endDate !== startDate ? item.endDate : null,
             location_name: item.locationName,
             address: null,
             city: 'München',

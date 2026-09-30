@@ -4,6 +4,7 @@
 import type { CheerioAPI } from 'cheerio';
 import fetch from 'node-fetch';
 import { createHash } from 'crypto';
+import { resolveYearlessDate } from './timezone';
 
 export interface ParsedEvent {
   name: string | null;
@@ -373,12 +374,8 @@ export function parseAbbrevEnglishDate(text: string, reference = new Date()): st
   if (!m) return null;
   const month = EN_MONTHS[m[1].toLowerCase()];
   const day = parseInt(m[2], 10);
-  let year = m[3] ? parseInt(m[3], 10) : reference.getFullYear();
-  let candidate = new Date(Date.UTC(year, month - 1, day));
-  if (!m[3] && candidate < reference) {
-    year += 1;
-    candidate = new Date(Date.UTC(year, month - 1, day));
-  }
+  if (!m[3]) return resolveYearlessDate(month, day, reference);
+  const candidate = new Date(Date.UTC(parseInt(m[3], 10), month - 1, day));
   return isNaN(candidate.getTime()) ? null : candidate.toISOString().slice(0, 10);
 }
 
@@ -387,8 +384,8 @@ const GERMAN_MONTHS: Record<string, number> = {
   august: 8, september: 9, oktober: 10, november: 11, dezember: 12,
 };
 
-// Parst deutsche Datumsformate wie "18.07.2026", "18.07." (Jahr wird aus dem
-// nächsten zukünftigen Vorkommen ermittelt) oder "18. Juli 2026" zu einem
+// Parst deutsche Datumsformate wie "18.07.2026", "18.07." (Jahr per
+// resolveYearlessDate, siehe core/timezone.ts) oder "18. Juli 2026" zu einem
 // ISO-Datum (YYYY-MM-DD). Gibt null zurück, wenn nichts erkannt wird.
 export function parseGermanDate(text: string, reference = new Date()): string | null {
   if (!text) return null;
@@ -397,13 +394,13 @@ export function parseGermanDate(text: string, reference = new Date()): string | 
   if (numeric) {
     const day = parseInt(numeric[1], 10);
     const month = parseInt(numeric[2], 10);
-    let year = numeric[3] ? parseInt(numeric[3], 10) : reference.getFullYear();
-    let candidate = new Date(Date.UTC(year, month - 1, day));
-    if (!numeric[3] && candidate < reference) {
-      year += 1;
-      candidate = new Date(Date.UTC(year, month - 1, day));
+    if (!numeric[3]) {
+      const resolved = resolveYearlessDate(month, day, reference);
+      if (resolved) return resolved;
+    } else {
+      const candidate = new Date(Date.UTC(parseInt(numeric[3], 10), month - 1, day));
+      if (!isNaN(candidate.getTime())) return candidate.toISOString().slice(0, 10);
     }
-    if (!isNaN(candidate.getTime())) return candidate.toISOString().slice(0, 10);
   }
 
   const named = text
@@ -412,13 +409,13 @@ export function parseGermanDate(text: string, reference = new Date()): string | 
   if (named) {
     const day = parseInt(named[1], 10);
     const month = GERMAN_MONTHS[named[2]];
-    let year = named[3] ? parseInt(named[3], 10) : reference.getFullYear();
-    let candidate = new Date(Date.UTC(year, month - 1, day));
-    if (!named[3] && candidate < reference) {
-      year += 1;
-      candidate = new Date(Date.UTC(year, month - 1, day));
+    if (!named[3]) {
+      const resolved = resolveYearlessDate(month, day, reference);
+      if (resolved) return resolved;
+    } else {
+      const candidate = new Date(Date.UTC(parseInt(named[3], 10), month - 1, day));
+      if (!isNaN(candidate.getTime())) return candidate.toISOString().slice(0, 10);
     }
-    if (!isNaN(candidate.getTime())) return candidate.toISOString().slice(0, 10);
   }
 
   return null;

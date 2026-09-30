@@ -1,7 +1,8 @@
 import path from 'path';
-import { existsSync } from 'fs';
+import { appendFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { config } from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 import { run as runBackstage } from './sources/backstage/index.js';
 import { run as runMuenchenticket } from './sources/muenchenticket/index.js';
 import { run as runLostweekend } from './sources/lostweekend/index.js';
@@ -22,7 +23,6 @@ import { run as runUnterDeck } from './sources/unter_deck/index.js';
 import { run as runBahnwaerterThiel } from './sources/bahnwaerter_thiel/index.js';
 import { run as runMinnaThiel } from './sources/minna_thiel/index.js';
 import { run as runBangbangConcerts } from './sources/bangbang_concerts/index.js';
-import { run as runTollwoodMusikarena } from './sources/tollwood_musikarena/index.js';
 import { run as runKocherlball } from './sources/kocherlball/index.js';
 import { run as runTonhalle } from './sources/tonhalle/index.js';
 import { run as runVolkstheater } from './sources/volkstheater/index.js';
@@ -43,9 +43,7 @@ import { run as runWannda } from './sources/wannda/index.js';
 import { run as runKinoMondSterne } from './sources/kino_mond_sterne/index.js';
 import { run as runTheatron } from './sources/theatron/index.js';
 import { run as runMuenchenStadtportal } from './sources/muenchen_stadtportal/index.js';
-import { run as runMeinestadt } from './sources/meinestadt/index.js';
 import { run as runKindaling } from './sources/kindaling/index.js';
-import { run as runEventbrite } from './sources/eventbrite/index.js';
 import { run as runLieberScholli } from './sources/lieber_scholli/index.js';
 import { run as runRausgegangen } from './sources/rausgegangen/index.js';
 import { run as runResidentAdvisor } from './sources/resident_advisor/index.js';
@@ -53,6 +51,14 @@ import { run as runResidentAdvisor } from './sources/resident_advisor/index.js';
 async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
 // Nicht enthalten (bewusst, siehe jeweilige Kommentare in den Source-Dateien):
+// - meinestadt, eventbrite, tollwood-musikarena: deaktiviert 2026-09-30
+//   (Code-Review mit Live-Abruf). meinestadt antwortet mit 403 (Akamai),
+//   letzter Write 2026-08-09; eventbrite hat aus GitHub Actions nie etwas
+//   geschrieben (nur lokal am 2026-08-08) und liefert inzwischen nur noch 8
+//   Events pro Kategorie; tollwood.de steht hinter einer Cloudflare-Managed-
+//   Challenge (403 auch für wp-json/Sitemap). Umgehungen sind für dieses
+//   Projekt keine Option. Die Quelldateien bleiben für einen späteren
+//   Neuversuch liegen.
 // - bars/restaurants/spaetis: befüllen die separate "venues"-Tabelle (nicht
 //   "events"), nicht diesen Lauf — Öffnungszeiten ändern sich selten, ein
 //   eigener wöchentlicher Workflow (.github/workflows/collect-venues.yml)
@@ -93,36 +99,13 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // Seite 33 echte, datierte Events auf einer einzigen Anfrage liefert (kein
 // gemeinsamer Host, also auch keine Drossel-Pause nötig).
 //
-// Hinweis zu in-muenchen.de-basierten Quellen (p1, muenchen-de, feierwerk,
-// rote-sonne, technikum, gasteig-hp8, unter-deck, tonhalle,
-// volkstheater, residenztheater): Lauf vom 2026-07-29
-// (Commit 8743e52) lieferte nur von residenztheater (1) sowie der inzwischen
-// entfernten Quelle blitz-club (1)
-// überhaupt Events, alle anderen 0 — trotz direkt verifizierter, echter
-// Event-Daten auf jeder einzelnen Seite. Der Code ist also nicht das
-// Problem. Wahrscheinlichste Ursache: in-muenchen.de blockt oder drosselt
-// GitHub Actions' Cloud-IP-Bereiche, verstärkt durch den Burst von 12
-// Quellen, die kurz hintereinander denselben Host treffen (milla zeigte
-// früher schon einmal einen klaren 403 aus GH Actions, siehe
-// Commit-Historie). Als Gegenmaßnahme bekommen alle Quellen mit
-// gemeinsamem host-Tag eine deutlich längere Pause (4s statt 750ms)
-// zueinander — ob das reicht, zeigt sich erst am nächsten echten Lauf.
-// host markiert Quellen, die denselben Ziel-Host treffen — genutzt, um
-// zwischen zwei Abrufen desselben Hosts eine deutlich längere Pause
-// einzulegen als sonst (siehe runAll()). 12 Quellen treffen alle
-// in-muenchen.de; hintereinander mit nur 750ms Pause sieht das exakt wie
-// eine Scraping-Burst-Sequenz aus, was die beobachtete Unzuverlässigkeit
-// in der Produktion (siehe Kommentar oben) erklären könnte.
-// UPDATE 2026-07-29: auch nach der 4s-Pause liefern die in-muenchen.de-
-// Quellen in Produktion weiterhin fast nur 0 Events (Live-Datenstand
-// geprüft: nur residenztheater sowie die inzwischen entfernte Quelle
-// blitz-club mit je 1 Event, alle
-// anderen — inkl. muenchen-de — komplett leer), während ein direkter
-// Abruf derselben Seiten von einem normalen (nicht-GH-Actions-)Rechner aus
-// weiterhin anstandslos funktioniert (200, echte Events im HTML). Das
-// spricht für einen IP-Reputationsblock gegen GitHub-Actions-Cloud-IPs.
-// Diese Quellen bleiben deshalb best effort. Netzwerk-Umgehungen, Proxys
-// oder Tunnel sind ausdrücklich keine zulässige Lösung für dieses Projekt.
+// in-muenchen.de-basierte Quellen (p1, muenchen-de, feierwerk, …): liefen
+// Ende Juli fast alle mit 0 Events. Ein damals vermuteter IP-Block gegen
+// GitHub Actions war es nicht — Ursache war eine source_id-Kollision
+// (behoben in Commit 0ce1404, siehe buildStableSourceId in core/scrape.ts).
+// Seit 2026-07-29 schreiben alle täglich (Stand 2026-09-30 per Live-Abruf
+// geprüft). Quellen mit gemeinsamem host-Tag bekommen trotzdem eine längere
+// Pause zueinander (4s statt 750ms), um den Host nicht per Burst zu treffen.
 // muenchen-stadtportal (2026-08): offizielles Stadtportal muenchen.de, NICHT
 // dasselbe wie die vielen in-muenchen.de-basierten Quellen unten (privates
 // Magazin). Eigene stadtweite Veranstaltungsdatenbank mit echtem schema.org-
@@ -131,7 +114,7 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // Weihnachtsmarkt, Feste) — Konzerte/Rock/HipHop/Klassik etc. lässt es aus,
 // weil eventim/backstage/muenchenticket die schon abdecken. Details siehe
 // Kommentare in sources/muenchen_stadtportal/index.ts.
-// meinestadt (2026-08): veranstaltungen.meinestadt.de, aggregiert selbst aus
+// meinestadt (2026-08, seit 2026-09-30 deaktiviert, s.o.): veranstaltungen.meinestadt.de, aggregiert selbst aus
 // vielen Quellen (eventim, kindaling.de, eventfrog u.a.) mit sauberem
 // schema.org-Event-JSON-LD. robots.txt sperrt die echte Pagination
 // (?curDatesPage=/?allDatesPage=), deshalb wie beim Stadtportal über
@@ -157,7 +140,7 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // eine URL-Liste ohne Datum/Preis/Location). Nur die erste, ohne Scroll
 // geladene Seite (~27 Events) ist erreichbar. Details siehe
 // sources/rausgegangen/index.ts.
-// eventbrite (2026-08): eventbrite.de. Die offizielle Event-Search-API ist
+// eventbrite (2026-08, seit 2026-09-30 deaktiviert, s.o.): eventbrite.de. Die offizielle Event-Search-API ist
 // seit Februar 2020 für Drittanbieter abgeschaltet, robots.txt sperrt aber
 // weder die öffentlichen Kategorie-Browse-Seiten noch liefern die leeres
 // JS-Grundgerüst wie eventfrog/billetto — echtes schema.org-JSON-LD inkl.
@@ -174,27 +157,31 @@ async function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); 
 // Detailfelder kommen gemeinsam pro Seite, also kein N+1-Request je Event.
 // HTML/DataDome wird nicht umgangen. Details und Tests siehe
 // sources/resident_advisor/index.ts.
-const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
+// name = source_id-Präfix der Quelle (für die Zählung pro Lauf, siehe
+// runAll). seasonal: 0 Zeilen sind außerhalb der Saison normal, keine
+// Warnung. timeoutMin: Obergrenze, nach der collect-all mit der nächsten
+// Quelle weitermacht, statt dass eine hängende Verbindung (kein fetch hat
+// ein eigenes Timeout) den ganzen Lauf blockiert.
+type Source = { name: string; run: () => Promise<void>; host?: string; seasonal?: boolean; timeoutMin?: number };
+const sources: Source[] = [
   { name: 'backstage', run: runBackstage },
   { name: 'muenchenticket', run: runMuenchenticket },
   { name: 'lostweekend', run: runLostweekend },
   { name: 'muenchenevent', run: runMuenchenevent },
   { name: 'import-export', run: runImportExport },
   { name: 'milla', run: runMilla },
-  { name: 'auer-dult', run: runAuerDult },
+  { name: 'auer-dult', run: runAuerDult, seasonal: true },
   { name: 'flohmarkt-olympiapark', run: runFlohmarktOlympiapark },
   { name: 'hofflohmarkt', run: runHofflohmarkt },
   { name: 'glockenbachwerkstatt', run: runGlockenbachwerkstatt },
-  { name: 'oktoberfest-events', run: runOktoberfestEvents },
+  { name: 'oktoberfest-events', run: runOktoberfestEvents, seasonal: true },
   { name: 'eintrittfrei-muenchen', run: runEintrittfreiMuenchen },
-  { name: 'eventim', run: runEventim, host: 'public-api.eventim.com' },
+  { name: 'eventim', run: runEventim, host: 'public-api.eventim.com', timeoutMin: 35 },
   { name: 'wannda', run: runWannda },
-  { name: 'kino-mond-sterne', run: runKinoMondSterne },
-  { name: 'theatron', run: runTheatron },
-  { name: 'muenchen-stadtportal', run: runMuenchenStadtportal, host: 'www.muenchen.de' },
-  { name: 'meinestadt', run: runMeinestadt, host: 'veranstaltungen.meinestadt.de' },
+  { name: 'kino-mond-sterne', run: runKinoMondSterne, seasonal: true },
+  { name: 'theatron', run: runTheatron, seasonal: true },
+  { name: 'muenchen-stadtportal', run: runMuenchenStadtportal, host: 'www.muenchen.de', timeoutMin: 40 },
   { name: 'kindaling', run: runKindaling, host: 'www.kindaling.de' },
-  { name: 'eventbrite', run: runEventbrite, host: 'www.eventbrite.de' },
   { name: 'lieber-scholli', run: runLieberScholli },
   { name: 'rausgegangen', run: runRausgegangen, host: 'rausgegangen.de' },
   { name: 'resident-advisor', run: runResidentAdvisor, host: 'ra.co' },
@@ -211,8 +198,7 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'bahnwaerter-thiel', run: runBahnwaerterThiel },
   { name: 'minna-thiel', run: runMinnaThiel },
   { name: 'bangbang-concerts', run: runBangbangConcerts },
-  { name: 'tollwood-musikarena', run: runTollwoodMusikarena },
-  { name: 'kocherlball', run: runKocherlball },
+  { name: 'kocherlball', run: runKocherlball, seasonal: true },
   { name: 'tonhalle', run: runTonhalle, host: 'in-muenchen.de' },
   { name: 'volkstheater', run: runVolkstheater, host: 'in-muenchen.de' },
   { name: 'residenztheater', run: runResidenztheater, host: 'in-muenchen.de' },
@@ -227,7 +213,19 @@ const sources: { name: string; run: () => Promise<void>; host?: string }[] = [
   { name: 'werkhaus', run: runWerkhaus, host: 'in-muenchen.de' },
 ];
 
-async function runAll() {
+const DEFAULT_TIMEOUT_MIN = 15;
+
+type SourceResult = { name: string; seconds: number; rows: number | null; error: string | null; seasonal: boolean };
+
+function withTimeout<T>(promise: Promise<T>, minutes: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timeout nach ${minutes} min`)), minutes * 60_000);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function runAll(): Promise<number> {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const envPath = existsSync(path.resolve(__dirname, '.env'))
@@ -236,24 +234,104 @@ async function runAll() {
   config({ path: envPath });
   console.log('[collect-all] starting run for', sources.length, 'sources');
 
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+  const runStartedAt = new Date().toISOString();
+  const results: SourceResult[] = [];
+
   for (let i = 0; i < sources.length; i++) {
     const source = sources[i];
     console.log(`[collect-all] running ${source.name}`);
+    const startedAt = new Date();
+    let error: string | null = null;
     try {
-      await source.run();
+      await withTimeout(source.run(), source.timeoutMin ?? DEFAULT_TIMEOUT_MIN);
     } catch (err) {
       console.error('[collect-all] error running', source.name, err);
+      error = err instanceof Error ? err.message : String(err);
     }
+
+    // Wie viele Zeilen hat die Quelle in diesem Lauf geschrieben? Jeder
+    // Insert/Upsert setzt source_checked_at (Default bzw. Trigger aus 0030),
+    // und seit 0049 fasst Dedup das Feld nicht mehr an — die Zählung ist
+    // damit ein verlässliches "hat die Quelle geliefert?"-Signal, ohne dass
+    // jede der ~45 Quellen dafür umgebaut werden muss. Vorher fiel eine
+    // Quelle, die still 0 Events lieferte, niemandem auf (milla, meinestadt,
+    // eventbrite, bahnwaerter-thiel wochenlang).
+    let rows: number | null = null;
+    if (supabase) {
+      const { count, error: countError } = await supabase
+        .from('events')
+        .select('id', { count: 'exact', head: true })
+        .like('source_id', `${source.name}-%`)
+        .gte('source_checked_at', startedAt.toISOString());
+      if (countError) console.warn('[collect-all] counting rows failed for', source.name, countError);
+      else rows = count ?? 0;
+    }
+    const seconds = Math.round((Date.now() - startedAt.getTime()) / 1000);
+    results.push({ name: source.name, seconds, rows, error, seasonal: Boolean(source.seasonal) });
+    console.log(`[collect-all] ${source.name}: ${rows ?? '?'} Zeilen, ${seconds}s${error ? `, Fehler: ${error}` : ''}`);
+
     const next = sources[i + 1];
     const sameHost = Boolean(source.host && next?.host === source.host);
     await wait(sameHost ? 4000 : 750);
   }
 
+  const problems = results.filter((r) => r.error || (r.rows === 0 && !r.seasonal));
+  for (const r of problems) {
+    // GitHub-Annotation: erscheint als Warnung am Workflow-Lauf, ohne ihn
+    // rot zu machen (keine tägliche Fehlermail, nur weil EINE Seite blockt).
+    console.log(`::warning title=Quelle ${r.name}::${r.error ? `Fehler: ${r.error}` : '0 Zeilen geschrieben'}`);
+  }
+
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (summaryPath) {
+    const status = (r: SourceResult) =>
+      r.error ? `⚠️ ${r.error.replace(/\|/g, '/').slice(0, 120)}`
+      : r.rows === 0 ? (r.seasonal ? 'leer (saisonal)' : '⚠️ 0 Zeilen')
+      : 'ok';
+    const lines = [
+      '## Collector-Lauf',
+      '',
+      `${results.length} Quellen, ${problems.length} mit Problem.`,
+      '',
+      '| Quelle | Zeilen | Dauer | Status |',
+      '|---|---:|---:|---|',
+      ...results.map((r) => `| ${r.name} | ${r.rows ?? '?'} | ${r.seconds}s | ${status(r)} |`),
+    ];
+    appendFileSync(summaryPath, lines.join('\n') + '\n');
+  }
+
+  // Protokoll für den Wochenbericht (Tabelle aus 0053). Fehlt die Tabelle
+  // noch (Migration nicht angewendet), nur warnen — der Lauf selbst zählt.
+  if (supabase) {
+    const { error: logError } = await supabase.from('collector_runs').insert(
+      results.map((r) => ({
+        run_started_at: runStartedAt,
+        source: r.name,
+        rows_written: r.rows,
+        duration_seconds: r.seconds,
+        error: r.error,
+        seasonal: r.seasonal,
+      }))
+    );
+    if (logError) console.warn('[collect-all] writing collector_runs failed', logError);
+  }
+
   console.log('[collect-all] finished');
+  // Rot nur bei einem systemischen Ausfall (z.B. Supabase nicht erreichbar):
+  // einzelne blockierende Quellen stehen als Warnung im Lauf und im
+  // Wochenbericht, lösen aber keine tägliche Fehlermail aus.
+  const nonSeasonal = results.filter((r) => !r.seasonal);
+  const failedShare = nonSeasonal.filter((r) => r.error || r.rows === 0).length / Math.max(1, nonSeasonal.length);
+  return failedShare > 0.5 ? 1 : 0;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  runAll().catch((e) => { console.error(e); process.exit(1); });
+  // Explizit beenden: nach einem Timeout kann eine hängende Verbindung den
+  // Prozess sonst bis zum Workflow-Limit offen halten.
+  runAll().then((code) => process.exit(code)).catch((e) => { console.error(e); process.exit(1); });
 }
 
 export default runAll;

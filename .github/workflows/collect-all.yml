@@ -15,6 +15,9 @@ on:
 jobs:
   collect:
     runs-on: ubuntu-latest
+    # Obergrenze statt GitHub-Default von 6h: ein Lauf dauert ~45-80 min,
+    # eine hängende Verbindung soll nicht stundenlang Runner-Zeit blockieren.
+    timeout-minutes: 150
     defaults:
       run:
         working-directory: collectors
@@ -32,4 +35,8 @@ jobs:
       # zusätzlichen Step duplizieren (siehe Kommentar in collect-all.ts für
       # Quellen, die absichtlich nicht automatisch laufen).
       - run: npm run collect-all
+      # Dedup auch dann, wenn collect-all wegen eines systemischen Ausfalls
+      # rot endet — bereits geschriebene Events sollen trotzdem entdoppelt
+      # werden.
       - run: npm run dedup
+        if: ${{ !cancelled() }}

@@ -25,6 +25,12 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      # Jeder Lauf beendet sich bei einem Fehlschlag mit Exit-Code 1 (siehe
+      # collectVenues in core/venues.ts). !cancelled() sorgt dafür, dass ein
+      # gescheiterter Bars-Lauf Restaurants/Spätis nicht mit abbricht — der
+      # Job wird am Ende trotzdem rot.
       - run: npm run bars
       - run: npm run restaurants
+        if: ${{ !cancelled() }}
       - run: npm run spaetis
+        if: ${{ !cancelled() }}

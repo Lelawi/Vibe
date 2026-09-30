@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { berlinToday } from '../../core/timezone';
 
 // Die Auer Dult findet 3x im Jahr auf dem Mariahilfplatz statt (Maidult,
 // Jakobidult, Kirchweihdult) und läuft jeweils über mehrere Tage. Die
@@ -65,28 +66,24 @@ export async function run() {
       const endDay = endMatch ? parseInt(endMatch[1], 10) : null;
       const endMonth = endMatch ? GERMAN_MONTHS[endMatch[2].toLowerCase()] : null;
 
-      // Rollover anhand des ENDdatums prüfen, nicht des Startdatums — sonst
-      // würde eine Dult, die schon begonnen hat aber noch läuft (Start in der
-      // Vergangenheit, Ende in der Zukunft), fälschlich ins nächste Jahr
-      // verschoben statt als laufend erkannt zu werden.
-      const now = new Date();
-      const todayUtc = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-      let year = now.getFullYear();
-      const tentativeEndMonth = endMonth ?? startMonth;
-      const tentativeEndDay = endDay ?? startDay;
-      // Dult übers Jahresende (aktuell bei keiner der drei der Fall, aber
-      // sicherheitshalber): Endmonat "kleiner" als Startmonat -> ein Jahr weiter.
-      const tentativeEndYear = endMonth !== null && endMonth < startMonth ? year + 1 : year;
-      if (new Date(Date.UTC(tentativeEndYear, tentativeEndMonth - 1, tentativeEndDay)) < todayUtc) {
-        year += 1;
-      }
+      // Jahr: steht im Textfenster eine Jahreszahl, gilt die. Sonst das
+      // laufende Jahr — und ist die Dult dann schon vorbei, wird sie
+      // übersprungen statt (wie früher) mit denselben Kalendertagen ins
+      // nächste Jahr geschoben: die Dult-Termine verschieben sich jedes Jahr,
+      // die geratenen Daten fielen z.B. auf Sonntage (Fund 2026-09-30).
+      // Sobald die Stadt die Termine des Folgejahrs veröffentlicht, liegen
+      // diese in der Zukunft bzw. tragen ihre Jahreszahl.
+      const explicitYear = window.match(/\b(20\d{2})\b/);
+      const year = explicitYear ? parseInt(explicitYear[1], 10) : Number(berlinToday().slice(0, 4));
       const start_date = toDateStr(year, startMonth, startDay);
 
       let end_date: string | null = null;
       if (endMonth !== null && endDay !== null) {
+        // Dult übers Jahresende: Endmonat "kleiner" als Startmonat.
         const endYear = endMonth < startMonth ? year + 1 : year;
         end_date = toDateStr(endYear, endMonth, endDay);
       }
+      if ((end_date ?? start_date) < berlinToday()) continue;
 
       const sourceId = `auer-dult-${dultName.toLowerCase()}-${start_date.slice(0, 4)}`;
       collected.push({

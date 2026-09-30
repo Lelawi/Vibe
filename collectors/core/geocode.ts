@@ -2,6 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCanonicalVenue, getVenueAddress } from './known_venues';
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+// Großraum München (inkl. Umland). Ohne Begrenzung fand Nominatim z.B.
+// "Leopoldstr. 13" in Berlin und "München, München" in Brandenburg — der
+// falsche Treffer blieb dann dauerhaft im Cache (Fund 2026-09-30).
+const MUNICH_VIEWBOX = '11.0,48.5,12.2,47.7'; // lon_min,lat_max,lon_max,lat_min
 const USER_AGENT = 'VibeApp-EventAggregator/1.0 (nicht-kommerzieller München Event-Aggregator)';
 
 type Coords = { latitude: number; longitude: number };
@@ -11,11 +15,18 @@ let cacheLoaded = false;
 
 async function loadCache(supabase: SupabaseClient) {
   if (cacheLoaded) return;
-  const { data, error } = await supabase.from('venue_coordinates').select('*');
-  if (!error && data) {
+  // Seitenweise (Supabase liefert max. 1000 Zeilen pro Anfrage).
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('venue_coordinates')
+      .select('location_name,latitude,longitude')
+      .order('location_name', { ascending: true })
+      .range(from, from + 999);
+    if (error || !data) break;
     for (const row of data) {
       cache.set(row.location_name, { latitude: row.latitude, longitude: row.longitude });
     }
+    if (data.length < 1000) break;
   }
   cacheLoaded = true;
 }
@@ -48,11 +59,16 @@ export async function getCoordinates(
     return cache.get(cacheKey) ?? null;
   }
 
-  const url = `${NOMINATIM_URL}?format=json&limit=1&q=${encodeURIComponent(cacheKey)}`;
+  // Adresse ohne Stadt ("Leopoldstr. 13") um die Stadt ergänzen, sonst sucht
+  // Nominatim deutschlandweit nach der Straße.
+  const query = resolvedAddress && !/münchen|munich/i.test(resolvedAddress)
+    ? `${resolvedAddress}, ${city}`
+    : cacheKey;
+  const url = `${NOMINATIM_URL}?format=json&limit=1&countrycodes=de&viewbox=${MUNICH_VIEWBOX}&bounded=1&q=${encodeURIComponent(query)}`;
 
   try {
     await sleep(1100); // Nominatim: max. 1 Anfrage/Sekunde einhalten
-    const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+    const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw new Error(`Status ${response.status}`);
     const results = await response.json();
 

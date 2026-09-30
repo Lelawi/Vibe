@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { berlinToday, isoToBerlinWallClock } from '../../core/timezone';
 
 const BACKSTAGE_API_URL =
   'https://vhhdjliwckyzbqtjrjpp.supabase.co/rest/v1/rpc/get_upcoming_events';
@@ -72,9 +73,12 @@ const BACKSTAGE_OWN_VENUES = [
 ];
 
 async function normalizeEvent(raw: BackstageEvent, supabase: ReturnType<typeof createClient>) {
-  const startDateTime = new Date(raw.start_time);
-  const startDate = startDateTime.toISOString().slice(0, 10);
-  const startTime = startDateTime.toISOString().slice(11, 16);
+  // Berliner Wandzeit statt UTC (vorher standen alle Backstage-Termine
+  // 1–2h zu früh, siehe isoToBerlinWallClock).
+  const wallClock = isoToBerlinWallClock(raw.start_time);
+  if (!wallClock) return null;
+  const startDate = wallClock.date;
+  const startTime = wallClock.time;
 
   const subcategory = raw.genres?.length
     ? raw.genres.map((g) => g.name).join(', ')
@@ -134,9 +138,12 @@ export async function run() {
   const rawEvents = await fetchBackstageEvents();
   console.log(`${rawEvents.length} Events von Backstage erhalten`);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = berlinToday();
+  // Backstage setzt das cancelled-Flag nicht immer — abgesagte Konzerte
+  // stehen teils nur als "leider abgesagt" im Titel (Fund 2026-09-30: 10
+  // kommende Events so in der App).
   const activeEvents = rawEvents.filter(
-    (e) => !e.cancelled && e.start_time.slice(0, 10) >= today
+    (e) => !e.cancelled && !/abgesagt|cancelled|canceled/i.test(e.title) && e.start_time.slice(0, 10) >= today
   );
 
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -144,7 +151,8 @@ export async function run() {
   // Nacheinander statt parallel, damit die Geokodierungs-Rate-Limits eingehalten werden
   const normalizedEvents = [];
   for (const event of activeEvents) {
-    normalizedEvents.push(await normalizeEvent(event, supabase));
+    const normalized = await normalizeEvent(event, supabase);
+    if (normalized) normalizedEvents.push(normalized);
   }
 
   const { error } = await supabase

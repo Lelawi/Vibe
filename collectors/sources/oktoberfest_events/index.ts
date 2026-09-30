@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { berlinToday, resolveYearlessDate } from '../../core/timezone';
 
 // Die offiziellen Oktoberfest-"Highlights" (Anstich, Trachten- und
 // Schützenzug, Böllerschießen etc.) — nicht die Wiesn selbst (die ist kein
@@ -26,8 +27,7 @@ export async function run() {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const collected: any[] = [];
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = berlinToday();
 
   try {
     console.log('[oktoberfest_events] fetching', OKTOBERFEST_URL);
@@ -58,13 +58,11 @@ export async function run() {
 
       const month = parseInt(dateMatch[1], 10);
       const day = parseInt(dateMatch[2], 10);
-      let year = today.getFullYear();
-      let candidate = new Date(Date.UTC(year, month - 1, day));
-      if (candidate.toISOString().slice(0, 10) < todayStr) {
-        year += 1;
-        candidate = new Date(Date.UTC(year, month - 1, day));
-      }
-      const start_date = candidate.toISOString().slice(0, 10);
+      // Vergangene Termine überspringen statt sie (wie vorher) ins nächste
+      // Jahr zu schieben — das Wiesn-Programm des Folgejahrs steht noch nicht
+      // fest, ein geratenes Datum wäre ein Geister-Termin.
+      const start_date = resolveYearlessDate(month, day);
+      if (!start_date || start_date < todayStr) return;
 
       const title = rawTitle.replace(/\s*\(\d{1,2}\/\d{1,2}\)\s*$/, '').trim();
       let sourceUrl: string;
@@ -85,7 +83,7 @@ export async function run() {
       }
 
       collected.push({
-        source_id: `oktoberfest-events-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${year}`,
+        source_id: `oktoberfest-events-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${start_date.slice(0, 4)}`,
         title,
         description: tagline,
         category: 'Feiern',

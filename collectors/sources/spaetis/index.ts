@@ -10,12 +10,13 @@ import { collectVenues } from '../../core/venues';
 // niedrigere Bild-/Bierpreis-Trefferquote als bei Bars/Restaurants zu
 // erwarten, Öffnungszeiten (der eigentliche Zweck) sind aber gut abgedeckt.
 export async function run() {
-  await collectVenues({
+  const ok = await collectVenues({
     label: 'spaetis',
     type: 'spaeti',
     tagKey: 'shop',
     amenityValues: ['kiosk', 'convenience', 'alcohol'],
   });
+  if (!ok) throw new Error('[spaetis] Lauf fehlgeschlagen, siehe Log oben');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

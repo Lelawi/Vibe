@@ -10,7 +10,8 @@ import { collectVenues } from '../../core/venues';
 // logik mit sources/restaurants über core/venues.ts (0015_venues_generalize_
 // for_restaurants.sql).
 export async function run() {
-  await collectVenues({ label: 'bars', type: 'bar', amenityValues: ['bar', 'pub'] });
+  const ok = await collectVenues({ label: 'bars', type: 'bar', amenityValues: ['bar', 'pub'] });
+  if (!ok) throw new Error('[bars] Lauf fehlgeschlagen, siehe Log oben');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

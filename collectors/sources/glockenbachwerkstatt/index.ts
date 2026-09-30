@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { berlinToday, resolveYearlessDate } from '../../core/timezone';
 
 // Bürgerhaus Glockenbachwerkstatt — Struktur per direktem HTML-Abruf
 // verifiziert (2026-07): <div class="event"> mit <span class="imgdate">D.M.</span>
@@ -18,7 +19,7 @@ export async function run() {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const collected: any[] = [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = berlinToday();
 
   try {
     console.log('[glockenbachwerkstatt] fetching', GLOCKENBACH_URL);
@@ -34,8 +35,6 @@ export async function run() {
     const $ = cheerio.load(html);
     const coords = await getCoordinates(supabase, 'Glockenbachwerkstatt', GLOCKENBACH_ADDRESS, 'München');
 
-    const now = new Date();
-
     $('.event').each((_, el) => {
       const el$ = $(el);
       const title = el$.find('.event__title a span').first().text().trim() || el$.find('.event__title a').first().text().trim();
@@ -50,14 +49,8 @@ export async function run() {
       const day = parseInt(dayStr, 10);
       const month = parseInt(monthStr, 10);
 
-      let year = now.getFullYear();
-      let candidate = new Date(year, month - 1, day);
-      if (candidate < now) {
-        year += 1;
-        candidate = new Date(year, month - 1, day);
-      }
-      const start_date = candidate.toISOString().slice(0, 10);
-      if (start_date < today) return;
+      const start_date = resolveYearlessDate(month, day);
+      if (!start_date || start_date < today) return;
 
       const timeMatch = timeText.match(/(\d{1,2}):(\d{2})/);
       const start_time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;

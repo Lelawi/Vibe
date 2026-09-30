@@ -61,11 +61,11 @@ const CURATED_NEW_VENUES = [
 // vierten Kategorie, per Nutzer-Entscheidung 2026-08-02) — Cafés bekamen
 // sonst gar keine Kategorie und fehlten komplett (Café Spatz-Fall).
 export async function run() {
-  await collectVenues({ label: 'restaurants', type: 'restaurant', amenityValues: ['restaurant', 'cafe'] });
+  const ok = await collectVenues({ label: 'restaurants', type: 'restaurant', amenityValues: ['restaurant', 'cafe'] });
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseKey) return;
+  if (!supabaseUrl || !supabaseKey) throw new Error('[restaurants] missing supabase envs');
   const supabase = createClient(supabaseUrl, supabaseKey);
   for (const venue of CURATED_NEW_VENUES) {
     const coords = await getCoordinates(supabase, venue.name, venue.address, 'München');
@@ -79,6 +79,8 @@ export async function run() {
     if (error) console.error(`[restaurants] curated upsert failed for ${venue.name}`, error);
     else console.log(`[restaurants] curated venue saved/updated: ${venue.name}`);
   }
+  // Kuratierte Venues trotzdem schreiben, danach den OSM-Fehlschlag melden.
+  if (!ok) throw new Error('[restaurants] OSM-Lauf fehlgeschlagen, siehe Log oben');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

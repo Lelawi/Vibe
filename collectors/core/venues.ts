@@ -968,11 +968,15 @@ export interface CollectVenuesOptions {
   amenityValues: string[];
 }
 
-export async function collectVenues({ label, type, tagKey = 'amenity', amenityValues }: CollectVenuesOptions): Promise<void> {
+// Gibt false zurück, wenn der Lauf nichts (oder nicht alles) schreiben
+// konnte — die Aufrufer beenden dann mit Exit-Code 1, damit der Workflow
+// rot wird statt still grün zu bleiben (28.09.: Restaurant-Lauf schrieb
+// nichts, Workflow trotzdem grün).
+export async function collectVenues({ label, type, tagKey = 'amenity', amenityValues }: CollectVenuesOptions): Promise<boolean> {
   console.log(`[${label}] starting`);
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseKey) { console.log(`[${label}] missing supabase envs — skipping`); return; }
+  if (!supabaseUrl || !supabaseKey) { console.log(`[${label}] missing supabase envs — skipping`); return false; }
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   // amenity=restaurant hat in München deutlich mehr Treffer als bar/pub —
@@ -1012,7 +1016,7 @@ out body;
         if (attempt < OVERPASS_ATTEMPTS) await new Promise((r) => setTimeout(r, 5000 * attempt));
       }
     }
-    if (!data) { console.warn(`[${label}] overpass fetch failed after ${OVERPASS_ATTEMPTS} attempts — skipping this run`); return; }
+    if (!data) { console.warn(`[${label}] overpass fetch failed after ${OVERPASS_ATTEMPTS} attempts — skipping this run`); return false; }
     const rawVenues = dedupeNearbyVenues(data.elements
       .filter((el) => el.tags?.name && !EXCLUDED_VENUE_OSM_IDS.has(el.id))
       .map((el) => {
@@ -1052,20 +1056,45 @@ out body;
         };
       }));
 
-    if (rawVenues.length === 0) { console.log(`[${label}] no venues parsed`); return; }
+    if (rawVenues.length === 0) { console.log(`[${label}] no venues parsed`); return false; }
 
     // Bereits vorhandene image_url/opening_hours_override/lunch-Infos je
     // osm_id wiederverwenden statt bei jedem (wöchentlichen) Lauf alle
     // Websites erneut abzuklappern — nur für Venues, denen noch mindestens
     // eins davon fehlt, wird neu gefetcht.
-    const { data: existing } = await supabase
-      .from('venues')
-      .select('osm_id,address,image_url,opening_hours_override,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur')
-      .eq('type', type);
+    //
+    // Seitenweise laden: Supabase liefert pro Anfrage höchstens 1000 Zeilen,
+    // es gibt aber >3000 Restaurants. Vorher fehlte für alle Venues jenseits
+    // der ersten 1000 der Cache — der Upsert überschrieb deren Bild, Menü-
+    // Links, Bierpreis und Lunch-Flag dann jede Woche mit null (Fund
+    // 2026-09-30: 542 Venues mit Foto im Bucket, aber image_url = null).
+    // Bewusst ohne type-Filter, damit eine manuell geänderte Kategorie
+    // (type_override, z.B. "ist doch keine Bar") auch dann gefunden wird,
+    // wenn das Venue inzwischen unter einem anderen type steht.
+    // Scheitert eine Seite, bricht der Lauf ab, statt mit lückenhaftem Cache
+    // Daten zu überschreiben.
+    const EXISTING_PAGE_SIZE = 1000;
+    const existing: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += EXISTING_PAGE_SIZE) {
+      const { data: page, error: pageError } = await supabase
+        .from('venues')
+        .select('osm_id,type_override,address,website,phone,image_url,opening_hours_override,lunch_available,lunch_menu_url,dinner_menu_url,beer_price_eur')
+        .order('osm_id', { ascending: true })
+        .range(from, from + EXISTING_PAGE_SIZE - 1);
+      if (pageError) {
+        console.error(`[${label}] loading existing venues failed — aborting run to avoid overwriting data`, pageError);
+        return false;
+      }
+      existing.push(...(page ?? []));
+      if (!page || page.length < EXISTING_PAGE_SIZE) break;
+    }
     const existingByOsmId = new Map(
-      (existing ?? []).map((v) => [
+      existing.map((v) => [
         v.osm_id as number,
         {
+          typeOverride: v.type_override as string | null,
+          website: v.website as string | null,
+          phone: v.phone as string | null,
           address: v.address as string | null,
           image: v.image_url as string | null,
           hours: v.opening_hours_override as string | null,
@@ -1125,6 +1154,13 @@ out body;
       const cached = existingByOsmId.get(v.osm_id);
       return {
         ...row,
+        // Manuell korrigierte Kategorie (per Wochenbericht) schlägt OSM.
+        type: cached?.typeOverride ?? row.type,
+        // OSM gewinnt, wenn es einen Wert hat — sonst den bisherigen Wert
+        // behalten (z.B. von Google Places ergänzt), statt ihn jede Woche zu
+        // löschen.
+        website: row.website ?? cached?.website ?? null,
+        phone: row.phone ?? cached?.phone ?? null,
         address: v.address ?? cached?.address ?? reverseGeocodedByOsmId.get(v.osm_id) ?? null,
         image_url: fetched?.image ?? cached?.image ?? null,
         opening_hours_override: fetched?.hours ?? cached?.hours ?? null,
@@ -1150,8 +1186,10 @@ out body;
 
     console.log(`[${label}] upserting`, venues.length, 'venues');
     const { error } = await supabase.from('venues').upsert(venues, { onConflict: 'osm_id' });
-    if (error) console.error(`[${label}] upsert error`, error);
+    if (error) { console.error(`[${label}] upsert error`, error); return false; }
+    return true;
   } catch (err) {
     console.warn(`[${label}] error`, err);
+    return false;
   }
 }

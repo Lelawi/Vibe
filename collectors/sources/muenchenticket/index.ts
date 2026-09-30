@@ -1,11 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
+import { berlinToday } from '../../core/timezone';
 
 const ALGOLIA_APP_ID = 'UB6RVTVAFZ';
 const ALGOLIA_API_KEY = '46f011a35c180f5a07a2210276ca04b7';
 const ALGOLIA_URL = `https://${ALGOLIA_APP_ID.toLowerCase()}-dsn.algolia.net/1/indexes/*/queries`;
 
 interface AlgoliaHit {
+  objectID: string;
   event_object_id: string;
   event: { id: string; title: string; hero_media?: string[] };
   external_shop_link: string;
@@ -51,12 +53,21 @@ function unixToDateTime(unixSeconds: number) {
   return { date: dateStr, time: timeStr };
 }
 
-async function fetchMuenchenTicketEvents(): Promise<AlgoliaHit[]> {
+// Algolia liefert pro Suche höchstens 1000 Treffer (paginationLimitedTo),
+// es gibt aber ~2.450 kommende Aufführungen in München. Vorher wurde nur
+// Seite 0 (300 Treffer) gelesen. Jetzt: Zeitraum in 30-Tage-Fenster teilen
+// (per numericFilters auf date) und jedes Fenster vollständig abrufen.
+const WINDOW_DAYS = 30;
+const HORIZON_DAYS = 365;
+const MAX_HITS_PER_QUERY = 1000;
+
+async function queryAlgolia(fromUnix: number, toUnix: number): Promise<{ hits: AlgoliaHit[]; nbHits: number }> {
   const params = new URLSearchParams({
     query: '',
-    hitsPerPage: '300',
+    hitsPerPage: String(MAX_HITS_PER_QUERY),
     page: '0',
     facetFilters: JSON.stringify([['venue.city:München']]),
+    numericFilters: JSON.stringify([`date>=${fromUnix}`, `date<${toUnix}`]),
   }).toString();
 
   const response = await fetch(ALGOLIA_URL, {
@@ -69,6 +80,7 @@ async function fetchMuenchenTicketEvents(): Promise<AlgoliaHit[]> {
     body: JSON.stringify({
       requests: [{ indexName: 'prod_PERFORMANCES', params }],
     }),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {
@@ -76,7 +88,22 @@ async function fetchMuenchenTicketEvents(): Promise<AlgoliaHit[]> {
   }
 
   const data = await response.json();
-  return data.results[0].hits;
+  return { hits: data.results[0].hits, nbHits: data.results[0].nbHits };
+}
+
+async function fetchMuenchenTicketEvents(): Promise<AlgoliaHit[]> {
+  const all: AlgoliaHit[] = [];
+  const start = Math.floor(Date.now() / 1000) - 86_400; // gestern, Filter auf "heute" folgt in run()
+  for (let offset = 0; offset < HORIZON_DAYS; offset += WINDOW_DAYS) {
+    const from = start + offset * 86_400;
+    const to = start + (offset + WINDOW_DAYS) * 86_400;
+    const { hits, nbHits } = await queryAlgolia(from, to);
+    if (nbHits > MAX_HITS_PER_QUERY) {
+      console.warn(`[muenchenticket] Fenster ab Tag ${offset}: ${nbHits} Treffer, nur ${MAX_HITS_PER_QUERY} abrufbar — WINDOW_DAYS verkleinern`);
+    }
+    all.push(...hits);
+  }
+  return all;
 }
 
 function normalizeEvent(hit: AlgoliaHit) {
@@ -87,7 +114,11 @@ function normalizeEvent(hit: AlgoliaHit) {
     : rawSubcategory ?? null;
 
   return {
-    source_id: `muenchenticket-${hit.event_object_id}`,
+    // Pro Aufführung (objectID), nicht pro Stück: vorher fielen alle Termine
+    // eines Stücks auf eine source_id zusammen und der zuletzt gelesene
+    // gewann ("PHILOPHOBIA" stand nur auf dem 20.10., obwohl es auch am
+    // 30.09. und 01.10. lief).
+    source_id: `muenchenticket-${hit.event_object_id}-${hit.objectID}`,
     title: hit.event.title,
     description: null,
     category: hit.category?.lvl0 ?? 'Sonstiges',
@@ -114,7 +145,7 @@ export async function run() {
   const hits = await fetchMuenchenTicketEvents();
   console.log(`${hits.length} Treffer von München Ticket erhalten`);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = berlinToday();
   const realEvents = hits.filter(
     (h) =>
       h.visible &&
@@ -141,6 +172,19 @@ export async function run() {
   }
 
   console.log(`${deduplicatedEvents.length} Events gespeichert/aktualisiert.`);
+
+  // Altbestand im früheren Format "muenchenticket-<event_object_id>" (ein
+  // Termin pro Stück, siehe normalizeEvent) entfernen — erst nach einem
+  // erfolgreichen Upsert mit plausibler Menge, damit ein leerer oder
+  // gescheiterter Abruf nicht den Bestand löscht.
+  if (deduplicatedEvents.length >= 100) {
+    const { error: legacyError, count } = await supabase
+      .from('events')
+      .delete({ count: 'exact' })
+      .filter('source_id', 'match', '^muenchenticket-[A-Za-z0-9]+$');
+    if (legacyError) console.warn('[muenchenticket] Altbestand konnte nicht entfernt werden', legacyError);
+    else if (count) console.log(`[muenchenticket] ${count} Zeilen im alten ID-Format entfernt`);
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });

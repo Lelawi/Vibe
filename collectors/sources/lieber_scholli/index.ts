@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
+import { isoToBerlinWallClock } from '../../core/timezone';
 import { extractJsonLdEvents, buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 
 // lieberscholli.de selbst hat keine eigene Programmseite mehr — die komplette
@@ -41,10 +42,12 @@ export async function run() {
 
     for (const ev of events) {
       if (!ev.name || !ev.startDate) continue;
-      const d = new Date(ev.startDate);
-      if (isNaN(d.getTime())) continue;
-      const start_date = d.toISOString().slice(0, 10);
-      const start_time = d.toISOString().slice(11, 16);
+      // Berliner Wandzeit statt UTC (vorher 1–2h zu früh, siehe
+      // isoToBerlinWallClock).
+      const wallClock = isoToBerlinWallClock(ev.startDate);
+      if (!wallClock) continue;
+      const start_date = wallClock.date;
+      const start_time = wallClock.time;
       if (start_date < today) continue;
 
       const eventUrl = ev.url ?? LIEBER_SCHOLLI_URL;

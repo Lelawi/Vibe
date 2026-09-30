@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { extractJsonLdEvents, buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
 import { getCoordinates } from '../../core/geocode';
+import { isoToBerlinWallClock } from '../../core/timezone';
 
 // eintrittfrei-muenchen.de listet ausschließlich kostenlose Veranstaltungen
 // in München (WordPress "The Events Calendar"-Plugin, Markup + JSON-LD per
@@ -78,18 +79,16 @@ export async function run() {
         if (seenUrls.has(ev.url)) continue;
         seenUrls.add(ev.url);
 
-        const startDateObj = new Date(ev.startDate);
-        if (isNaN(startDateObj.getTime())) continue;
-        const start_date = startDateObj.toISOString().slice(0, 10);
-        const start_time = ev.startDate.includes('T') ? startDateObj.toISOString().slice(11, 16) : null;
+        // Berliner Wandzeit statt UTC (siehe isoToBerlinWallClock).
+        const startWallClock = isoToBerlinWallClock(ev.startDate);
+        if (!startWallClock) continue;
+        const start_date = startWallClock.date;
+        const start_time = startWallClock.time;
 
         let end_date: string | null = null;
         if (ev.endDate) {
-          const endDateObj = new Date(ev.endDate);
-          if (!isNaN(endDateObj.getTime())) {
-            const candidateEnd = endDateObj.toISOString().slice(0, 10);
-            if (candidateEnd !== start_date) end_date = candidateEnd;
-          }
+          const candidateEnd = isoToBerlinWallClock(ev.endDate)?.date;
+          if (candidateEnd && candidateEnd !== start_date) end_date = candidateEnd;
         }
 
         let latitude = ev.latitude;

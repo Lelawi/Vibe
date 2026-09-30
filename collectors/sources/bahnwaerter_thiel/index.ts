@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import { getCoordinates } from '../../core/geocode';
 import { buildStableSourceId, dedupeBySourceId } from '../../core/scrape';
+import { berlinToday } from '../../core/timezone';
 
 // Bahnwärter Thiel hat entgegen einer früheren Annahme doch eine eigene,
 // serverseitig gerenderte Programmseite (bahnwaerterthiel.de, per
@@ -36,7 +37,7 @@ export async function run() {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const collected: any[] = [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = berlinToday();
 
   try {
     console.log('[bahnwaerter_thiel] fetching', HOMEPAGE_URL);
@@ -53,7 +54,10 @@ export async function run() {
 
     const coords = await getCoordinates(supabase, 'Bahnwärter Thiel', ADDRESS, 'München');
 
-    $('label.events-toggle').each((_, el) => {
+    // Seit ~2026-08-24 heißen die Klassen bmt-toggle-label/bmt-collapsible
+    // statt events-toggle/collapsible-content (Seitenumbau, dadurch lieferte
+    // die Quelle wochenlang still 0 Events). Beide Varianten abfragen.
+    $('label.events-toggle, label.bmt-toggle-label').each((_, el) => {
       const label$ = $(el);
       const lineup = label$.find('p').first().text().replace(/\s+/g, ' ').trim() || null;
       // Klon ohne das verschachtelte <p>, damit die Lineup-Zeilen nicht in
@@ -84,7 +88,7 @@ export async function run() {
       // Checkbox) — pro Event ein eigenes <img> im content-inner, direkt
       // verifiziert per Direktabruf (2026-07).
       const imageUrl =
-        label$.siblings('.collapsible-content').first().find('img').first().attr('src') || null;
+        label$.siblings('.collapsible-content, .bmt-collapsible').first().find('img').first().attr('src') || null;
 
       const sourceId = buildStableSourceId('bahnwaerter-thiel', title, start_date);
       collected.push({

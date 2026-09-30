@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -38,13 +38,8 @@ async function promoteToManualReview(
   if (error) throw error;
 }
 
-export async function run() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseKey) throw new Error('Sicherer Supabase-Routinenzugang fehlt');
-  const supabase = createClient(supabaseUrl, supabaseKey);
-
-  const [feedbackResult, eventReportsResult, missingResult] = await Promise.all([
+function loadInbox(supabase: SupabaseClient) {
+  return Promise.all([
     supabase
       .from('app_feedback')
       .select('id,message,page_context,screenshot_path,created_at,analysis_status,analysis_attempts')
@@ -67,9 +62,29 @@ export async function run() {
       .lt('analysis_attempts', 3)
       .order('created_at'),
   ]);
-  for (const result of [feedbackResult, eventReportsResult, missingResult]) {
+}
+
+export async function run() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey) throw new Error('Sicherer Supabase-Routinenzugang fehlt');
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  // Die drei Abfragen liefen am 23.09. und 29.09. je einmal in einen
+  // sporadischen 401 (PGRST303) des Supabase-Gateways, die Schwester-
+  // Abfragen 13ms später mit demselben Key klappten. Ein Retry nach kurzer
+  // Pause statt den ganzen Lauf scheitern zu lassen.
+  let results = await loadInbox(supabase);
+  if (results.some((r) => r.error)) {
+    console.warn('[routine-feedback-inbox] Abfrage fehlgeschlagen, neuer Versuch in 3s', results.find((r) => r.error)?.error);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    results = await loadInbox(supabase);
+  }
+  const [feedbackResult, eventReportsResult, missingResult] = results;
+  for (const result of results) {
     if (result.error) throw result.error;
   }
+
 
   // Erst befoerdern, dann den Payload fuer die Routine zusammenstellen --
   // die Routine selbst filtert ohnehin nur noch nach manual_review, ohne
@@ -106,6 +121,14 @@ export async function run() {
     event_reports: (eventReportsResult.data ?? []).map((row) => ({ ...row, event: eventById.get(row.event_id) ?? null })),
     missing_items: missingResult.data ?? [],
   };
+  // Das Repo ist öffentlich und damit auch die Actions-Logs: dort nur
+  // Zählwerte ausgeben, nie Nutzertexte oder die (eine Stunde gültigen)
+  // signierten Screenshot-Links. Den vollen Payload gibt es nur lokal bzw.
+  // in der privaten Cloud-Routine.
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`[routine-feedback-inbox] befördert: ${payload.app_feedback.length} App-Feedback, ${payload.event_reports.length} Event-Meldungen, ${payload.missing_items.length} fehlende Einträge`);
+    return;
+  }
   console.log(JSON.stringify(payload, null, 2));
 }
 
