@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { registerStrings, useTranslation } from '../lib/strings';
@@ -33,18 +33,7 @@ export function formatLocationPreference(pref: LocationPreference | null, t: (ke
   return pref.mode === 'postalCode' ? `${pref.postalCode} ${pref.label}` : t('locationPicker.gpsLabel');
 }
 
-// Auswahl der Standort-Quelle für den "Nähe"-Filter: PLZ (ohne
-// Standortfreigabe) oder Browser-Standort. Genutzt von der Eventliste, den
-// Venue-Listen und den Einstellungen (dort mit onClear).
-export default function LocationPickerModal({
-  visible,
-  onClose,
-  onUseGps,
-  onUsePostalCode,
-  onClear,
-  preference,
-  gpsDenied = false,
-}: {
+type Props = {
   visible: boolean;
   onClose: () => void;
   onUseGps: () => void;
@@ -52,17 +41,26 @@ export default function LocationPickerModal({
   onClear?: () => void;
   preference: LocationPreference | null;
   gpsDenied?: boolean;
-}) {
-  const { t } = useTranslation();
-  const [input, setInput] = useState('');
-  const [showError, setShowError] = useState(false);
+};
 
-  useEffect(() => {
-    if (!visible) return;
-    setInput(preference?.mode === 'postalCode' ? preference.postalCode : '');
-    setShowError(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+// Auswahl der Standort-Quelle für den "Nähe"-Filter: PLZ (ohne
+// Standortfreigabe) oder Browser-Standort. Genutzt von der Eventliste, den
+// Venue-Listen und den Einstellungen (dort mit onClear).
+//
+// Erst beim Öffnen gemountet statt dauerhaft mit visible=false: react-native-
+// web hängt jedes <Modal> schon beim Mounten als eigenes Element an <body>,
+// alle mit demselben zIndex — die DOM-Reihenfolge entscheidet. Dauerhaft
+// gemountet lag der Dialog deshalb unter dem früher geöffneten Filter-Sheet
+// der Eventliste, aus dem heraus "Nähe" ihn öffnet (per Nutzer-Feedback,
+// 2026-10-12). So landet er beim Öffnen als letztes Element ganz oben.
+export default function LocationPickerModal(props: Props) {
+  return props.visible ? <LocationPickerSheet {...props} /> : null;
+}
+
+function LocationPickerSheet({ onClose, onUseGps, onUsePostalCode, onClear, preference, gpsDenied = false }: Props) {
+  const { t } = useTranslation();
+  const [input, setInput] = useState(preference?.mode === 'postalCode' ? preference.postalCode : '');
+  const [showError, setShowError] = useState(false);
 
   const digits = input.replace(/\D/g, '');
   const match = digits.length === 5 ? lookupPostalCode(digits) : null;
@@ -76,7 +74,7 @@ export default function LocationPickerModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
         <TouchableOpacity activeOpacity={1} style={styles.card} onPress={() => {}}>
           <View style={styles.headerRow}>
