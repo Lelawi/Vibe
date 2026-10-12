@@ -11,6 +11,8 @@ import { useSavedSearches } from '../lib/savedSearches';
 import { useFollowedOrganizers } from '../lib/followedOrganizers';
 import { requestSettingsAction } from '../lib/settingsActions';
 import FeedbackButton from '../components/FeedbackButton';
+import LocationPickerModal, { formatLocationPreference } from '../components/LocationPickerModal';
+import { useLocationPreference } from '../lib/locationPreference';
 
 registerStrings({
   'settings.title': { de: 'Einstellungen', en: 'Settings' },
@@ -33,6 +35,9 @@ registerStrings({
   },
   'settings.unfollow': { de: 'Entfolgen', en: 'Unfollow' },
   'settings.mySearches': { de: 'Meine Suchen', en: 'My searches' },
+  'settings.locationSection': { de: 'Standort', en: 'Location' },
+  'settings.location': { de: 'Standort für „Nähe"', en: 'Location for "Nearby"' },
+  'settings.locationUnset': { de: 'Nicht festgelegt', en: 'Not set' },
   'settings.savedSearches': { de: 'Gespeicherte Suchen', en: 'Saved searches' },
   'settings.feedbackAndData': { de: 'Feedback & Daten', en: 'Feedback & data' },
   'settings.feedback': { de: 'Feedback geben', en: 'Send feedback' },
@@ -126,6 +131,8 @@ export default function SettingsScreen() {
   const { followedOrganizers, toggleFollow } = useFollowedOrganizers();
   const [showOrganizers, setShowOrganizers] = useState(false);
   const [refreshRequested, setRefreshRequested] = useState(false);
+  const { preference: locationPreference, setPreference: setLocationPreference } = useLocationPreference();
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   // Zurück zur Eventliste, die die Aktion ausführt — per back(), wenn sie im
   // Hintergrund lebt, sonst (Aufruf von einem Venue-Tab oder nach Reload auf
@@ -239,6 +246,35 @@ export default function SettingsScreen() {
             )}
           </View>
         )}
+
+        <Text style={styles.sectionLabel}>{t('settings.locationSection')}</Text>
+        <SettingsGroup>
+          <SettingsRow
+            icon="location-outline"
+            label={t('settings.location')}
+            value={formatLocationPreference(locationPreference, t) ?? t('settings.locationUnset')}
+            onPress={() => setShowLocationPicker(true)}
+          />
+        </SettingsGroup>
+        {/* Hier nur die Quelle merken, ohne GPS anzufragen — die Abfrage
+            passiert erst beim Antippen von "Nähe" bzw. auf der Karte. */}
+        <LocationPickerModal
+          visible={showLocationPicker}
+          onClose={() => setShowLocationPicker(false)}
+          onUseGps={() => {
+            setLocationPreference({ mode: 'gps' });
+            setShowLocationPicker(false);
+          }}
+          onUsePostalCode={(location) => {
+            setLocationPreference({ mode: 'postalCode', ...location });
+            setShowLocationPicker(false);
+          }}
+          onClear={() => {
+            setLocationPreference(null);
+            setShowLocationPicker(false);
+          }}
+          preference={locationPreference}
+        />
 
         <Text style={styles.sectionLabel}>{t('settings.mySearches')}</Text>
         <SettingsGroup>

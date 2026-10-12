@@ -183,6 +183,14 @@ gave muenchen-stadtportal one new row per exhibition per day).
   (`components/LeafletMapView.web.tsx`) client-side only, since Leaflet
   touches `window`/`document` at import time and would break the static
   web-export's server-side prerender step otherwise.
+- The "Nähe" filter (event list, venue lists) and the maps' "Wo bin ich" dot get
+  their location from `app/lib/locationPreference.ts` (`useNearbyLocation`,
+  `resolveMapUserLocation`): either browser GPS or a manually entered postal
+  code (`components/LocationPickerModal.tsx`, also in Settings), so the filter
+  works without sharing one's location. PLZ → coordinates is a built-in table
+  (`app/lib/postalCodes.ts`, Munich + surroundings from OSM) — no geocoding
+  call, the PLZ never leaves the device. Add rows there when expanding to new
+  cities; don't call `navigator.geolocation` directly in screens.
 - Dark theme is hardcoded inline via `StyleSheet.create` (background `#000`,
   cards `#141414`, accent `#0af`) rather than a theme system — match this
   style when adding UI.

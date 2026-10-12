@@ -46,6 +46,8 @@ import { useShowFeaturedCarousel } from '../lib/imagePreferences';
 import { useEventViewMode } from '../lib/eventViewMode';
 import { formatPriceDisplay } from '../lib/ticketVariants';
 import { onSettingsAction } from '../lib/settingsActions';
+import { useNearbyLocation } from '../lib/locationPreference';
+import LocationPickerModal, { formatLocationPreference } from '../components/LocationPickerModal';
 import {
   hasSavedSearchCriteria,
   matchesSavedSearch,
@@ -379,7 +381,8 @@ registerStrings({
   'events.resultsFoundOne': { de: 'Event gefunden', en: 'event found' },
   'events.resultsFoundMany': { de: 'Events gefunden', en: 'events found' },
   'events.resetAllFilters': { de: 'Alle Filter zurücksetzen', en: 'Reset all filters' },
-  'events.locationDenied': { de: 'Standort nicht verfügbar — bitte Standortzugriff im Browser erlauben.', en: 'Location unavailable — please allow location access in your browser.' },
+  'events.locationDenied': { de: 'Standort nicht verfügbar — tippe hier, um stattdessen eine PLZ einzugeben.', en: 'Location unavailable — tap here to enter a postal code instead.' },
+  'events.locationChange': { de: 'Ändern', en: 'Change' },
   'events.radiusAll': { de: 'Alle', en: 'All' },
   'events.emptyTitle': { de: 'Keine Events gefunden', en: 'No events found' },
   'events.emptyHintFiltered': { de: 'Mit den aktuellen Filtern gibt es nichts zu sehen.', en: "There's nothing to see with the current filters." },
@@ -463,8 +466,17 @@ export default function EventListScreen() {
   const [filterTab, setFilterTab] = useState<'category' | 'genre' | 'location'>('category');
   const [locationSearch, setLocationSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<Event[] | null>(null);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'denied'>('idle');
+  // Standort-Quelle (GPS oder manuell eingegebene PLZ) samt Auswahl-Dialog,
+  // geteilt mit den Venue-Listen — siehe lib/locationPreference.ts.
+  const {
+    userLocation,
+    locationStatus,
+    preference: locationPreference,
+    toggleNearby,
+    clearNearby,
+    openPicker: openLocationPicker,
+    pickerProps: locationPickerProps,
+  } = useNearbyLocation();
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null);
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const { followedOrganizers } = useFollowedOrganizers();
@@ -655,27 +667,6 @@ export default function EventListScreen() {
     if (!pushEnabled) return;
     syncReminderSettingsToServer(reminderOffsets);
   }, [pushEnabled, reminderOffsets]);
-
-  function toggleNearby() {
-    if (userLocation) {
-      setUserLocation(null);
-      setLocationStatus('idle');
-      return;
-    }
-    if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.geolocation) {
-      setLocationStatus('denied');
-      return;
-    }
-    setLocationStatus('loading');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLocationStatus('idle');
-      },
-      () => setLocationStatus('denied'),
-      { enableHighAccuracy: false, timeout: 10000 }
-    );
-  }
 
   // Einmalige Übernahme der Onboarding-Auswahl (siehe app/lib/onboarding.ts)
   // — liefert nach dem ersten Abschluss des Onboardings genau einmal die
@@ -1157,9 +1148,8 @@ export default function EventListScreen() {
     setShowFreeOnly(false);
     setShowMultiDayOnly(false);
     setShowTonightOnly(false);
-    setUserLocation(null);
+    clearNearby();
     setNearbyRadiusKm(null);
-    setLocationStatus('idle');
   }
 
   function applySavedSearch(searchToApply: SavedSearch) {
@@ -1174,9 +1164,8 @@ export default function EventListScreen() {
     setShowFavoritesOnly(false);
     setShowMultiDayOnly(false);
     setShowTonightOnly(false);
-    setUserLocation(null);
+    clearNearby();
     setNearbyRadiusKm(null);
-    setLocationStatus('idle');
     setShowSavedSearchModal(false);
   }
 
@@ -1210,9 +1199,8 @@ export default function EventListScreen() {
     setShowFavoritesOnly(false);
     setShowFreeOnly(false);
     setShowMultiDayOnly(false);
-    setUserLocation(null);
+    clearNearby();
     setNearbyRadiusKm(null);
-    setLocationStatus('idle');
   };
 
   if (loading) {
@@ -1444,10 +1432,14 @@ export default function EventListScreen() {
       </View>
 
       {locationStatus === 'denied' && (
-        <Text style={styles.locationHint}>
-          {t('events.locationDenied')}
-        </Text>
+        <TouchableOpacity onPress={openLocationPicker}>
+          <Text style={styles.locationHint}>
+            {t('events.locationDenied')}
+          </Text>
+        </TouchableOpacity>
       )}
+
+      <LocationPickerModal {...locationPickerProps} />
 
       <Modal
         visible={showPicker}
@@ -1586,7 +1578,9 @@ export default function EventListScreen() {
           {userLocation && (
             <TouchableOpacity style={styles.activePill} onPress={toggleNearby}>
               <Text style={styles.activePillText}>
-                {t('events.nearby')}{nearbyRadiusKm !== null ? ` · ${nearbyRadiusKm} km` : ''} ✕
+                {t('events.nearby')}
+                {locationPreference?.mode === 'postalCode' ? ` · ${locationPreference.postalCode}` : ''}
+                {nearbyRadiusKm !== null ? ` · ${nearbyRadiusKm} km` : ''} ✕
               </Text>
             </TouchableOpacity>
           )}
@@ -1917,27 +1911,36 @@ export default function EventListScreen() {
                   </Text>
                 </TouchableOpacity>
               ))}
-              {Platform.OS === 'web' && (
-                <TouchableOpacity
-                  style={[styles.quickFilterButton, userLocation !== null && styles.filterChipActive]}
-                  onPress={toggleNearby}
-                  disabled={locationStatus === 'loading'}
-                >
-                  {locationStatus === 'loading' ? (
-                    <ActivityIndicator size="small" color="#999" />
-                  ) : (
-                    <Ionicons name="location-outline" size={17} color={userLocation ? '#000' : '#999'} />
-                  )}
-                  <Text style={[styles.quickFilterButtonText, userLocation && styles.filterChipTextActive]} numberOfLines={1}>
-                    {locationStatus === 'loading' ? t('events.loadingLocation') : t('events.nearby')}
-                  </Text>
-                </TouchableOpacity>
-              )}
+              {/* Nicht mehr nur auf Web: mit manueller PLZ braucht der
+                  Filter keine Geolocation-API (GPS-Option bietet der Dialog
+                  nur an, wo es sie gibt). */}
+              <TouchableOpacity
+                style={[styles.quickFilterButton, userLocation !== null && styles.filterChipActive]}
+                onPress={toggleNearby}
+                disabled={locationStatus === 'loading'}
+              >
+                {locationStatus === 'loading' ? (
+                  <ActivityIndicator size="small" color="#999" />
+                ) : (
+                  <Ionicons name="location-outline" size={17} color={userLocation ? '#000' : '#999'} />
+                )}
+                <Text style={[styles.quickFilterButtonText, userLocation && styles.filterChipTextActive]} numberOfLines={1}>
+                  {locationStatus === 'loading' ? t('events.loadingLocation') : t('events.nearby')}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {userLocation && (
               <View style={styles.radiusSection}>
-                <Text style={styles.filterSectionLabel}>{t('events.distance')}</Text>
+                <View style={styles.radiusHeaderRow}>
+                  <Text style={[styles.filterSectionLabel, styles.radiusHeaderLabel]}>{t('events.distance')}</Text>
+                  <TouchableOpacity onPress={openLocationPicker} style={styles.locationSourceButton}>
+                    <Ionicons name="location" size={13} color="#0af" />
+                    <Text style={styles.locationSourceText} numberOfLines={1}>
+                      {formatLocationPreference(locationPreference, t)} · {t('events.locationChange')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.radiusGrid}>
                   {RADIUS_PRESETS_KM.map((km) => {
                     const active = km === null ? nearbyRadiusKm === null : nearbyRadiusKm === km;
@@ -2800,6 +2803,10 @@ const styles = StyleSheet.create({
   },
   quickFilterButtonText: { color: '#999', fontSize: 13, fontWeight: '600', flexShrink: 1 },
   radiusSection: { marginBottom: 4 },
+  radiusHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 16, gap: 10 },
+  radiusHeaderLabel: { flexShrink: 0 },
+  locationSourceButton: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1, marginTop: 6 },
+  locationSourceText: { color: '#0af', fontSize: 12, fontWeight: '600', flexShrink: 1 },
   radiusGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

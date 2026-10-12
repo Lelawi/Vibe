@@ -9,6 +9,7 @@ import MapCategorySwitcher, { type MapCategory } from './MapCategorySwitcher';
 import type { VenueMarker, VenueLeafletHandle } from './VenueLeafletView.web';
 import type { VenueType } from './VenueListScreen';
 import { registerStrings, useTranslation } from '../lib/strings';
+import { resolveMapUserLocation } from '../lib/locationPreference';
 
 registerStrings({
   'venueMap.openNow': { de: 'Jetzt geöffnet', en: 'Open now' },
@@ -75,12 +76,17 @@ export default function VenueMapNative({
   const leafletRef = useRef<VenueLeafletHandle>(null);
 
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {},
-      { enableHighAccuracy: false, timeout: 10000 }
-    );
+    // Best-effort, kein Fehler-UI bei Ablehnung — der "Wo bin ich"-Punkt ist
+    // eine Zusatzinfo auf der Karte, kein Blocker wie die "Nähe"-Sortierung
+    // auf der Listenseite. Mit gesetzter PLZ deren Mittelpunkt, ganz ohne
+    // Standortabfrage (siehe lib/locationPreference.ts).
+    let mounted = true;
+    resolveMapUserLocation().then((loc) => {
+      if (mounted && loc) setUserLocation(loc);
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {

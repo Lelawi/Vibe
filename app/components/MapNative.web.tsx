@@ -7,6 +7,7 @@ import { canonicalizeVenue } from '../lib/venue';
 import { getFilteredEventsForMap } from '../lib/mapFilterCache';
 import MapCategorySwitcher from './MapCategorySwitcher';
 import type { VenueMarker, LeafletMapHandle } from './LeafletMapView.web';
+import { resolveMapUserLocation } from '../lib/locationPreference';
 
 // Lädt die eigentliche Leaflet-Karte erst zur Laufzeit im Browser (siehe
 // Kommentar in LeafletMapView.web.tsx) — verhindert einen Absturz beim
@@ -37,13 +38,15 @@ export default function MapNative() {
   useEffect(() => {
     // Best-effort, kein Fehler-UI bei Ablehnung — der "Wo bin ich"-Punkt ist
     // eine Zusatzinfo auf der Karte, kein Blocker wie die "Nähe"-Sortierung
-    // auf der Listenseite.
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {},
-      { enableHighAccuracy: false, timeout: 10000 }
-    );
+    // auf der Listenseite. Mit gesetzter PLZ deren Mittelpunkt, ganz ohne
+    // Standortabfrage (siehe lib/locationPreference.ts).
+    let mounted = true;
+    resolveMapUserLocation().then((loc) => {
+      if (mounted && loc) setUserLocation(loc);
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
